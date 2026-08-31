@@ -10,18 +10,19 @@ medido. Nada de inferência sem marca.
   (17F113), Swift 6.3.3. Comandos: `sw_vers`, `uname -m`, `xcodebuild -version`,
   `swift --version`.
 - [FATO] Mac mini alvo responde ping em `192.168.1.13` (2026-08-31, `ping -c1`).
-- [FATO] SSH não-interativo ao mini NEGADO para esta máquina
-  (`Permission denied (publickey,...)`, BatchMode) — sem chave configurada.
-- **PENDENTE (bloqueado em acesso — dono):** `sw_vers`, `uname -m` e
-  `sysadminctl -autologin status` no mini. Comando pronto para o dono rodar no mini
-  (ou conceder chave SSH):
-
-  ```bash
-  sw_vers; uname -m; sysadminctl -autologin status
-  ```
-
-  Impacto: deployment target do app (§7A) e premissa de auto-login do LaunchAgent
-  `gui/$uid` (§7A.6) ficam abertos até essa medição.
+- [FATO] Acesso SSH ao mini: chave `id_ed25519` com passphrase no Keychain, carregada
+  com `/usr/bin/ssh-add --apple-load-keychain` (forma documentada em
+  `ABHOME-infra/HANDOVER-LLM-HAOS.md:224-225`); alias `macmini.home.arpa`.
+- [FATO 2026-08-31, ssh no ato] Mac mini: macOS **26.6.2** (25G83), **arm64** →
+  MenuBarExtra disponível; deployment target do app pode igualar o dev (26.x).
+- [FATO 2026-08-31] **Auto-login: OFF** (`sysadminctl -autologin status`) → a premissa
+  "LaunchAgent gui/$uid sobrevive a reboot" NÃO se sustenta hoje; decisão
+  LaunchAgent × LaunchDaemon × habilitar auto-login DEVOLVIDA AO DONO (§7A.6).
+  Precedente da casa: a VM do HAOS usa LaunchAgent gui/$uid — mesmo limite.
+- [FATO 2026-08-31] Python do mini: 3.9.6 (sistema); brew presente em
+  `/opt/homebrew/bin/brew` → instalador (Fase 6a) precisa prover Python ≥ 3.13.
+- [FATO 2026-08-31] `pmset -g batt`: "AC Power"; varredura `system_profiler
+  SPUSBDataType`: **nenhum device EcoFlow/RIVER conectado** ao mini.
 - **PENDENTE (dono):** disponibilidade física do EcoFlow RIVER 3 Plus.
 - [FATO] Homebrew publica NUT 2.8.5 (https://formulae.brew.sh/formula/nut, consultado
   2026-08-31) ≥ piso 2.8.4 exigido pelo suporte EcoFlow
