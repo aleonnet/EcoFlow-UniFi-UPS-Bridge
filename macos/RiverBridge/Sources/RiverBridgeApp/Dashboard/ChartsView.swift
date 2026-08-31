@@ -12,6 +12,7 @@ struct ChartsView: View {
     @State private var metric: Metric = .powerW
     @State private var rows: [HistoryRow] = []
     @State private var scrubTS: Int?
+    @State private var narrow = false
 
     enum Metric: String, CaseIterable, Identifiable {
         case powerW, charge
@@ -51,6 +52,11 @@ struct ChartsView: View {
                 chart
             }
         }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            narrow = width < 620
+        }
         .task(id: metric) { await load() }
         .task {
             while !Task.isCancelled {
@@ -60,27 +66,58 @@ struct ChartsView: View {
         }
     }
 
+    @ViewBuilder
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
+        // Narrow/phone (owner's print at min width): stacked layout, smaller
+        // hero, chips+picker on their own line — nothing wraps mid-word.
+        if narrow {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Consumo — última hora").eyebrow()
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(nowValue)
-                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .monospacedDigit()
+                        .fixedSize()
                         .contentTransition(.numericText())
                     if let peak, let avg = peak.avg {
                         Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
-                            .font(.callout)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+                            .lineLimit(1)
                     }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 12) {
+                    chip("Uso", store.loadText)
+                    chip("Saída", store.outputVoltageText)
+                    Spacer(minLength: 0)
+                    picker
                 }
             }
-            Spacer()
-            chip("Uso", store.loadText)
-            chip("Saída", store.outputVoltageText)
-            picker
+        } else {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Consumo — última hora").eyebrow()
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(nowValue)
+                            .font(.system(size: 26, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .fixedSize()
+                            .contentTransition(.numericText())
+                        if let peak, let avg = peak.avg {
+                            Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+                Spacer()
+                chip("Uso", store.loadText)
+                chip("Saída", store.outputVoltageText)
+                picker
+            }
         }
     }
 

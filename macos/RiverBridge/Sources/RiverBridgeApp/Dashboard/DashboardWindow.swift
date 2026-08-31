@@ -47,7 +47,21 @@ struct DashboardWindow: View {
                 // Nav lives in the hidden-title-bar dead strip: zero useful
                 // height spent (owner's call 2026-08-31 — top over side rail,
                 // and the same capsule becomes a bottom tab bar on iPhone).
+                // STICKY: a blurred band pinned to the top edge — scrolled
+                // content passes under glass, never over the logo/tabs.
                 header
+                    .padding(.bottom, 6)
+                    .background {
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .mask {
+                                LinearGradient(
+                                    colors: [.black, .black, .clear],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            }
+                            .ignoresSafeArea(edges: .top)
+                    }
 
                 Group {
                     switch section {
