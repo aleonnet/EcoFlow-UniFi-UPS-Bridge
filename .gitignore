@@ -9,3 +9,5 @@
 __pycache__/
 *.egg-info/
 .venv/
+macos/RiverBridge/.build/
+macos/RiverBridge/dist/

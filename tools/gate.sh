@@ -103,6 +103,33 @@ else
     erro "S5 env.example"
 fi
 
+# S6 — Swift: build do app + testes do Core (fixtures compartilhados incluídos)
+APP_DIR="$RAIZ/macos/RiverBridge"
+if [ -d "$APP_DIR" ]; then
+    if (cd "$APP_DIR" && swift build >/tmp/gate_swift_build.log 2>&1); then
+        ok "S6 swift build"
+    else
+        erro "S6 swift build — cauda:"
+        tail -5 /tmp/gate_swift_build.log
+    fi
+    if (cd "$APP_DIR" && swift test >/tmp/gate_swift_test.log 2>&1); then
+        ok "S7 swift test ($(grep -Eo 'with [0-9]+ tests' /tmp/gate_swift_test.log | tail -1))"
+    else
+        erro "S7 swift test — cauda:"
+        tail -5 /tmp/gate_swift_test.log
+    fi
+    # S7b — xcodebuild test (mesmos testes, toolchain do Xcode). GATE_SKIP_XCODEBUILD=1 pula
+    # (a cena é a mais lenta; o conteúdo já é coberto por S7).
+    if [ "${GATE_SKIP_XCODEBUILD:-0}" = "1" ]; then
+        ok "S7b xcodebuild test (pulado por GATE_SKIP_XCODEBUILD=1)"
+    elif (cd "$APP_DIR" && xcodebuild test -scheme RiverBridge -destination 'platform=macOS' >/tmp/gate_xcb.log 2>&1); then
+        ok "S7b xcodebuild test"
+    else
+        erro "S7b xcodebuild test — cauda:"
+        tail -5 /tmp/gate_xcb.log
+    fi
+fi
+
 if [ "$FALHAS" -eq 0 ]; then
     printf 'GATE: VERDE\n'
     exit 0

@@ -1,0 +1,37 @@
+{
+  "identity": {
+    "name": "river-office",
+    "manufacturer": null,
+    "model": null,
+    "serial": null
+  },
+  "power": {
+    "state": "UNKNOWN",
+    "states": [],
+    "input_present": null,
+    "input_voltage_v": null,
+    "output_voltage_v": null,
+    "output_power_w": null,
+    "load_percent": null
+  },
+  "battery": {
+    "charge_percent": null,
+    "runtime_seconds": null,
+    "voltage_v": null,
+    "temperature_c": null
+  },
+  "health": {
+    "communication_ok": false,
+    "low_battery": false,
+    "overload": false,
+    "alarm": [],
+    "unknown_status_tokens": [],
+    "last_error": null
+  },
+  "source": {
+    "nut": true,
+    "usb_hid": true,
+    "usb_cdc": false
+  },
+  "timestamp": null
+}

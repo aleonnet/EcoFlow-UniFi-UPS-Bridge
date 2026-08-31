@@ -1,0 +1,39 @@
+{
+  "identity": {
+    "name": "river-office",
+    "manufacturer": "EcoFlow",
+    "model": "RIVER 3 Plus",
+    "serial": "SIM0001"
+  },
+  "power": {
+    "state": "ONLINE",
+    "states": [
+      "ONLINE",
+      "CHARGING"
+    ],
+    "input_present": true,
+    "input_voltage_v": 230.0,
+    "output_voltage_v": 230.0,
+    "output_power_w": 45.0,
+    "load_percent": 12.0
+  },
+  "battery": {
+    "charge_percent": 87.0,
+    "runtime_seconds": 3600.0,
+    "voltage_v": null,
+    "temperature_c": null
+  },
+  "health": {
+    "communication_ok": true,
+    "low_battery": false,
+    "overload": false,
+    "alarm": [],
+    "unknown_status_tokens": []
+  },
+  "source": {
+    "nut": true,
+    "usb_hid": true,
+    "usb_cdc": false
+  },
+  "timestamp": "2026-08-31T17:00:00+00:00"
+}
