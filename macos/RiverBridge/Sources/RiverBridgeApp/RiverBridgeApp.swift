@@ -19,10 +19,13 @@ struct RiverBridgeApp: App {
 
         Window("River Bridge", id: "main") {
             DashboardWindow(store: store)
-                .frame(minWidth: 760, minHeight: 620)
+                // Min width = iPhone XR width (owner 2026-08-31): shrinking
+                // below 520pt flips to the vertical phone layout — the window
+                // doubles as an iPhone preview. Floors allow a 414×896 shape.
+                .frame(minWidth: 414, minHeight: 480)
                 .task { store.start() }
         }
-        .defaultSize(width: 960, height: 640)
+        .defaultSize(width: 1000, height: 880)
         .windowStyle(.hiddenTitleBar)
         // A power panel always opens on Energia — never on a restored tab.
         .restorationBehavior(.disabled)

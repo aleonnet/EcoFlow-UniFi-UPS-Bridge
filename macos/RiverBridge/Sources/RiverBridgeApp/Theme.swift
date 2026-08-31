@@ -122,6 +122,10 @@ struct HoverLift: ViewModifier {
             .scaleEffect(hovering && !reduceMotion ? scale : 1)
             .shadow(color: glow.opacity(hovering ? 0.30 : 0), radius: 14)
             .animation(.spring(duration: 0.25), value: hovering)
+            // Whole-bounds hit target: without this, transparent areas of a
+            // card ignore the cursor (owner's report — hover dead on empty
+            // space). Class fix for every hoverLift user.
+            .contentShape(Rectangle())
             .onHover { hovering = $0 }
     }
 }

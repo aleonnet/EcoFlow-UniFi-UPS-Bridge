@@ -53,7 +53,11 @@ struct HealthView: View {
             .frame(maxWidth: 900)
             .frame(maxWidth: .infinity)
             .padding(.top, 6)
+            .padding(.horizontal, 6)
         }
+        // The lift's glow must not be clipped by the scroll container
+        // (owner's print: cropped card shadow).
+        .scrollClipDisabled()
         .task {
             while !Task.isCancelled {
                 if let endpoint = ApiEndpoint.discover() {

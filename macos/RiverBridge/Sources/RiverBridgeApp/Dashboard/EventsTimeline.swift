@@ -27,6 +27,7 @@ struct EventsTimeline: View {
                     .frame(maxWidth: 860, alignment: .leading)
                 }
                 .frame(maxHeight: 190)
+                .scrollClipDisabled()
             }
         }
     }

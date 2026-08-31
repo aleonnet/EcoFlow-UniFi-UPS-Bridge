@@ -109,7 +109,8 @@ struct FlowScene: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in
-            sceneHeight = min(max(width / 2.7, 280), 430)
+            // Compact (phone) stacks vertically and needs the full height.
+            sceneHeight = width < 520 ? 430 : min(max(width / 2.7, 280), 430)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
