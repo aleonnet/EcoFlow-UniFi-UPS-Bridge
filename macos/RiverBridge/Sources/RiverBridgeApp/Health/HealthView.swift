@@ -1,6 +1,7 @@
 // Chain health: USB -> NUT -> serviço -> UniFi / HA. Links we cannot see
 // yet say so honestly ("não observável", "pendente") — never a green dot
-// without evidence.
+// without evidence. Layout: adaptive glass cards filling the page
+// (owner 2026-08-31: distribute the space, hover, responsive).
 
 import RiverBridgeCore
 import SwiftUI
@@ -10,35 +11,49 @@ struct HealthView: View {
 
     @State private var chain: HealthChain?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Cadeia de integração").eyebrow()
+    private struct Link: Identifiable {
+        let id: String
+        let symbol: String
+        let name: String
+        let status: String?
+        let detail: String?
+    }
 
-            link(
-                "cable.connector", "USB · RIVER",
-                status: chain?.usb, detail: "Observável a partir da Fase 1, com o RIVER conectado."
-            )
-            link(
-                "server.rack", "NUT (upsd)",
-                status: chain?.nut, detail: chain?.lastError
-            )
-            link(
-                "gearshape.2.fill", "Serviço river-unifi-bridge",
-                status: store.phase == .live ? "ok" : "falha",
-                detail: store.phase == .live ? nil : "A UI não alcança a API local."
-            )
-            link(
-                "network", "UniFi (UDR7)",
-                status: chain?.unifi, detail: "Aguarda a Fase 3 (PoC do protocolo)."
-            )
-            link(
-                "house.fill", "Home Assistant",
-                status: chain?.ha, detail: "O upsd não expõe clientes de forma confirmada ainda."
-            )
-            Spacer()
+    private var links: [Link] {
+        [
+            .init(id: "usb", symbol: "cable.connector", name: "USB · RIVER",
+                  status: chain?.usb,
+                  detail: "Observável a partir da Fase 1, com o RIVER conectado."),
+            .init(id: "nut", symbol: "server.rack", name: "NUT (upsd)",
+                  status: chain?.nut, detail: chain?.lastError),
+            .init(id: "bridge", symbol: "gearshape.2.fill", name: "Serviço river-unifi-bridge",
+                  status: store.phase == .live ? "ok" : "falha",
+                  detail: store.phase == .live ? "API local respondendo." : "A UI não alcança a API local."),
+            .init(id: "unifi", symbol: "network", name: "UniFi (UDR7)",
+                  status: chain?.unifi, detail: "Aguarda a Fase 3 (PoC do protocolo)."),
+            .init(id: "ha", symbol: "house.fill", name: "Home Assistant",
+                  status: chain?.ha, detail: "O upsd não expõe clientes de forma confirmada ainda."),
+        ]
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Cadeia de integração").eyebrow()
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 330), spacing: 14)],
+                    alignment: .leading, spacing: 14
+                ) {
+                    ForEach(links) { item in
+                        card(item)
+                    }
+                }
+            }
+            .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
         }
-        .padding(6)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .task {
             while !Task.isCancelled {
                 if let endpoint = ApiEndpoint.discover() {
@@ -49,26 +64,38 @@ struct HealthView: View {
         }
     }
 
-    private func link(_ symbol: String, _ name: String, status: String?, detail: String?) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .frame(width: 34, height: 34)
+    private func card(_ item: Link) -> some View {
+        let (label, color) = badge(item.status)
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: item.symbol)
+                .font(.system(size: 17, weight: .medium))
+                .frame(width: 40, height: 40)
                 .background(.quaternary.opacity(0.5), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text(name).font(.headline)
-                    statusBadge(status)
-                }
-                if let detail, !detail.isEmpty {
-                    Text(detail).font(.callout).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name).font(.system(.headline, design: .rounded))
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(color.opacity(0.15), in: Capsule())
+                    .foregroundStyle(color)
+                if let detail = item.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Spacer(minLength: 0)
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .hoverLift(glow: color)
     }
 
-    @ViewBuilder
-    private func statusBadge(_ status: String?) -> some View {
-        let (label, color): (String, Color) = switch status {
+    private func badge(_ status: String?) -> (String, Color) {
+        switch status {
         case "ok": ("OK", .green)
         case "falha": ("Falha", .red)
         case "sem_dados": ("Sem dados", .orange)
@@ -76,11 +103,5 @@ struct HealthView: View {
         case "nao_observavel": ("Não observável", .secondary)
         default: ("—", .secondary)
         }
-        Text(label)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
     }
 }

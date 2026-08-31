@@ -107,6 +107,31 @@ extension View {
     }
 }
 
+// MARK: - Hover
+
+/// The house hover: a gentle lift with a colored halo. Reduce Motion keeps
+/// the halo but drops the scale.
+struct HoverLift: ViewModifier {
+    var glow: Color = .white
+    var scale: CGFloat = 1.02
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(hovering && !reduceMotion ? scale : 1)
+            .shadow(color: glow.opacity(hovering ? 0.30 : 0), radius: 14)
+            .animation(.spring(duration: 0.25), value: hovering)
+            .onHover { hovering = $0 }
+    }
+}
+
+extension View {
+    func hoverLift(glow: Color = .white, scale: CGFloat = 1.02) -> some View {
+        modifier(HoverLift(glow: glow, scale: scale))
+    }
+}
+
 // MARK: - Type voice
 
 extension Text {

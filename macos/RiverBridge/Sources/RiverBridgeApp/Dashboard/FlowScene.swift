@@ -12,6 +12,7 @@ import SwiftUI
 struct FlowScene: View {
     var store: TelemetryStore
 
+    @State private var sceneHeight: CGFloat = 330
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var accent: Color {
@@ -21,14 +22,15 @@ struct FlowScene: View {
     private var gridActive: Bool { live && !store.isOnBattery }
     private let gridColor = Color(red: 0.45, green: 0.75, blue: 1.0)
 
-    private let sideRadius: CGFloat = 46
-    private let ringRadius: CGFloat = 118
-
     var body: some View {
         GeometryReader { geo in
             // Compact widths (iPhone-class, narrow windows) stack the flow
             // vertically; FlowGeometry anchors are axis-agnostic and proved.
             let compact = geo.size.width < 520
+            // Owner's ask (2026-08-31): the widgets scale with the window.
+            // Radii derive from the AVAILABLE space, spring-animated below.
+            let ringRadius: CGFloat = min(max(min(geo.size.width * 0.14, geo.size.height * 0.42), 92), 168)
+            let sideRadius: CGFloat = max(ringRadius * 0.40, 40)
             let cy = geo.size.height / 2 - (compact ? 0 : 14)
             let cx = geo.size.width / 2
             let left = FlowGeometry.Circle(
@@ -60,18 +62,21 @@ struct FlowScene: View {
                 sideNode(
                     symbol: "bolt.horizontal.fill", label: "Rede elétrica",
                     value: gridActive ? "CA" : "—",
-                    color: gridActive ? gridColor : .secondary, active: gridActive
+                    color: gridActive ? gridColor : .secondary, active: gridActive,
+                    radius: sideRadius
                 )
                 .position(left.center)
 
                 EnergyRing(store: store)
                     .frame(width: ringRadius * 2, height: ringRadius * 2)
+                    .hoverLift(glow: accent, scale: 1.01)
                     .position(center.center)
 
                 sideNode(
                     symbol: "server.rack", label: "Equipamentos",
                     value: store.powerText,
-                    color: live ? gridColor : .secondary, active: live
+                    color: live ? gridColor : .secondary, active: live,
+                    radius: sideRadius
                 )
                 .position(right.center)
 
@@ -88,8 +93,16 @@ struct FlowScene: View {
                         y: compact ? right.center.y : right.center.y + sideRadius + 16
                     )
             }
+            .animation(.spring(duration: 0.5), value: geo.size)
         }
-        .frame(height: 330)
+        // Height follows the MEASURED width (never negotiates a wider frame —
+        // aspectRatio + minHeight overflowed the window edge, seen on screen).
+        .frame(height: sceneHeight)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            sceneHeight = min(max(width / 2.7, 280), 430)
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             store.isOnBattery
@@ -99,7 +112,7 @@ struct FlowScene: View {
     }
 
     private func sideNode(symbol: String, label: String, value: String,
-                          color: Color, active: Bool) -> some View {
+                          color: Color, active: Bool, radius: CGFloat) -> some View {
         ZStack {
             Circle()
                 .stroke(color.opacity(active ? 0.9 : 0.3), lineWidth: 2)
@@ -107,19 +120,23 @@ struct FlowScene: View {
                 .shadow(color: color.opacity(active ? 0.35 : 0), radius: 16)
             VStack(spacing: 2) {
                 Image(systemName: symbol)
-                    .font(.system(size: 19, weight: .medium))
+                    .font(.system(size: radius * 0.42, weight: .medium))
                     .foregroundStyle(active ? .primary : .secondary)
                 Text(value)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: max(radius * 0.24, 10), weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: sideRadius * 2, height: sideRadius * 2)
+        .frame(width: radius * 2, height: radius * 2)
+        .hoverLift(glow: color, scale: 1.04)
         .animation(.easeInOut(duration: 0.6), value: active)
     }
 }
 
+// Cables, not wires (owner 2026-08-31): each connector is a quadratic
+// bezier that HANGS like a real cable, sways almost imperceptibly, and the
+// energy pulses travel ALONG the curve (FlowGeometry.quadPoint — tested).
 private struct ConnectorLayer: View {
     struct Segment {
         let circles: (FlowGeometry.Circle, FlowGeometry.Circle)
@@ -131,39 +148,45 @@ private struct ConnectorLayer: View {
     let reduceMotion: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || segments.allSatisfy { !$0.active })) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
             Canvas { canvas, _ in
-                let t = reduceMotion
-                    ? 0.5
-                    : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
-                for segment in segments {
+                let now = context.date.timeIntervalSinceReferenceDate
+                let travel = reduceMotion ? 0.5 : now.truncatingRemainder(dividingBy: 2.2) / 2.2
+                for (index, segment) in segments.enumerated() {
                     guard let conn = FlowGeometry.connector(
                         from: segment.circles.0, to: segment.circles.1
                     ) else { continue }
-                    var path = Path()
-                    path.move(to: conn.start)
-                    path.addLine(to: conn.end)
+                    let span = abs(conn.end.x - conn.start.x) + abs(conn.end.y - conn.start.y)
+                    // Organic: the sag breathes ±2pt slowly, out of phase per cable.
+                    let baseSag = max(span * 0.06, 10)
+                    let sway = reduceMotion ? 0 : sin(now / 3.1 + Double(index) * 1.7) * 2.0
+                    let control = FlowGeometry.cableControl(
+                        start: conn.start, end: conn.end, sag: baseSag + sway
+                    )
+
+                    var cable = Path()
+                    cable.move(to: conn.start)
+                    cable.addQuadCurve(to: conn.end, control: control)
                     canvas.stroke(
-                        path,
+                        cable,
                         with: .color(segment.active ? segment.color.opacity(0.55)
                                                     : Color.secondary.opacity(0.18)),
-                        lineWidth: 1.5
+                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
                     )
                     guard segment.active else { continue }
-                    let dx = conn.end.x - conn.start.x
-                    let dy = conn.end.y - conn.start.y
                     for i in 0..<3 {
-                        let phase = (t + Double(i) / 3).truncatingRemainder(dividingBy: 1)
-                        let x = conn.start.x + dx * phase
-                        let y = conn.start.y + dy * phase
+                        let phase = (travel + Double(i) / 3).truncatingRemainder(dividingBy: 1)
+                        let p = FlowGeometry.quadPoint(
+                            start: conn.start, control: control, end: conn.end, t: phase
+                        )
                         var halo = canvas
                         halo.addFilter(.blur(radius: 3))
                         halo.fill(
-                            Path(ellipseIn: CGRect(x: x - 5, y: y - 5, width: 10, height: 10)),
+                            Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)),
                             with: .color(segment.color.opacity(0.7))
                         )
                         canvas.fill(
-                            Path(ellipseIn: CGRect(x: x - 2, y: y - 2, width: 4, height: 4)),
+                            Path(ellipseIn: CGRect(x: p.x - 2, y: p.y - 2, width: 4, height: 4)),
                             with: .color(.white.opacity(0.95))
                         )
                     }

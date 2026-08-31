@@ -1,6 +1,7 @@
 // Settings (UI-3): edits go through PUT /v1/config — the daemon validates
 // with the same allowlist as its .env parser; the UI never touches the file.
-// Hot keys apply live; the rest arms the "Reiniciar serviço" button (202).
+// Restyled in the app's own language (owner 2026-08-31: the stock form card
+// clashed with everything else): eyebrow sections, glass groups, hover.
 
 import RiverBridgeCore
 import SwiftUI
@@ -16,30 +17,38 @@ struct SettingsView: View {
     @State private var loaded = false
     @State private var feedback: String?
     @State private var restartRequired = false
+    @State private var saveTask: Task<Void, Never>?
+
+    private var accent: Color {
+        Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+    }
 
     var body: some View {
-        Form {
-            Section("Alarmes") {
-                Stepper("Queda de energia: \(powerLossDelay) s", value: $powerLossDelay, in: 0...600)
-                Stepper("Energia restaurada: \(restoreDelay) s", value: $restoreDelay, in: 0...600)
-                Stepper("Comunicação perdida: \(commLossDelay) s", value: $commLossDelay, in: 0...600)
-                LabeledContent("Bateria baixa: \(lowBattery)%") {
-                    Slider(value: Binding(
-                        get: { Double(lowBattery) },
-                        set: { lowBattery = Int($0) }
-                    ), in: 5...50, step: 1)
-                    .frame(width: 180)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                group("Alarmes") {
+                    stepperRow("bolt.slash.fill", "Queda de energia",
+                               value: $powerLossDelay, range: 0...600, unit: "s")
+                    divider
+                    stepperRow("bolt.badge.checkmark.fill", "Energia restaurada",
+                               value: $restoreDelay, range: 0...600, unit: "s")
+                    divider
+                    stepperRow("antenna.radiowaves.left.and.right.slash", "Comunicação perdida",
+                               value: $commLossDelay, range: 0...600, unit: "s")
+                    divider
+                    sliderRow("battery.25percent", "Bateria baixa",
+                              value: $lowBattery, range: 5...50, unit: "%")
                 }
-            }
-            Section("Coleta") {
-                Stepper("Intervalo de leitura: \(pollInterval) s", value: $pollInterval, in: 1...60)
-            }
-            Section {
-                HStack {
-                    Button("Salvar alterações") { Task { await save() } }
-                        .keyboardShortcut(.defaultAction)
+
+                group("Coleta") {
+                    stepperRow("timer", "Intervalo de leitura",
+                               value: $pollInterval, range: 1...60, unit: "s")
+                }
+
+                HStack(spacing: 12) {
                     if restartRequired {
                         Button("Reiniciar serviço") { Task { await restart() } }
+                            .buttonStyle(.glass)
                             .tint(.orange)
                     }
                     Spacer()
@@ -50,17 +59,95 @@ struct SettingsView: View {
                             .contentTransition(.opacity)
                     }
                 }
-            } footer: {
-                Text("Valores fora de faixa são recusados pelo serviço — a mesma validação do arquivo de configuração.")
+
+                Text("As mudanças são salvas automaticamente; valores fora de faixa são recusados pelo serviço — a mesma validação do arquivo de configuração.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .glassCard(cornerRadius: 22)
         .task { await loadCurrent() }
+        // Auto-save (owner 2026-08-31): every change PUTs after a short
+        // debounce — no save button, like System Settings. All keys on this
+        // screen are hot-reload; the daemon still validates every value.
+        .onChange(of: [powerLossDelay, restoreDelay, commLossDelay, lowBattery, pollInterval]) {
+            guard loaded else { return }
+            saveTask?.cancel()
+            saveTask = Task {
+                try? await Task.sleep(for: .milliseconds(700))
+                guard !Task.isCancelled else { return }
+                await save()
+            }
+        }
+        .onDisappear {
+            saveTask?.cancel()
+            Task { await save() }
+        }
     }
+
+    // MARK: - Building blocks in the house language
+
+    private var divider: some View {
+        Divider().padding(.leading, 46)
+    }
+
+    @ViewBuilder
+    private func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).eyebrow()
+            VStack(spacing: 8) { content() }
+                .padding(14)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .hoverLift(glow: accent, scale: 1.004)
+        }
+    }
+
+    private func stepperRow(_ symbol: String, _ label: String,
+                            value: Binding<Int>, range: ClosedRange<Int>, unit: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .frame(width: 26)
+                .foregroundStyle(.secondary)
+            Text(label).font(.system(.body, design: .rounded))
+            Spacer()
+            Text("\(value.wrappedValue) \(unit)")
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+            Stepper("", value: value, in: range)
+                .labelsHidden()
+        }
+        .animation(.snappy(duration: 0.2), value: value.wrappedValue)
+    }
+
+    private func sliderRow(_ symbol: String, _ label: String,
+                           value: Binding<Int>, range: ClosedRange<Int>, unit: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .frame(width: 26)
+                .foregroundStyle(.secondary)
+            Text(label).font(.system(.body, design: .rounded))
+            Spacer()
+            Text("\(value.wrappedValue)\(unit)")
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: { value.wrappedValue = Int($0) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound), step: 1
+            )
+            .tint(accent)
+            .frame(width: 170)
+        }
+        .animation(.snappy(duration: 0.2), value: value.wrappedValue)
+    }
+
+    // MARK: - IO (unchanged contract: everything via the daemon's API)
 
     private func loadCurrent() async {
         guard !loaded, let endpoint = ApiEndpoint.discover() else { return }

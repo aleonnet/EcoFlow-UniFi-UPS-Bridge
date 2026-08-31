@@ -7,8 +7,22 @@ import SwiftUI
 
 struct DashboardWindow: View {
     var store: TelemetryStore
-    @State private var section: Section = .energia
+    @State private var section: Section = DashboardWindow.initialSection()
     @Namespace private var railNS
+
+    /// Dev seam: `--secao saude|ajustes` opens on that tab (screenshot
+    /// validation); normal launches always start on Energia.
+    static func initialSection() -> Section {
+        let args = ProcessInfo.processInfo.arguments
+        if let index = args.firstIndex(of: "--secao"), index + 1 < args.count {
+            switch args[index + 1] {
+            case "saude": return .saude
+            case "ajustes": return .ajustes
+            default: break
+            }
+        }
+        return .energia
+    }
 
     enum Section: String, CaseIterable, Identifiable {
         case energia = "Energia"

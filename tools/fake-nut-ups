@@ -77,11 +77,36 @@ def scenario_overload(_t: float) -> dict[str, str]:
     return vars_
 
 
+def scenario_instavel(t: float) -> dict[str, str]:
+    """Alternating grid: 40 s online / 35 s on battery, forever — generates a
+    steady stream of POWER_LOSS/POWER_RESTORED events (UI scroll testing) and
+    a saw-tooth battery curve for the charts."""
+    cycle = t % 75.0
+    if cycle < 40:
+        vars_ = scenario_online(t)
+        charge = min(100, 60 + int(cycle))
+        vars_["battery.charge"] = str(charge)
+        vars_["ups.realpower"] = str(40 + int(cycle % 12))
+        return vars_
+    drop = int((cycle - 40) / 3)
+    charge = max(30, 90 - drop)
+    return {
+        **BASE_VARS,
+        "ups.status": "OB DISCHRG",
+        "battery.charge": str(charge),
+        "battery.runtime": str(charge * 40),
+        "ups.load": "14",
+        "output.voltage": "229.5",
+        "ups.realpower": str(48 + drop),
+    }
+
+
 SCENARIOS = {
     "online": scenario_online,
     "power-loss": scenario_power_loss,
     "low-battery": scenario_low_battery,
     "overload": scenario_overload,
+    "instavel": scenario_instavel,
 }
 
 
