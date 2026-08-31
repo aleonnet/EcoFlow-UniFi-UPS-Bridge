@@ -1,5 +1,7 @@
-// Compact glance: mini ring, three facts, one action. The full story lives
-// in the window.
+// Dropdown following Apple's Battery menu anatomy: title + right-aligned
+// status, source/autonomy lines, sectioned rows with dividers, hover
+// highlight, preference toggle, footer actions. System theme — no custom
+// background here; the OS paints the menu chrome.
 
 import RiverBridgeCore
 import SwiftUI
@@ -7,55 +9,119 @@ import SwiftUI
 struct MenuBarPopover: View {
     var store: TelemetryStore
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("menuBarShowsPercent") private var showsPercent = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                EnergyRing(store: store, lineWidth: 7, showsDetail: false)
-                    .frame(width: 56, height: 56)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(store.stateLabel)
-                        .font(.system(.title3, design: .rounded).weight(.semibold))
-                        .contentTransition(.numericText())
-                    Text("Autonomia \(store.runtimeText)")
-                        .font(.callout)
+        VStack(alignment: .leading, spacing: 2) {
+            // Title row — like "Battery                    On Hold: 80%"
+            HStack {
+                Text("River Bridge").font(.headline)
+                Spacer()
+                if store.phase == .live {
+                    Text(store.chargeText)
+                        .font(.headline)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
 
-            if case .serviceDown(let reason) = store.phase {
-                Label(reason, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-            } else {
-                HStack(spacing: 16) {
-                    fact("Bateria", store.chargeText)
-                    fact("Carga", store.powerText)
-                    fact("Saída", store.outputVoltageText)
+            Group {
+                Text("Fonte: \(store.stateLabel)")
+                if store.phase == .live {
+                    Text("Autonomia: \(store.runtimeText)")
+                }
+                if case .serviceDown(let reason) = store.phase {
+                    Text(reason)
                 }
             }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
 
-            Button {
+            divider
+
+            Text("Telemetria")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 2)
+
+            metricRow("bolt.fill", "Carga", store.powerText)
+            metricRow("gauge.with.needle", "Uso", store.loadText)
+            metricRow("powerplug.fill", "Saída", store.outputVoltageText)
+
+            divider
+
+            MenuRow(
+                symbol: showsPercent ? "checkmark.circle.fill" : "circle",
+                title: "Mostrar percentual na barra"
+            ) {
+                showsPercent.toggle()
+            }
+
+            divider
+
+            MenuRow(symbol: "rectangle.expand.diagonal", title: "Abrir painel…") {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
-            } label: {
-                Label("Abrir painel", systemImage: "rectangle.expand.diagonal")
-                    .frame(maxWidth: .infinity)
             }
-            .controlSize(.large)
+            MenuRow(symbol: "power", title: "Sair do River Bridge") {
+                NSApp.terminate(nil)
+            }
         }
-        .padding(16)
-        .frame(width: 280)
-        .background(AuroraBackground(store: store).opacity(0.5))
+        .padding(6)
+        .frame(width: 300)
     }
 
-    private func fact(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).eyebrow()
+    private var divider: some View {
+        Divider().padding(.vertical, 4).padding(.horizontal, 10)
+    }
+
+    private func metricRow(_ symbol: String, _ label: String, _ value: String) -> some View {
+        HStack {
+            Image(systemName: symbol)
+                .frame(width: 18)
+                .foregroundStyle(.secondary)
+            Text(label)
+            Spacer()
             Text(value)
-                .font(.system(.body, design: .rounded).weight(.medium))
+                .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
+        .font(.body)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+    }
+}
+
+/// A row that behaves like a real menu item: full-width hover highlight.
+private struct MenuRow: View {
+    let symbol: String
+    let title: String
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: symbol)
+                    .frame(width: 18)
+                Text(title)
+                Spacer()
+            }
+            .font(.body)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(hovering ? Color.primary.opacity(0.1) : .clear)
+        )
+        .onHover { hovering = $0 }
     }
 }

@@ -29,6 +29,7 @@ struct ChartsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .tint(Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery))
                 .frame(width: 220)
             }
 

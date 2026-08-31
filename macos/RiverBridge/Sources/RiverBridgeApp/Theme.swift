@@ -44,19 +44,22 @@ struct AuroraBackground: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        // Restraint pass (owner's critique 2026-08-31): the aurora is an
+        // ACCENT at the window's edges, never a wash — the neutral system
+        // ground stays dominant so the glass reads as glass on top of it.
         let palette = Theme.colors(onBattery: store.isOnBattery, low: store.isLowBattery)
         TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
-            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate / 14
+            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate / 16
             Canvas { canvas, size in
-                canvas.addFilter(.blur(radius: 70))
-                blob(&canvas, size, palette[0].opacity(0.55),
-                     cx: 0.28 + 0.10 * sin(t), cy: 0.24 + 0.08 * cos(t * 1.3), r: 0.42)
-                blob(&canvas, size, palette[1].opacity(0.42),
-                     cx: 0.76 + 0.09 * cos(t * 0.8), cy: 0.70 + 0.10 * sin(t * 1.1), r: 0.48)
-                blob(&canvas, size, palette[0].opacity(0.25),
-                     cx: 0.55 + 0.12 * sin(t * 0.6 + 2), cy: 0.15 + 0.06 * cos(t + 1), r: 0.30)
+                canvas.addFilter(.blur(radius: 95))
+                blob(&canvas, size, palette[0].opacity(0.28),
+                     cx: 0.12 + 0.06 * sin(t), cy: 0.10 + 0.05 * cos(t * 1.3), r: 0.38)
+                blob(&canvas, size, palette[1].opacity(0.20),
+                     cx: 0.92 + 0.05 * cos(t * 0.8), cy: 0.85 + 0.06 * sin(t * 1.1), r: 0.42)
+                blob(&canvas, size, palette[0].opacity(0.12),
+                     cx: 0.85 + 0.07 * sin(t * 0.6 + 2), cy: 0.10 + 0.04 * cos(t + 1), r: 0.26)
             }
-            .background(scheme == .dark ? Color(white: 0.06) : Color(white: 0.92))
+            .background(scheme == .dark ? Color(white: 0.09) : Color(white: 0.94))
         }
         .animation(.easeInOut(duration: 1.2), value: store.isOnBattery)
         .ignoresSafeArea()
@@ -79,9 +82,22 @@ struct GlassCard: ViewModifier {
     var cornerRadius: CGFloat = 18
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         content
             .padding(16)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .glassEffect(.regular, in: shape)
+            // Specular top edge + lift shadow: the contrast that makes glass
+            // read as a pane instead of a tinted card.
+            .overlay {
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.35), .white.opacity(0.05), .clear],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+            }
+            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
     }
 }
 

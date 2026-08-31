@@ -34,7 +34,7 @@ struct EventsTimeline: View {
             Text(label(for: event.event))
                 .font(.system(.callout, design: .rounded).weight(.medium))
             Spacer()
-            Text(event.ts.suffix(14).prefix(8))  // HH:MM:SS from RFC3339-ish ts
+            Text(event.timeText)
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)

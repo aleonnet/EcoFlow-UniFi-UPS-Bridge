@@ -84,6 +84,18 @@ public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
     public var reason: String?
 
     public var id: String { ts + event }
+
+    /// "2026-08-31T15:11:30-0300" -> "15:11:30". Unknown format -> raw tail,
+    /// never a fabricated time.
+    public var timeText: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = formatter.date(from: ts) else { return ts }
+        let out = DateFormatter()
+        out.dateFormat = "HH:mm:ss"
+        return out.string(from: date)
+    }
 }
 
 public struct ConfigResponse: Codable, Equatable, Sendable {

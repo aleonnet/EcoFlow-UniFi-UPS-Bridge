@@ -20,6 +20,15 @@ import Testing
     #expect(TelemetryStore.voltageText(nil) == "—")
 }
 
+@Test func eventTimeTextParsesDaemonTimestamp() {
+    // Daemon emits time.strftime("%Y-%m-%dT%H:%M:%S%z") — no colon in tz.
+    let event = BridgeEvent(ts: "2026-08-31T15:11:30-0300", event: "POWER_LOSS", state: nil, charge: nil, reason: nil)
+    #expect(event.timeText == "15:11:30")
+    // Unknown format: raw value, never a fabricated time.
+    let odd = BridgeEvent(ts: "ontem", event: "X", state: nil, charge: nil, reason: nil)
+    #expect(odd.timeText == "ontem")
+}
+
 @MainActor
 @Test func storeAppliesStateAndEvents() {
     let store = TelemetryStore()
