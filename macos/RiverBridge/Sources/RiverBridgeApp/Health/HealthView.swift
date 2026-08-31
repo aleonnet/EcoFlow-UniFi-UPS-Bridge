@@ -10,6 +10,7 @@ struct HealthView: View {
     var store: TelemetryStore
 
     @State private var chain: HealthChain?
+    @State private var scrollOffset: CGFloat = 0
 
     private struct Link: Identifiable {
         let id: String
@@ -55,11 +56,16 @@ struct HealthView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
                         .background {
+                            // Transparent at rest; material only while
+                            // content actually passes underneath (validated
+                            // onScrollGeometryChange pattern).
                             Rectangle().fill(.ultraThinMaterial)
                                 .mask {
                                     LinearGradient(colors: [.black, .black, .clear],
                                                    startPoint: .top, endPoint: .bottom)
                                 }
+                                .opacity(scrollOffset > 4 ? 1 : 0)
+                                .animation(.easeInOut(duration: 0.15), value: scrollOffset > 4)
                         }
                 }
             }
@@ -68,6 +74,11 @@ struct HealthView: View {
             // Inner breathing room so the hover glow fits INSIDE the clip.
             .padding(.horizontal, 10)
             .padding(.bottom, 14)
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.contentOffset.y
+        } action: { _, offset in
+            scrollOffset = offset
         }
         .task {
             while !Task.isCancelled {

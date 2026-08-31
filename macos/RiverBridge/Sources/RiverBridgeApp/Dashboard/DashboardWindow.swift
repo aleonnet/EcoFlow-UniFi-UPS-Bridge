@@ -47,21 +47,7 @@ struct DashboardWindow: View {
                 // Nav lives in the hidden-title-bar dead strip: zero useful
                 // height spent (owner's call 2026-08-31 — top over side rail,
                 // and the same capsule becomes a bottom tab bar on iPhone).
-                // STICKY: a blurred band pinned to the top edge — scrolled
-                // content passes under glass, never over the logo/tabs.
                 header
-                    .padding(.bottom, 6)
-                    .background {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .mask {
-                                LinearGradient(
-                                    colors: [.black, .black, .clear],
-                                    startPoint: .top, endPoint: .bottom
-                                )
-                            }
-                            .ignoresSafeArea(edges: .top)
-                    }
 
                 Group {
                     switch section {
@@ -150,6 +136,13 @@ struct DashboardWindow: View {
 // Energia = hero flow + dense chart + compact events, all on the ground.
 struct EnergiaSection: View {
     var store: TelemetryStore
+    @State private var scrollOffset: CGFloat = 0
+    @State private var headerMinY: CGFloat = 1000
+
+    // Validated pattern (onScrollGeometryChange, macOS 15+): the header is
+    // TRANSPARENT at rest; material fades in ONLY while it is pinned with
+    // content passing underneath — never a visible band on a still page.
+    private var headerLit: Bool { scrollOffset > 4 && headerMinY <= 1 }
 
     var body: some View {
         // Single scroll, no nested scrolling (UX smell): the EVENTOS eyebrow
@@ -175,10 +168,22 @@ struct EnergiaSection: View {
                                     LinearGradient(colors: [.black, .black, .clear],
                                                    startPoint: .top, endPoint: .bottom)
                                 }
+                                .opacity(headerLit ? 1 : 0)
+                                .animation(.easeInOut(duration: 0.15), value: headerLit)
+                        }
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.frame(in: .scrollView).minY
+                        } action: { minY in
+                            headerMinY = minY
                         }
                 }
             }
             .padding(.bottom, 8)
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.contentOffset.y
+        } action: { _, offset in
+            scrollOffset = offset
         }
     }
 }
