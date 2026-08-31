@@ -71,6 +71,10 @@ struct ChartsView: View {
         }
     }
 
+    private var accent: Color {
+        Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+    }
+
     private var baseChart: some View {
         Chart(rows, id: \.ts) { row in
             if let avg = row.avg {
@@ -78,18 +82,31 @@ struct ChartsView: View {
                     x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
                     y: .value(metric.label, avg)
                 )
+                .interpolationMethod(.catmullRom)
                 .foregroundStyle(
-                    Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
-                        .opacity(0.25)
+                    LinearGradient(
+                        colors: [accent.opacity(0.30), accent.opacity(0.02)],
+                        startPoint: .top, endPoint: .bottom
+                    )
                 )
+                // Glow pass: the same line, wide and translucent, under the
+                // crisp one — the luminous stroke of the reference apps.
                 LineMark(
                     x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
-                    y: .value(metric.label, avg)
+                    y: .value(metric.label, avg),
+                    series: .value("s", "glow")
                 )
+                .interpolationMethod(.catmullRom)
+                .lineStyle(StrokeStyle(lineWidth: 7, lineCap: .round))
+                .foregroundStyle(accent.opacity(0.22))
+                LineMark(
+                    x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
+                    y: .value(metric.label, avg),
+                    series: .value("s", "core")
+                )
+                .interpolationMethod(.catmullRom)
                 .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                .foregroundStyle(
-                    Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
-                )
+                .foregroundStyle(accent)
             }
             if let scrubTS, scrubTS == row.ts, let avg = row.avg {
                 RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))))
@@ -108,6 +125,22 @@ struct ChartsView: View {
                         .padding(.vertical, 3)
                         .background(.background.opacity(0.9), in: Capsule())
                 }
+            }
+        }
+        .chartXAxis {
+            AxisMarks { _ in
+                AxisValueLabel()
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .trailing) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                    .foregroundStyle(.quaternary)
+                AxisValueLabel()
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(height: 150)

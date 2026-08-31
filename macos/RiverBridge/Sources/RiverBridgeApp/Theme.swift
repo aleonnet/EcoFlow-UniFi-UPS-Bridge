@@ -59,7 +59,7 @@ struct AuroraBackground: View {
                 blob(&canvas, size, palette[0].opacity(0.12),
                      cx: 0.85 + 0.07 * sin(t * 0.6 + 2), cy: 0.10 + 0.04 * cos(t + 1), r: 0.26)
             }
-            .background(scheme == .dark ? Color(white: 0.09) : Color(white: 0.94))
+            .background(scheme == .dark ? Color(white: 0.045) : Color(white: 0.94))
         }
         .animation(.easeInOut(duration: 1.2), value: store.isOnBattery)
         .ignoresSafeArea()

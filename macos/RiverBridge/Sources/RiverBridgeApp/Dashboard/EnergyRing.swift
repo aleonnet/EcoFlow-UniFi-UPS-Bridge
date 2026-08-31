@@ -47,6 +47,21 @@ struct EnergyRing: View {
                     .animation(reduceMotion ? nil : .spring(duration: 0.8), value: fraction)
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.8), value: store.isOnBattery)
 
+                // The gauge head: a bright point of light at the arc's tip.
+                if hasData, showsDetail {
+                    GeometryReader { geo in
+                        let radius = geo.size.width / 2 - lineWidth / 2 - 8
+                        Circle()
+                            .fill(.white)
+                            .frame(width: lineWidth * 0.55, height: lineWidth * 0.55)
+                            .shadow(color: palette[0].opacity(0.95), radius: 6)
+                            .shadow(color: palette[0].opacity(0.6), radius: 14)
+                            .position(x: geo.size.width / 2, y: geo.size.height / 2 - radius)
+                            .rotationEffect(.degrees(fraction * 360))
+                            .animation(reduceMotion ? nil : .spring(duration: 0.8), value: fraction)
+                    }
+                }
+
                 inner
                     .padding(lineWidth + 22)
             }
