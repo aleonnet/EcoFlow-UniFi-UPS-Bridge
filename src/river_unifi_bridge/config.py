@@ -135,5 +135,49 @@ def allowlist_keys() -> list[str]:
     return list(_ALLOWLIST)
 
 
+# §7A.5 — which changed keys apply live vs. require a service restart.
+HOT_RELOAD_KEYS = frozenset(
+    {
+        "POLL_INTERVAL_SECONDS",
+        "POWER_LOSS_DELAY_SECONDS",
+        "RESTORE_DELAY_SECONDS",
+        "COMM_LOSS_DELAY_SECONDS",
+        "LOW_BATTERY_PERCENT",
+        "HISTORY_RETENTION_DAYS",
+    }
+)
+RESTART_REQUIRED_KEYS = frozenset(_ALLOWLIST) - HOT_RELOAD_KEYS
+
+
+def validate_update(key: str, raw_value: str) -> object:
+    """Validate one KEY=raw_value pair with the SAME rules as load_config.
+
+    Used by PUT /v1/config — single source of truth for what is valid.
+    Raises ConfigError naming the key on any violation.
+    """
+    if key not in _ALLOWLIST:
+        raise ConfigError(f"chave desconhecida: {key}")
+    typ, required, _default, bounds = _ALLOWLIST[key]
+    value = str(raw_value).strip()
+    if value == "":
+        if required:
+            raise ConfigError(f"{key}: valor obrigatório não pode ser vazio")
+        return ""
+    try:
+        if typ is bool:
+            parsed: object = _parse_bool(value)
+        elif typ is int:
+            parsed = int(value)
+        else:
+            parsed = value
+    except ValueError as exc:
+        raise ConfigError(f"{key}: {exc}") from exc
+    if typ is int and bounds is not None:
+        low, high = bounds
+        if not (low <= parsed <= high):  # type: ignore[operator]
+            raise ConfigError(f"{key}={parsed} fora da faixa [{low}, {high}]")
+    return parsed
+
+
 def config_field_names() -> list[str]:
     return [f.name for f in fields(BridgeConfig) if f.name != "warnings"]

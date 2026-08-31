@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import threading
 import time
 
 from . import __version__
@@ -110,24 +112,68 @@ def poll_once(cfg: BridgeConfig) -> UpsSnapshot:
     return snapshot_from_nut_vars(cfg.river_name, nut_vars)
 
 
-def run_loop(cfg: BridgeConfig, *, once: bool = False) -> int:
+EXIT_RESTART_REQUESTED = 75
+
+
+def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> int:
     tracker = TransitionTracker(cfg)
+
+    api_server = None
+    shared = None
+    history = None
+    restart_requested = threading.Event()
+    if not once and cfg.ui_api_enabled:
+        # Lazy import: aiohttp only loads when the API is actually enabled.
+        from .api import ApiServer
+        from .history import HistoryStore
+        from .localtoken import state_dir
+        from .state import SharedState
+
+        shared = SharedState()
+        history = HistoryStore(
+            os.path.join(state_dir(), "history.sqlite"), cfg.history_retention_days
+        )
+        api_server = ApiServer(
+            cfg, shared, history, env_path, restart_cb=restart_requested.set
+        )
+        api_server.start_in_thread()
+        _log("INFO", "api_started", port=cfg.ui_api_port)
+
     while True:
         try:
             snap = poll_once(cfg)
         except NutError as exc:
             for event in tracker.observe_failure():
                 _log("WARN", event, reason=str(exc))
+                if shared is not None:
+                    shared.add_event(event, {"reason": str(exc)})
+                if history is not None:
+                    history.record_event(event, str(exc))
+            if shared is not None:
+                shared.record_failure(str(exc))
             if once:
                 _log("ERROR", "poll_failed", reason=str(exc))
                 return EXIT_CONNECTION
         else:
+            snap_dict = snap.to_dict()
             for event in tracker.observe(snap):
                 _log("WARN", event, state=snap.state, charge=snap.charge_percent)
-            _log("INFO", "state", **snap.to_dict())
+                if shared is not None:
+                    shared.add_event(event, {"state": snap.state, "charge": snap.charge_percent})
+                if history is not None:
+                    history.record_event(event)
+            if shared is not None:
+                shared.update_snapshot(snap_dict)
+            if history is not None:
+                history.record_sample(snap_dict)
+            _log("INFO", "state", **snap_dict)
             if once:
                 return EXIT_OK
-        time.sleep(cfg.poll_interval_seconds)
+        if restart_requested.wait(timeout=cfg.poll_interval_seconds):
+            # §7A.3 contract: deliberate restart exits 75; launchd
+            # (KeepAlive={SuccessfulExit: false}) relaunches us.
+            _log("INFO", "restart_requested", exit_code=EXIT_RESTART_REQUESTED)
+            return EXIT_RESTART_REQUESTED
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -152,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         _log("WARN", "config_warning", reason=warning)
 
     try:
-        return run_loop(cfg, once=args.once)
+        return run_loop(cfg, once=args.once, env_path=args.env)
     except KeyboardInterrupt:
         _log("INFO", "stopped", reason="interrompido pelo usuário")
         return EXIT_OK

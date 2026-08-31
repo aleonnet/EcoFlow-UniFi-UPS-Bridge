@@ -4,5 +4,7 @@ Version: 0.1.0
 Summary: EcoFlow RIVER 3 Plus -> NUT -> UniFi bridge daemon (local-first, read-only por padrão)
 License: MIT
 Requires-Python: >=3.13
+Requires-Dist: aiohttp>=3.12
 Provides-Extra: dev
 Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: pytest-aiohttp>=1.0; extra == "dev"

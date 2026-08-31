@@ -68,6 +68,27 @@ else
 fi
 rm -rf "$MUT"
 
+# S4b — MUTAÇÃO do bind: 127.0.0.1 → 0.0.0.0 em api.py.
+# test_api.py::test_bind_host_is_loopback_constant TEM de reprovar.
+MUT2="$(mktemp -d)"
+cp -R "$RAIZ/src" "$MUT2/src"
+cp -R "$RAIZ/tests" "$MUT2/tests"
+cp "$RAIZ/pyproject.toml" "$MUT2/"
+"$PY" - "$MUT2/src/river_unifi_bridge/api.py" <<'EOF'
+import sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+alvo = 'BIND_HOST = "127.0.0.1"'
+assert alvo in s, "âncora da mutação S4b sumiu — atualizar gate.sh"
+open(p, "w", encoding="utf-8").write(s.replace(alvo, 'BIND_HOST = "0.0.0.0"'))
+EOF
+if (cd "$MUT2" && PYTHONPATH="$MUT2/src" "$PY" -m pytest tests/unit/test_api.py -k bind >/tmp/gate_mut2.log 2>&1); then
+    erro "S4b mutação bind: cerca NÃO detectou bind 0.0.0.0"
+else
+    ok "S4b mutação bind: cerca reprovou o defeito plantado"
+fi
+rm -rf "$MUT2"
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys
