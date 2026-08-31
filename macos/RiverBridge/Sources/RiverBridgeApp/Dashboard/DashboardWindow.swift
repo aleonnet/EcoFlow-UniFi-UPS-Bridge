@@ -50,44 +50,49 @@ struct DashboardWindow: View {
         .animation(.snappy(duration: 0.3), value: section)
     }
 
-    // Glass rail — the control layer (UniFi-style icon column).
+    // Glass rail — the control layer (UniFi-style icon column). The capsule
+    // hugs its icons (fixed intrinsic height, pinned to the top): a growing
+    // Spacer INSIDE the glass made it stretch and dance with the window.
     private var rail: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "bolt.shield.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(
-                    Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
-                )
-                .padding(.bottom, 14)
+        VStack {
+            VStack(spacing: 6) {
+                Image(systemName: "bolt.shield.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(
+                        Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+                    )
+                    .padding(.bottom, 14)
 
-            ForEach(Section.allCases) { item in
-                Button {
-                    section = item
-                } label: {
-                    Image(systemName: item.symbol)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(section == item ? .primary : .secondary)
-                        .frame(width: 38, height: 38)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .background {
-                    if section == item {
-                        Circle()
-                            .fill(.primary.opacity(0.14))
-                            .matchedGeometryEffect(id: "rail-sel", in: railNS)
+                ForEach(Section.allCases) { item in
+                    Button {
+                        section = item
+                    } label: {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(section == item ? .primary : .secondary)
+                            .frame(width: 38, height: 38)
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .background {
+                        if section == item {
+                            Circle()
+                                .fill(.primary.opacity(0.14))
+                                .matchedGeometryEffect(id: "rail-sel", in: railNS)
+                        }
+                    }
+                    .help(item.rawValue)
+                    .accessibilityLabel(item.rawValue)
                 }
-                .help(item.rawValue)
-                .accessibilityLabel(item.rawValue)
             }
-            Spacer()
+            .padding(.vertical, 14)
+            .padding(.horizontal, 6)
+            .fixedSize()
+            .glassEffect(.regular.interactive(), in: Capsule())
+
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 6)
-        .glassEffect(.regular.interactive(), in: Capsule())
         .padding(.top, 44)
-        .padding(.bottom, 18)
         .frame(width: 64)
     }
 }
