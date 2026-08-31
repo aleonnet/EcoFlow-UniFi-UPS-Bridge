@@ -9,6 +9,7 @@ struct DashboardWindow: View {
     var store: TelemetryStore
     @State private var section: Section = DashboardWindow.initialSection()
     @State private var headerWidth: CGFloat = 1000
+    @State private var beatPulse = false
     @Namespace private var railNS
 
     /// Dev seam: `--secao saude|ajustes` opens on that tab (screenshot
@@ -69,19 +70,26 @@ struct DashboardWindow: View {
     // convention (owner 2026-08-31): when narrow, the SELECTED tab keeps
     // icon+label and the others collapse to icon-only with a tooltip.
     private var header: some View {
-        HStack {
-            HStack(spacing: 8) {
+        let accent = Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+        return HStack {
+            HStack(spacing: 9) {
+                // The logo BEATS with the data: each applied SSE reading
+                // (store.beat) fires one systole/diastole — a live pulse,
+                // not a decorative loop (owner 2026-08-31).
                 Image(systemName: "bolt.shield.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(
                         Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
                     )
+                    .scaleEffect(beatPulse ? 1.12 : 1.0)
+                    .shadow(color: accent.opacity(beatPulse ? 0.75 : 0.25),
+                            radius: beatPulse ? 11 : 4)
                 if headerWidth >= 560 {
                     Text("River Bridge")
-                        .font(.system(.headline, design: .rounded))
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
                 }
             }
-            .padding(.leading, 86)   // clears the traffic lights
+            .padding(.leading, 72)   // clears the traffic lights
 
             Spacer(minLength: 8)
 
@@ -129,6 +137,13 @@ struct DashboardWindow: View {
             headerWidth = width
         }
         .animation(.snappy(duration: 0.25), value: headerWidth >= 700)
+        .onChange(of: store.beat) {
+            withAnimation(.easeOut(duration: 0.12)) { beatPulse = true }
+            Task {
+                try? await Task.sleep(for: .milliseconds(140))
+                withAnimation(.easeOut(duration: 0.5)) { beatPulse = false }
+            }
+        }
     }
 
 }

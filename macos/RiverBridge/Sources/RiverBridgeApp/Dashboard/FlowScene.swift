@@ -109,8 +109,10 @@ struct FlowScene: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in
-            // Compact (phone) stacks vertically and needs the full height.
-            sceneHeight = width < 520 ? 430 : min(max(width / 2.7, 280), 430)
+            // Compact (phone) stacks vertically; 400 keeps the bottom node
+            // (center at h−48, edge at ~392) INSIDE the min-window viewport —
+            // 430 clipped the Equipamentos circle (owner's print, 414pt).
+            sceneHeight = width < 520 ? 400 : min(max(width / 2.7, 280), 430)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(

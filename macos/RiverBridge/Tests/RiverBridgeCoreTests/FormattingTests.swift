@@ -40,6 +40,7 @@ import Testing
     ))
     #expect(store.isOnBattery)
     #expect(store.chargeText == "42%")
+    #expect(store.beat == 1)   // one applied reading = one heartbeat
 
     store.apply(SSEMessage(
         event: "event",

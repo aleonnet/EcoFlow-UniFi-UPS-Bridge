@@ -16,6 +16,8 @@ public final class TelemetryStore {
     public private(set) var latest: UpsState?
     public private(set) var events: [BridgeEvent] = []
     public private(set) var phase: ConnectionPhase = .connecting
+    /// Increments on every applied state reading — the UI's data heartbeat.
+    public private(set) var beat: Int = 0
 
     private var task: Task<Void, Never>?
 
@@ -61,6 +63,7 @@ public final class TelemetryStore {
         case "state":
             if let state = try? decoder.decode(UpsState.self, from: data) {
                 latest = state
+                beat &+= 1
             }
         case "event":
             if let event = try? decoder.decode(BridgeEvent.self, from: data) {
