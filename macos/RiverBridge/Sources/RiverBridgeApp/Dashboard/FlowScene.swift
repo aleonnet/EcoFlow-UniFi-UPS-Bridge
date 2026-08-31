@@ -42,6 +42,12 @@ struct FlowScene: View {
             let center = FlowGeometry.Circle(
                 center: .init(x: cx, y: cy), radius: ringRadius
             )
+            // The ring BAND is drawn 8pt inside its frame (EnergyRing inset);
+            // anchoring at the frame radius left a visible gap (owner's
+            // print). Anchor at the visual band edge, tucked 2pt under it.
+            let centerAnchor = FlowGeometry.Circle(
+                center: center.center, radius: ringRadius - 10
+            )
             let right = FlowGeometry.Circle(
                 center: compact
                     ? .init(x: cx, y: geo.size.height - sideRadius - 8)
@@ -53,8 +59,8 @@ struct FlowScene: View {
                 // Connectors first (under the nodes), anchored edge-to-edge.
                 ConnectorLayer(
                     segments: [
-                        .init(circles: (left, center), active: gridActive, color: accent),
-                        .init(circles: (center, right), active: live, color: accent),
+                        .init(circles: (left, centerAnchor), active: gridActive, color: accent),
+                        .init(circles: (centerAnchor, right), active: live, color: accent),
                     ],
                     reduceMotion: reduceMotion
                 )
@@ -93,7 +99,9 @@ struct FlowScene: View {
                         y: compact ? right.center.y : right.center.y + sideRadius + 16
                     )
             }
-            .animation(.spring(duration: 0.5), value: geo.size)
+            // No implicit animation on geometry: during a live resize the
+            // nodes track every frame and the Canvas lines stay GLUED to the
+            // circle edges (a spring here made them detach — owner's report).
         }
         // Height follows the MEASURED width (never negotiates a wider frame —
         // aspectRatio + minHeight overflowed the window edge, seen on screen).
@@ -160,11 +168,19 @@ private struct ConnectorLayer: View {
                     var line = Path()
                     line.move(to: conn.start)
                     line.addLine(to: conn.end)
+                    if segment.active {
+                        // The ring's glow language on the lines too (owner):
+                        // a wide blurred pass under the crisp stroke.
+                        var glow = canvas
+                        glow.addFilter(.blur(radius: 5))
+                        glow.stroke(line, with: .color(segment.color.opacity(0.45)),
+                                    style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
+                    }
                     canvas.stroke(
                         line,
-                        with: .color(segment.active ? segment.color.opacity(0.55)
+                        with: .color(segment.active ? segment.color.opacity(0.75)
                                                     : Color.secondary.opacity(0.18)),
-                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
                     )
                     guard segment.active else { continue }
                     for i in 0..<3 {

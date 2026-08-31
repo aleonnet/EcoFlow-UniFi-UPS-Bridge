@@ -59,7 +59,7 @@ struct EventsTimeline: View {
                 get: { selected?.id == event.id },
                 set: { if !$0 { selected = nil } }
             ),
-            arrowEdge: .bottom
+            arrowEdge: .trailing
         ) {
             EventDetailPopover(event: event)
         }
