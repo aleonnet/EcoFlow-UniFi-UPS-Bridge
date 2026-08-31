@@ -26,15 +26,25 @@ struct FlowScene: View {
 
     var body: some View {
         GeometryReader { geo in
-            let cy = geo.size.height / 2 - 14   // leaves room for labels below
+            // Compact widths (iPhone-class, narrow windows) stack the flow
+            // vertically; FlowGeometry anchors are axis-agnostic and proved.
+            let compact = geo.size.width < 520
+            let cy = geo.size.height / 2 - (compact ? 0 : 14)
+            let cx = geo.size.width / 2
             let left = FlowGeometry.Circle(
-                center: .init(x: sideRadius + 24, y: cy), radius: sideRadius
+                center: compact
+                    ? .init(x: cx, y: sideRadius + 8)
+                    : .init(x: sideRadius + 24, y: cy),
+                radius: sideRadius
             )
             let center = FlowGeometry.Circle(
-                center: .init(x: geo.size.width / 2, y: cy), radius: ringRadius
+                center: .init(x: cx, y: cy), radius: ringRadius
             )
             let right = FlowGeometry.Circle(
-                center: .init(x: geo.size.width - sideRadius - 24, y: cy), radius: sideRadius
+                center: compact
+                    ? .init(x: cx, y: geo.size.height - sideRadius - 8)
+                    : .init(x: geo.size.width - sideRadius - 24, y: cy),
+                radius: sideRadius
             )
 
             ZStack {
@@ -65,11 +75,18 @@ struct FlowScene: View {
                 )
                 .position(right.center)
 
-                // Labels under the side nodes (outside the circles).
+                // Labels outside the circles: below in wide mode, beside in
+                // compact (below would collide with the vertical connector).
                 Text("Rede elétrica").eyebrow()
-                    .position(x: left.center.x, y: left.center.y + sideRadius + 16)
+                    .position(
+                        x: compact ? left.center.x + sideRadius + 70 : left.center.x,
+                        y: compact ? left.center.y : left.center.y + sideRadius + 16
+                    )
                 Text("Equipamentos").eyebrow()
-                    .position(x: right.center.x, y: right.center.y + sideRadius + 16)
+                    .position(
+                        x: compact ? right.center.x + sideRadius + 70 : right.center.x,
+                        y: compact ? right.center.y : right.center.y + sideRadius + 16
+                    )
             }
         }
         .frame(height: 290)

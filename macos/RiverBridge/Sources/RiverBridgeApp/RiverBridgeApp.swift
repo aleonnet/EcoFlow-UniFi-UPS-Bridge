@@ -19,7 +19,7 @@ struct RiverBridgeApp: App {
 
         Window("River Bridge", id: "main") {
             DashboardWindow(store: store)
-                .frame(minWidth: 820, minHeight: 560)
+                .frame(minWidth: 760, minHeight: 620)
                 .task { store.start() }
         }
         .defaultSize(width: 960, height: 640)

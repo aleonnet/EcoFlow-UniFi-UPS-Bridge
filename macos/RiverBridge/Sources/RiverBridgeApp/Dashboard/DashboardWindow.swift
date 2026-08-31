@@ -102,13 +102,18 @@ struct EnergiaSection: View {
     var store: TelemetryStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if case .serviceDown(let reason) = store.phase {
-                ConnectionBanner(reason: reason)
+        // Scroll instead of clip: at the minimum window size every element
+        // stays reachable — nothing is ever cut off.
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 10) {
+                if case .serviceDown(let reason) = store.phase {
+                    ConnectionBanner(reason: reason)
+                }
+                FlowScene(store: store)
+                ChartsView(store: store)
+                EventsTimeline(store: store)
             }
-            FlowScene(store: store)
-            ChartsView(store: store)
-            EventsTimeline(store: store)
+            .padding(.bottom, 8)
         }
     }
 }

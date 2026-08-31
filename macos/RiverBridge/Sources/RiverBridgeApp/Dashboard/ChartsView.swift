@@ -170,6 +170,7 @@ struct ChartsView: View {
             }
         }
         .frame(height: 150)
+        .padding(.trailing, 10)   // last axis label never clips at the window edge
         .tint(accent)   // axis labels follow the state palette, never default blue
         .chartOverlay { proxy in
             GeometryReader { _ in
