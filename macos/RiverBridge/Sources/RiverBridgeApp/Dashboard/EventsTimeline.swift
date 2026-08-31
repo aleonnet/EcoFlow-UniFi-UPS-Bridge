@@ -9,27 +9,24 @@ struct EventsTimeline: View {
     @State private var selected: BridgeEvent?
     @State private var narrow = false
 
+    // The EVENTOS eyebrow lives in the parent's pinned section header; this
+    // view is just the list — flowing in the SINGLE outer scroll (no nested
+    // scrolling), rows expanding inline.
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Eventos").eyebrow()
+        VStack(alignment: .leading, spacing: 4) {
             if store.events.isEmpty {
                 Text("Nenhum evento até agora — bom sinal.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                ScrollView(showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(store.events) { event in
-                            EventRow(event: event, selected: $selected, narrow: narrow)
-                        }
-                    }
-                    // Compact block: kills the void between the label and the
-                    // timestamp columns (owner's print).
-                    .frame(maxWidth: 860, alignment: .leading)
+                ForEach(store.events) { event in
+                    EventRow(event: event, selected: $selected, narrow: narrow)
                 }
-                .frame(maxHeight: 190)
             }
         }
+        // Compact block: kills the void between the label and the
+        // timestamp columns (owner's print).
+        .frame(maxWidth: 860, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in

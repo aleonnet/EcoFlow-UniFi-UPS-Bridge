@@ -152,16 +152,31 @@ struct EnergiaSection: View {
     var store: TelemetryStore
 
     var body: some View {
-        // Scroll instead of clip: at the minimum window size every element
-        // stays reachable — nothing is ever cut off.
+        // Single scroll, no nested scrolling (UX smell): the EVENTOS eyebrow
+        // pins at the top while rows pass under — same pattern as Saúde.
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 10) {
-                if case .serviceDown(let reason) = store.phase {
-                    ConnectionBanner(reason: reason)
+            LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    if case .serviceDown(let reason) = store.phase {
+                        ConnectionBanner(reason: reason)
+                    }
+                    FlowScene(store: store)
+                    ChartsView(store: store)
                 }
-                FlowScene(store: store)
-                ChartsView(store: store)
-                EventsTimeline(store: store)
+                Section {
+                    EventsTimeline(store: store)
+                } header: {
+                    Text("Eventos").eyebrow()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                        .background {
+                            Rectangle().fill(.ultraThinMaterial)
+                                .mask {
+                                    LinearGradient(colors: [.black, .black, .clear],
+                                                   startPoint: .top, endPoint: .bottom)
+                                }
+                        }
+                }
             }
             .padding(.bottom, 8)
         }
