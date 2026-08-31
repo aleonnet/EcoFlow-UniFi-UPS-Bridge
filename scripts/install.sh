@@ -230,6 +230,7 @@ instalar_plist_bridge() {
         <key>PYTHONPATH</key><string>$PREFIX/src</string>
         <key>HOME</key><string>$USER_HOME</string>
         <key>RUB_STATE_DIR</key><string>$STATE_DIR</string>
+        <key>RUB_LAUNCHD</key><string>1</string>
         <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
     <key>StandardOutPath</key><string>$LOG_AGENTE</string>

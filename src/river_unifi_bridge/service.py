@@ -136,7 +136,20 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
         api_server = ApiServer(
             cfg, shared, history, env_path, restart_cb=restart_requested.set
         )
-        api_server.start_in_thread()
+        # Bind failures (e.g. EADDRINUSE) get 3 attempts with backoff; a
+        # persistent failure is config-class → deliberate stop under launchd.
+        api_ok = False
+        for attempt in range(3):
+            try:
+                api_server.start_in_thread()
+                api_ok = True
+                break
+            except Exception as exc:  # noqa: BLE001 — bind/loop startup errors
+                _log("WARN", "api_start_failed", attempt=attempt + 1, reason=str(exc))
+                time.sleep(2 * (attempt + 1))
+        if not api_ok:
+            _log("ERROR", "parada_deliberada", reason="API local não subiu após 3 tentativas")
+            return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
         _log("INFO", "api_started", port=cfg.ui_api_port)
 
     while True:
@@ -189,10 +202,18 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:  # argparse uses 2 for usage errors — house code matches
         return int(exc.code or EXIT_USAGE)
 
+    launchd_mode = os.environ.get("RUB_LAUNCHD") == "1"
     try:
         cfg = load_config(args.env)
     except ConfigError as exc:
         _log("ERROR", "config_invalid", reason=str(exc))
+        # §7A.3 contract: a config error would repeat on every relaunch.
+        # Under launchd (KeepAlive={SuccessfulExit: false}) exit(0) is the
+        # DELIBERATE stop — no crash loop; the log carries the cause.
+        # In CLI mode the house exit codes apply (3 = validação).
+        if launchd_mode:
+            _log("ERROR", "parada_deliberada", reason="config inválida não relança")
+            return EXIT_OK
         return EXIT_VALIDATION
     for warning in cfg.warnings:
         _log("WARN", "config_warning", reason=warning)
