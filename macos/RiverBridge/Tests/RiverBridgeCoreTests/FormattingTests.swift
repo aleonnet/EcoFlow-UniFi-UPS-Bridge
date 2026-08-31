@@ -27,6 +27,8 @@ import Testing
     // Unknown format: raw value, never a fabricated time.
     let odd = BridgeEvent(ts: "ontem", event: "X", state: nil, charge: nil, reason: nil)
     #expect(odd.timeText == "ontem")
+    #expect(event.dayTimeText == "31/08 · 15:11:30")
+    #expect(odd.dayTimeText == "ontem")
 }
 
 @MainActor

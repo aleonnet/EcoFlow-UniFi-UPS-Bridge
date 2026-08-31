@@ -19,49 +19,15 @@ struct EventsTimeline: View {
                 ScrollView(showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(store.events) { event in
-                            row(event)
+                            EventRow(event: event, selected: $selected)
                         }
                     }
+                    // Compact block: kills the void between the label and the
+                    // timestamp columns (owner's print).
+                    .frame(maxWidth: 860, alignment: .leading)
                 }
                 .frame(maxHeight: 190)
             }
-        }
-    }
-
-    private func row(_ event: BridgeEvent) -> some View {
-        Button {
-            selected = selected?.id == event.id ? nil : event
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: Self.symbol(for: event.event))
-                    .foregroundStyle(Self.color(for: event.event))
-                    .frame(width: 18)
-                Text(Self.label(for: event.event))
-                    .font(.system(.callout, design: .rounded).weight(.medium))
-                Spacer()
-                Text(event.timeText)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .background(RowHover())
-        .hoverLift(glow: Self.color(for: event.event), scale: 1.005)
-        // Native macOS pattern for contextual detail: a POPOVER anchored to
-        // the clicked row (system glass material, click-away dismiss) — the
-        // generic sheet clashed with the design (owner 2026-08-31).
-        .popover(
-            isPresented: Binding(
-                get: { selected?.id == event.id },
-                set: { if !$0 { selected = nil } }
-            ),
-            arrowEdge: .trailing
-        ) {
-            EventDetailPopover(event: event)
         }
     }
 
@@ -97,14 +63,62 @@ struct EventsTimeline: View {
     }
 }
 
-/// Subtle full-row highlight under the cursor (separate from the lift).
-private struct RowHover: View {
+/// One event row: VISIBLE hover/selection (highlight + event-color glow —
+/// the central gauge's language), popover anchored to the LABEL so it never
+/// leaks outside the window (a full-width row anchors at the window edge).
+private struct EventRow: View {
+    let event: BridgeEvent
+    @Binding var selected: BridgeEvent?
+
     @State private var hovering = false
 
+    private var isSelected: Bool { selected?.id == event.id }
+    private var lit: Bool { hovering || isSelected }
+    private var color: Color { EventsTimeline.color(for: event.event) }
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(hovering ? Color.primary.opacity(0.08) : .clear)
-            .onHover { hovering = $0 }
+        Button {
+            selected = isSelected ? nil : event
+        } label: {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: EventsTimeline.symbol(for: event.event))
+                        .foregroundStyle(color)
+                        .frame(width: 18)
+                    Text(EventsTimeline.label(for: event.event))
+                        .font(.system(.callout, design: .rounded).weight(.medium))
+                }
+                .popover(
+                    isPresented: Binding(
+                        get: { isSelected },
+                        set: { if !$0 { selected = nil } }
+                    ),
+                    arrowEdge: .trailing
+                ) {
+                    EventDetailPopover(event: event)
+                }
+                Spacer()
+                Text(event.dayTimeText)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(.plain)
+        .background {
+            RoundedRectangle(cornerRadius: 9)
+                .fill(lit ? Color.primary.opacity(0.10) : .clear)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(color.opacity(lit ? 0.4 : 0), lineWidth: 1)
+                }
+                .shadow(color: color.opacity(lit ? 0.35 : 0), radius: 10)
+        }
+        .animation(.spring(duration: 0.25), value: lit)
+        .onHover { hovering = $0 }
     }
 }
 

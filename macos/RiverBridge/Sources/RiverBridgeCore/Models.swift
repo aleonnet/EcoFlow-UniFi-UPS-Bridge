@@ -85,15 +85,27 @@ public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
 
     public var id: String { ts + event }
 
-    /// "2026-08-31T15:11:30-0300" -> "15:11:30". Unknown format -> raw tail,
-    /// never a fabricated time.
-    public var timeText: String {
+    private var parsedDate: Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        guard let date = formatter.date(from: ts) else { return ts }
+        return formatter.date(from: ts)
+    }
+
+    /// "2026-08-31T15:11:30-0300" -> "15:11:30". Unknown format -> raw tail,
+    /// never a fabricated time.
+    public var timeText: String {
+        guard let date = parsedDate else { return ts }
         let out = DateFormatter()
         out.dateFormat = "HH:mm:ss"
+        return out.string(from: date)
+    }
+
+    /// "31/08 · 15:11:30" for list rows (owner: date+time on the event).
+    public var dayTimeText: String {
+        guard let date = parsedDate else { return ts }
+        let out = DateFormatter()
+        out.dateFormat = "dd/MM · HH:mm:ss"
         return out.string(from: date)
     }
 }
