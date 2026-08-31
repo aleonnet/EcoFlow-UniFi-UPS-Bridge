@@ -1,5 +1,6 @@
-// Live menu bar icon: battery glyph + percentage, like the system battery
-// item. Absent data = "—" and outline glyph — never a fabricated level.
+// Menu bar item: a UPS is protected power, not a battery — the glyph is a
+// bolt shield (owner's call: never mistakable for Apple's battery item).
+// Symbol names measured against the SDK on 2026-08-31 (NSImage probe).
 
 import RiverBridgeCore
 import SwiftUI
@@ -8,17 +9,9 @@ struct MenuBarLabel: View {
     var store: TelemetryStore
 
     private var glyph: String {
-        guard store.phase == .live, let fraction = store.chargeFraction else {
-            return "bolt.slash"
-        }
-        if store.isCharging { return "battery.100percent.bolt" }
-        switch fraction {
-        case ..<0.13: return "battery.0percent"
-        case ..<0.38: return "battery.25percent"
-        case ..<0.63: return "battery.50percent"
-        case ..<0.88: return "battery.75percent"
-        default: return "battery.100percent"
-        }
+        guard store.phase == .live else { return "shield.slash" }
+        if store.isLowBattery { return "bolt.shield" }
+        return "bolt.shield.fill"
     }
 
     var body: some View {

@@ -1,5 +1,6 @@
 // River Bridge — menu bar + janela (spec §7A). A UI é cliente do daemon:
 // some o daemon, a UI degrada para "serviço parado"; nunca o contrário.
+// Janela sem barra de título: o conteúdo (aurora + vidro) vai até a borda.
 
 import RiverBridgeCore
 import SwiftUI
@@ -18,14 +19,10 @@ struct RiverBridgeApp: App {
 
         Window("River Bridge", id: "main") {
             DashboardWindow(store: store)
-                .frame(minWidth: 780, minHeight: 520)
+                .frame(minWidth: 820, minHeight: 560)
                 .task { store.start() }
         }
-        .defaultSize(width: 900, height: 600)
-
-        Settings {
-            SettingsView(store: store)
-                .frame(width: 480)
-        }
+        .defaultSize(width: 960, height: 640)
+        .windowStyle(.hiddenTitleBar)
     }
 }

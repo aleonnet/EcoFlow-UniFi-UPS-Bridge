@@ -57,7 +57,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(4)
+        .scrollContentBackground(.hidden)
+        .glassCard(cornerRadius: 22)
         .task { await loadCurrent() }
     }
 

@@ -47,6 +47,7 @@ struct MenuBarPopover: View {
         }
         .padding(16)
         .frame(width: 280)
+        .background(AuroraBackground(store: store).opacity(0.5))
     }
 
     private func fact(_ label: String, _ value: String) -> some View {
