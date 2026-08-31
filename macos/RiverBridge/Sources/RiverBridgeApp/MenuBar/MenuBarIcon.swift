@@ -13,21 +13,32 @@ enum MenuBarIcon {
             guard let outline = NSImage(systemSymbolName: outlineName, accessibilityDescription: nil)?
                 .withSymbolConfiguration(config) else { return false }
             let drawRect = centered(outline.size, in: rect)
-            outline.draw(in: drawRect)
 
-            if live, let fraction,
-               let fill = NSImage(systemSymbolName: "bolt.shield.fill", accessibilityDescription: nil)?
-                   .withSymbolConfiguration(config) {
-                NSGraphicsContext.current?.saveGraphicsState()
-                let clip = NSRect(
-                    x: drawRect.minX, y: drawRect.minY,
-                    width: drawRect.width,
-                    height: drawRect.height * min(max(fraction, 0), 1)
-                )
-                NSBezierPath(rect: clip).addClip()
-                fill.draw(in: drawRect)
-                NSGraphicsContext.current?.restoreGraphicsState()
+            guard live, let fraction,
+                  let fill = NSImage(systemSymbolName: "bolt.shield.fill", accessibilityDescription: nil)?
+                      .withSymbolConfiguration(config) else {
+                outline.draw(in: drawRect)
+                return true
             }
+
+            // Complementary clips — never both layers in the same region:
+            // below the level only the FILL (its knocked-out bolt lets the
+            // menu bar show through = contrast); above it only the outline.
+            let level = drawRect.height * min(max(fraction, 0), 1)
+            let bottom = NSRect(x: drawRect.minX, y: drawRect.minY,
+                                width: drawRect.width, height: level)
+            let top = NSRect(x: drawRect.minX, y: drawRect.minY + level,
+                             width: drawRect.width, height: drawRect.height - level)
+
+            NSGraphicsContext.current?.saveGraphicsState()
+            NSBezierPath(rect: bottom).addClip()
+            fill.draw(in: drawRect)
+            NSGraphicsContext.current?.restoreGraphicsState()
+
+            NSGraphicsContext.current?.saveGraphicsState()
+            NSBezierPath(rect: top).addClip()
+            outline.draw(in: drawRect)
+            NSGraphicsContext.current?.restoreGraphicsState()
             return true
         }
         image.isTemplate = true
