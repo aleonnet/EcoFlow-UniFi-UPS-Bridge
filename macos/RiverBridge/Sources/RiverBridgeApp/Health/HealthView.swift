@@ -53,11 +53,12 @@ struct HealthView: View {
             .frame(maxWidth: 900)
             .frame(maxWidth: .infinity)
             .padding(.top, 6)
-            .padding(.horizontal, 6)
+            // Inner breathing room so the hover glow fits INSIDE the clip —
+            // scrollClipDisabled was the wrong fix (scrolled content invaded
+            // the sections above; owner's print).
+            .padding(.horizontal, 10)
+            .padding(.bottom, 14)
         }
-        // The lift's glow must not be clipped by the scroll container
-        // (owner's print: cropped card shadow).
-        .scrollClipDisabled()
         .task {
             while !Task.isCancelled {
                 if let endpoint = ApiEndpoint.discover() {

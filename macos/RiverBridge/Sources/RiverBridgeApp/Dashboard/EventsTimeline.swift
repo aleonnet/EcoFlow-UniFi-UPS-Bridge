@@ -7,6 +7,7 @@ import SwiftUI
 struct EventsTimeline: View {
     var store: TelemetryStore
     @State private var selected: BridgeEvent?
+    @State private var narrow = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -19,7 +20,7 @@ struct EventsTimeline: View {
                 ScrollView(showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(store.events) { event in
-                            EventRow(event: event, selected: $selected)
+                            EventRow(event: event, selected: $selected, narrow: narrow)
                         }
                     }
                     // Compact block: kills the void between the label and the
@@ -27,8 +28,12 @@ struct EventsTimeline: View {
                     .frame(maxWidth: 860, alignment: .leading)
                 }
                 .frame(maxHeight: 190)
-                .scrollClipDisabled()
             }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            narrow = width < 560
         }
     }
 
@@ -70,6 +75,7 @@ struct EventsTimeline: View {
 private struct EventRow: View {
     let event: BridgeEvent
     @Binding var selected: BridgeEvent?
+    var narrow = false
 
     @State private var hovering = false
 
@@ -94,9 +100,11 @@ private struct EventRow: View {
                         get: { isSelected },
                         set: { if !$0 { selected = nil } }
                     ),
-                    arrowEdge: .trailing
+                    // Narrow/phone: open BELOW the label so the popover
+                    // stays inside the app instead of leaking sideways.
+                    arrowEdge: narrow ? .bottom : .trailing
                 ) {
-                    EventDetailPopover(event: event)
+                    EventDetailPopover(event: event, compact: narrow)
                 }
                 Spacer()
                 Text(event.dayTimeText)
@@ -127,6 +135,7 @@ private struct EventRow: View {
 // the raw value kept small and selectable — honest data, native dress.
 struct EventDetailPopover: View {
     let event: BridgeEvent
+    var compact = false
 
     private var friendlyWhen: String {
         let formatter = DateFormatter()
@@ -164,8 +173,8 @@ struct EventDetailPopover: View {
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
         }
-        .padding(16)
-        .frame(minWidth: 300, maxWidth: 380, alignment: .leading)
+        .padding(compact ? 12 : 16)
+        .frame(minWidth: compact ? 240 : 300, maxWidth: compact ? 310 : 380, alignment: .leading)
     }
 
     @ViewBuilder

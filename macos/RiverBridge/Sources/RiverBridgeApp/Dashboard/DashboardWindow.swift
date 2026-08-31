@@ -8,6 +8,7 @@ import SwiftUI
 struct DashboardWindow: View {
     var store: TelemetryStore
     @State private var section: Section = DashboardWindow.initialSection()
+    @State private var headerWidth: CGFloat = 1000
     @Namespace private var railNS
 
     /// Dev seam: `--secao saude|ajustes` opens on that tab (screenshot
@@ -64,6 +65,9 @@ struct DashboardWindow: View {
         .animation(.snappy(duration: 0.3), value: section)
     }
 
+    // Adaptive tab capsule following the system's own floating tab bar
+    // convention (owner 2026-08-31): when narrow, the SELECTED tab keeps
+    // icon+label and the others collapse to icon-only with a tooltip.
     private var header: some View {
         HStack {
             HStack(spacing: 8) {
@@ -72,35 +76,45 @@ struct DashboardWindow: View {
                     .foregroundStyle(
                         Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
                     )
-                Text("River Bridge")
-                    .font(.system(.headline, design: .rounded))
+                if headerWidth >= 560 {
+                    Text("River Bridge")
+                        .font(.system(.headline, design: .rounded))
+                }
             }
             .padding(.leading, 86)   // clears the traffic lights
 
-            Spacer()
+            Spacer(minLength: 8)
 
             HStack(spacing: 2) {
                 ForEach(Section.allCases) { item in
+                    let isSelected = section == item
+                    let showsLabel = headerWidth >= 700 || isSelected
                     Button {
                         section = item
                     } label: {
-                        Label(item.rawValue, systemImage: item.symbol)
-                            .labelStyle(.titleAndIcon)
-                            .font(.system(.callout, design: .rounded)
-                                .weight(section == item ? .semibold : .regular))
-                            .foregroundStyle(section == item ? .primary : .secondary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .contentShape(Capsule())
+                        HStack(spacing: 6) {
+                            Image(systemName: item.symbol)
+                            if showsLabel {
+                                Text(item.rawValue)
+                                    .fixedSize()
+                            }
+                        }
+                        .font(.system(.callout, design: .rounded)
+                            .weight(isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .padding(.horizontal, showsLabel ? 14 : 11)
+                        .padding(.vertical, 7)
+                        .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .background {
-                        if section == item {
+                        if isSelected {
                             Capsule()
                                 .fill(.primary.opacity(0.14))
                                 .matchedGeometryEffect(id: "rail-sel", in: railNS)
                         }
                     }
+                    .help(item.rawValue)
                     .accessibilityLabel(item.rawValue)
                 }
             }
@@ -109,6 +123,12 @@ struct DashboardWindow: View {
             .padding(.trailing, 18)
         }
         .padding(.top, 10)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            headerWidth = width
+        }
+        .animation(.snappy(duration: 0.25), value: headerWidth >= 700)
     }
 
 }
