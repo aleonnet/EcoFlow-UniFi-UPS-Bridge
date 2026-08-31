@@ -26,14 +26,11 @@ struct EventsTimeline: View {
                 .frame(maxHeight: 190)
             }
         }
-        .sheet(item: $selected) { event in
-            EventDetailSheet(event: event)
-        }
     }
 
     private func row(_ event: BridgeEvent) -> some View {
         Button {
-            selected = event
+            selected = selected?.id == event.id ? nil : event
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: Self.symbol(for: event.event))
@@ -54,6 +51,18 @@ struct EventsTimeline: View {
         .buttonStyle(.plain)
         .background(RowHover())
         .hoverLift(glow: Self.color(for: event.event), scale: 1.005)
+        // Native macOS pattern for contextual detail: a POPOVER anchored to
+        // the clicked row (system glass material, click-away dismiss) — the
+        // generic sheet clashed with the design (owner 2026-08-31).
+        .popover(
+            isPresented: Binding(
+                get: { selected?.id == event.id },
+                set: { if !$0 { selected = nil } }
+            ),
+            arrowEdge: .bottom
+        ) {
+            EventDetailPopover(event: event)
+        }
     }
 
     static func label(for event: String) -> String {
@@ -99,40 +108,49 @@ private struct RowHover: View {
     }
 }
 
-// Detail sheet: everything the event carries — honest raw data included.
-struct EventDetailSheet: View {
+// Detail popover: system glass material, our type voice, friendly time with
+// the raw value kept small and selectable — honest data, native dress.
+struct EventDetailPopover: View {
     let event: BridgeEvent
-    @Environment(\.dismiss) private var dismiss
+
+    private var friendlyWhen: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = formatter.date(from: event.ts) else { return event.ts }
+        let out = DateFormatter()
+        out.locale = Locale(identifier: "pt_BR")
+        out.dateFormat = "HH:mm:ss · dd/MM/yyyy"
+        return out.string(from: date)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
                 Image(systemName: EventsTimeline.symbol(for: event.event))
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundStyle(EventsTimeline.color(for: event.event))
                 Text(EventsTimeline.label(for: event.event))
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                Spacer()
+                    .font(.system(.headline, design: .rounded))
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                detailRow("Quando", event.ts)
-                detailRow("Evento", event.event)
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
+                detailRow("Quando", friendlyWhen)
                 if let state = event.state { detailRow("Estado do UPS", state) }
                 if let charge = event.charge {
-                    detailRow("Bateria no momento", TelemetryStore.percentText(charge))
+                    detailRow("Bateria", TelemetryStore.percentText(charge))
                 }
                 if let reason = event.reason { detailRow("Detalhe", reason) }
             }
 
-            HStack {
-                Spacer()
-                Button("Fechar") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-            }
+            Text(event.ts + " · " + event.event)
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+                .textSelection(.enabled)
         }
-        .padding(20)
-        .frame(minWidth: 380)
+        .padding(16)
+        .frame(minWidth: 300, maxWidth: 380, alignment: .leading)
     }
 
     @ViewBuilder
@@ -140,9 +158,8 @@ struct EventDetailSheet: View {
         GridRow {
             Text(label).eyebrow()
             Text(value)
-                .font(.system(.body, design: .rounded))
+                .font(.system(.callout, design: .rounded).weight(.medium))
                 .monospacedDigit()
-                .textSelection(.enabled)
         }
     }
 }
