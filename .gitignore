@@ -1,0 +1,9 @@
+# CERCA de segredos e artefatos locais — antes do primeiro segredo existir
+*.env
+!*.env.example
+*.token
+*.log
+.claude/
+*.code-workspace
+.DS_Store
+__pycache__/
