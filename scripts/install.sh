@@ -254,8 +254,19 @@ EOF
   if launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1; then
     if [ "$mudou" = "1" ]; then
       launchctl bootout "system/$LABEL_BRIDGE" 2>/dev/null || true
-      launchctl bootstrap system "$plist"
-      diga "plist: atualizado e recarregado"; jp plist ok; passo plist 0; FEZ=1
+      # Corrida real medida (mini, 17:22): bootstrap logo após bootout pode
+      # falhar com "5: Input/output error" enquanto o job antigo morre —
+      # tentar 3x. E NUNCA declarar sucesso sem o print provar (o set -e
+      # fica suprimido dentro desta função; checagem explícita obrigatória).
+      local tent=0
+      until launchctl bootstrap system "$plist" 2>/dev/null; do
+        tent=$((tent + 1))
+        [ "$tent" -ge 3 ] && break
+        sleep 1
+      done
+      launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
+        || { echo "bridge: recarga NÃO provada por launchctl print após $tent tentativas (falha)"; exit 1; }
+      diga "plist: atualizado, recarregado e provado (launchctl print)"; jp plist ok; passo plist 0; FEZ=1
     else
       diga "plist: já instalado e carregado"; jp plist ja_estava; passo plist 100; return 100
     fi
