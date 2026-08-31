@@ -558,6 +558,88 @@ Criar objeto normalizado:
 
 ---
 
+# 7A. Componente D — "River Bridge.app" (UI nativa macOS)
+
+*Adicionado em 2026-08-31 por decisão do dono; arquitetura aprovada por banca
+adversarial de 3 rodadas (veredito em `docs/BANCA_PLANO_20260831.md`).*
+
+## 7A.1 Requisito do dono (NÃO rebaixar)
+
+UI **nativa** macOS no Mac mini, "mind-blowing, animações, gauges, gráficos, à la
+Apple", formato **menu bar + janela**, cobrindo 4 frentes: dashboard ao vivo, saúde da
+integração (cadeia USB → NUT → bridge → UniFi/HA), configuração e instalação guiada.
+Critério de aceite subjetivo: o dono olha e diz "parece um app da Apple". Objetivos de
+apoio: 60fps medidos com Instruments, dark/light sem regressão, VoiceOver nos valores
+principais, Reduce Motion respeitado.
+
+## 7A.2 Linguagem e posição arquitetural
+
+**Swift + SwiftUI** (toolchain medido na máquina de dev em 2026-08-31: Xcode 26.6,
+Swift 6.3.3). Diretório `macos/RiverBridge/`.
+
+**Regra dura:** a UI é CLIENTE do daemon, nunca segundo cérebro. Não fala com
+NUT/USB/UniFi diretamente — só com a API local do daemon. Matar a UI não afeta nada;
+matar o daemon degrada a UI para "serviço parado" (fail-open §2.3 preservado).
+
+## 7A.3 Transporte daemon ↔ UI
+
+HTTP/1.1 em **127.0.0.1** + SSE (`aiohttp` no daemon — dependência declarada no
+pyproject; `URLSession.bytes` no app). Novo `src/river_unifi_bridge/api.py`:
+
+```text
+GET  /v1/state      snapshot do modelo §7.3 (null obrigatório)
+GET  /v1/events     SSE: state | health | event
+GET  /v1/history    ?metric&from&to&bucket
+GET  /v1/health     cadeia USB→NUT→bridge→UniFi (+ HA se observável)
+GET  /v1/config     config efetiva, secrets redigidos
+PUT  /v1/config     só chaves da allowlist; resposta declara hot-reload vs restart
+POST /v1/service/restart
+GET  /v1/version
+```
+
+- Bind fixo em loopback (cerca no código); token bearer gerado no 1º boot em
+  `~/Library/Application Support/river-unifi-bridge/ui-api.token`, chmod 600, nunca em
+  argv/log.
+- **Contrato de relançamento** (launchd `KeepAlive={SuccessfulExit: false}`): restart
+  pedido → 202 drenado + `exit(75)` agendado fora do handler → relança; erro transiente
+  → exit ≠ 0 → relança; erro de configuração repetível → grava causa em arquivo de
+  estado + `exit(0)` = parada deliberada, não relança; modo CLI usa os exit codes da
+  casa. Os três comportamentos são cerca de gate (`launchctl print`).
+
+## 7A.4 Histórico para gráficos
+
+O **daemon** guarda (roda 24/7; a UI é intermitente): `src/river_unifi_bridge/history.py`,
+SQLite da stdlib (WAL) em Application Support, tabelas `samples`/`events`, retenção
+`HISTORY_RETENTION_DAYS` (default 7). A API agrega em buckets; a UI nunca lê o SQLite.
+
+## 7A.5 Configuração pela UI
+
+Sempre via API, nunca no arquivo: PUT validado contra a MESMA allowlist do parser;
+edição do `.env` linha-a-linha preservando comentários e blocos (aborta em formato
+inesperado); escrita atômica `mkstemp(dir=<diretório do alvo>)` + fsync + `os.replace`
++ backup `.bak`. Configs do NUT ficam FORA da UI (exibidas read-only na tela de saúde).
+
+## 7A.6 Instalação guiada
+
+O app roda `scripts/install.sh` como usuário (sem escalação; LaunchAgents `gui/$uid` +
+brew do usuário). Instalador ganha `--json-progress` e `--consent-homebrew` (sem a
+flag, passo brew falha com exit 4; a flag só é passada após tela de consentimento com o
+comando exato). Botão permanente "Abrir no Terminal". Uninstall guiado decide pelo
+manifesto, nunca pela UI.
+
+**Premissa declarada:** LaunchAgent `gui/$uid` exige sessão de login ativa —
+"sobreviver a reboot" (§16) pressupõe **auto-login no Mac mini** (sondagem PENDENTE);
+sem auto-login, a decisão muda para LaunchDaemon e volta ao dono.
+
+## 7A.7 YAGNI v1 (cortes)
+
+Edição de configs NUT pela UI; multi-UPS; notificações macOS (HA já alerta — evitar
+política dupla, mesmo racional do §5.9); widgets; auto-update; localização além de
+pt-BR; mais de 2 gráficos de série temporal (bateria %, potência W) + 1 timeline de
+eventos; WebSocket; TLS em loopback; qualquer ação da UI que toque a saída AC.
+
+---
+
 # 8. Pesquisa obrigatória — protocolo UniFi UPS
 
 Esta é a parte mais importante da PoC.
@@ -1028,6 +1110,19 @@ Obrigatório:
 - structured logging;
 - audit log.
 
+**Exceções registradas para a API local da UI (§7A.3), cada uma com racional
+(2026-08-31, aprovadas em banca):**
+
+1. **Token em arquivo 0600 em vez de Keychain:** o daemon roda headless sob launchd,
+   onde o Keychain pode estar indisponível sem sessão desbloqueada; o token é local,
+   loopback-only e regenerável a cada boot.
+2. **Rate limiting dispensado nessa API:** loopback autenticado, cliente único.
+3. **TLS dispensado nessa API:** tráfego jamais sai de 127.0.0.1; TLS em loopback
+   adicionaria gestão de certificado sem reduzir superfície de ataque.
+
+O audit log da §15 cobre a superfície nova: todo `PUT /v1/config` (chaves alteradas,
+secrets redigidos) e `POST /v1/service/restart` são registrados.
+
 ---
 
 # 16. Serviço macOS
@@ -1146,6 +1241,19 @@ Cobrir:
 - missing values;
 - invalid payloads.
 
+**Componente D (§7A):**
+
+- unit de `api.py`/`history.py`/`config.py` com **teste de mutação de cada cerca**
+  (remover allowlist do PUT → o teste TEM de reprovar; bind 0.0.0.0 → reprovar;
+  remover chmod 600 → reprovar);
+- contrato: fixtures JSON dourados (incluindo `null`) em `tests/fixtures/`,
+  decodificados pelos DOIS lados — pytest e Swift;
+- Swift em duas camadas: `Core/` como package SPM (`swift test`) e 2 XCUITests via
+  `xcodebuild test` (dashboard com stub; consentimento Homebrew antes da flag) —
+  `swift test` não executa XCUITest;
+- os três comportamentos do contrato de relançamento (§7A.3) provados com
+  `launchctl print`.
+
 ## 18.2 Testes de integração
 
 Cenários:
@@ -1256,6 +1364,8 @@ river-unifi-bridge/
 │       ├── nut.py
 │       ├── usb_hid.py
 │       ├── usb_cdc.py
+│       ├── api.py          # §7A.3 — HTTP 127.0.0.1 + SSE para a UI
+│       ├── history.py      # §7A.4 — SQLite de histórico
 │       ├── service.py
 │       └── unifi/
 │           ├── __init__.py
@@ -1275,6 +1385,8 @@ river-unifi-bridge/
 │   ├── upsd.conf.example
 │   ├── upsd.users.example
 │   └── river-unifi-bridge.env.example
+├── macos/
+│   └── RiverBridge/        # §7A — app SwiftUI (Core/ SPM, Features/, testes)
 ├── launchd/
 │   ├── com.river.nut.plist
 │   └── com.river.unifi-bridge.plist
@@ -1331,6 +1443,11 @@ POWER_LOSS_DELAY_SECONDS=3
 RESTORE_DELAY_SECONDS=5
 COMM_LOSS_DELAY_SECONDS=20
 LOW_BATTERY_PERCENT=15
+
+# ── 5. ui api (§7A) ───────────────────────
+UI_API_ENABLED=1
+UI_API_PORT=35493
+HISTORY_RETENTION_DAYS=7
 ```
 
 Nenhuma credencial no `.env.example` versionado; senha nunca em argv (padrão da casa:
@@ -1412,6 +1529,21 @@ Power loss / restore / low battery / comm loss.
 
 Tentar eliminar USB apenas se houver protocolo local real.
 
+## Trilha UI (Componente D — paralela, não bloqueia as fases acima)
+
+| Fase UI | Entrega | Depende de | Contra fake-nut-ups? |
+|---|---|---|---|
+| UI-0 | api.py + history.py + doc do contrato | Fase 2 | Sim, 100% |
+| UI-1 | menu bar + dashboard (ícone vivo, gráficos, timeline) | UI-0 | Sim |
+| UI-2 | saúde da cadeia | UI-0 (elos USB/NUT reais após Fase 1; antes, "não observável") | Parcial |
+| UI-3 | configuração | UI-0 + hot-reload | Sim |
+| UI-4 | instalação guiada | instalador básico + plists + uninstall mínimo (Fase 6a) | Não |
+
+A Fase 6 divide-se em **6a** (instalador básico + plists launchd + uninstall mínimo,
+pré-requisito da UI-4) e **6b** (hardening final). No desfecho "relatório de
+inviabilidade" da PoC UniFi, as Fases 4–5 são canceladas e o hardening não fica
+bloqueado por elas — o MVP do §24 não depende de sucesso UniFi.
+
 ---
 
 # 24. Critérios de aceite
@@ -1437,6 +1569,16 @@ Tentar eliminar USB apenas se houver protocolo local real.
 - [ ] device aparece no UniFi **ou** relatório prova tecnicamente por que isso não é possível;
 - [ ] telemetria é real;
 - [ ] nenhum valor sintético apresentado como real.
+
+## UI nativa (Componente D, §7A)
+
+- [ ] Ícone vivo na menu bar reflete estado/bateria reais (— quando daemon parado; nunca fabricado).
+- [ ] Dashboard: gauges + 2 gráficos de série temporal + timeline de eventos, dados do daemon.
+- [ ] Tela de saúde mostra a cadeia com elos "não observável" honestos.
+- [ ] Configuração via PUT /v1/config preserva comentários do .env (round-trip provado em teste).
+- [ ] Onboarding: consentimento Homebrew antes de qualquer instalação; 2ª execução reporta "já estava" (100).
+- [ ] 60fps nas animações (Instruments), dark/light OK, VoiceOver nos valores principais.
+- [ ] Dono confirma: "parece um app da Apple".
 
 ## Entregável ideal
 
