@@ -39,7 +39,6 @@ struct HealthView: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 22)
         .task {
             while !Task.isCancelled {
                 if let endpoint = ApiEndpoint.discover() {

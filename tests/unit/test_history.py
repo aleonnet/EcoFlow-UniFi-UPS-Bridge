@@ -54,6 +54,18 @@ def test_retention_prunes_old_data(store):
     assert rows[0]["n"] == 1
 
 
+def test_dense_window_for_ui_chart(store):
+    # Fixture determinística da cena de densidade (plano v5, banca M2): 60 min
+    # de amostras a cada 10 s → o gráfico Tesla-denso tem ≥ 100 buckets SEM
+    # depender de wall-clock. Fixture de teste; a demo usa só acumulação real.
+    base = 1_000_000
+    for i in range(360):
+        store.record_sample(snap(power=40 + (i % 30)), ts=base + i * 10)
+    rows = store.query("power_w", base, base + 3600, bucket_seconds=10)
+    assert len(rows) >= 100
+    assert all(r["n"] >= 1 for r in rows)
+
+
 def test_events_recent_first(store):
     store.record_event("A", ts=100)
     store.record_event("B", ts=200)

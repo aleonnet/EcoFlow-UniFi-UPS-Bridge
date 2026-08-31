@@ -99,7 +99,7 @@ struct EnergyRing: View {
                 }
                 .padding(6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .glassEffect(.regular, in: Circle())
+                .glassEffect(.regular.tint(palette[0].opacity(0.14)), in: Circle())
             } else if hasData {
                 Text(store.chargeText)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))

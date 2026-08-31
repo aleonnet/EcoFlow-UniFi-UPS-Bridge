@@ -1,0 +1,157 @@
+// The hero: Tesla-style power flow with the RIVER's energy ring as the
+// CENTRAL node. One scene owns every node position and draws connectors
+// with FlowGeometry anchors — lines are born and die on circle edges by
+// proved construction, never by eye.
+//
+// Semantics (owner, 2026-08-31): left node is the ELECTRICAL grid
+// (rede elétrica), right node is the protected equipment — never internet.
+
+import RiverBridgeCore
+import SwiftUI
+
+struct FlowScene: View {
+    var store: TelemetryStore
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var accent: Color {
+        Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+    }
+    private var live: Bool { store.phase == .live }
+    private var gridActive: Bool { live && !store.isOnBattery }
+    private let gridColor = Color(red: 0.45, green: 0.75, blue: 1.0)
+
+    private let sideRadius: CGFloat = 46
+    private let ringRadius: CGFloat = 118
+
+    var body: some View {
+        GeometryReader { geo in
+            let cy = geo.size.height / 2 - 14   // leaves room for labels below
+            let left = FlowGeometry.Circle(
+                center: .init(x: sideRadius + 24, y: cy), radius: sideRadius
+            )
+            let center = FlowGeometry.Circle(
+                center: .init(x: geo.size.width / 2, y: cy), radius: ringRadius
+            )
+            let right = FlowGeometry.Circle(
+                center: .init(x: geo.size.width - sideRadius - 24, y: cy), radius: sideRadius
+            )
+
+            ZStack {
+                // Connectors first (under the nodes), anchored edge-to-edge.
+                ConnectorLayer(
+                    segments: [
+                        .init(circles: (left, center), active: gridActive, color: accent),
+                        .init(circles: (center, right), active: live, color: accent),
+                    ],
+                    reduceMotion: reduceMotion
+                )
+
+                sideNode(
+                    symbol: "bolt.horizontal.fill", label: "Rede elétrica",
+                    value: gridActive ? "CA" : "—",
+                    color: gridActive ? gridColor : .secondary, active: gridActive
+                )
+                .position(left.center)
+
+                EnergyRing(store: store)
+                    .frame(width: ringRadius * 2, height: ringRadius * 2)
+                    .position(center.center)
+
+                sideNode(
+                    symbol: "server.rack", label: "Equipamentos",
+                    value: store.powerText,
+                    color: live ? gridColor : .secondary, active: live
+                )
+                .position(right.center)
+
+                // Labels under the side nodes (outside the circles).
+                Text("Rede elétrica").eyebrow()
+                    .position(x: left.center.x, y: left.center.y + sideRadius + 16)
+                Text("Equipamentos").eyebrow()
+                    .position(x: right.center.x, y: right.center.y + sideRadius + 16)
+            }
+        }
+        .frame(height: 290)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            store.isOnBattery
+                ? "Equipamentos alimentados pela bateria do RIVER, \(store.runtimeText) de autonomia"
+                : "Equipamentos alimentados pela rede elétrica através do RIVER"
+        )
+    }
+
+    private func sideNode(symbol: String, label: String, value: String,
+                          color: Color, active: Bool) -> some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(active ? 0.9 : 0.3), lineWidth: 2)
+                .shadow(color: color.opacity(active ? 0.7 : 0), radius: 7)
+                .shadow(color: color.opacity(active ? 0.35 : 0), radius: 16)
+            VStack(spacing: 2) {
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(active ? .primary : .secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: sideRadius * 2, height: sideRadius * 2)
+        .animation(.easeInOut(duration: 0.6), value: active)
+    }
+}
+
+private struct ConnectorLayer: View {
+    struct Segment {
+        let circles: (FlowGeometry.Circle, FlowGeometry.Circle)
+        let active: Bool
+        let color: Color
+    }
+
+    let segments: [Segment]
+    let reduceMotion: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || segments.allSatisfy { !$0.active })) { context in
+            Canvas { canvas, _ in
+                let t = reduceMotion
+                    ? 0.5
+                    : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
+                for segment in segments {
+                    guard let conn = FlowGeometry.connector(
+                        from: segment.circles.0, to: segment.circles.1
+                    ) else { continue }
+                    var path = Path()
+                    path.move(to: conn.start)
+                    path.addLine(to: conn.end)
+                    canvas.stroke(
+                        path,
+                        with: .color(segment.active ? segment.color.opacity(0.55)
+                                                    : Color.secondary.opacity(0.18)),
+                        lineWidth: 1.5
+                    )
+                    guard segment.active else { continue }
+                    let dx = conn.end.x - conn.start.x
+                    let dy = conn.end.y - conn.start.y
+                    for i in 0..<3 {
+                        let phase = (t + Double(i) / 3).truncatingRemainder(dividingBy: 1)
+                        let x = conn.start.x + dx * phase
+                        let y = conn.start.y + dy * phase
+                        var halo = canvas
+                        halo.addFilter(.blur(radius: 3))
+                        halo.fill(
+                            Path(ellipseIn: CGRect(x: x - 5, y: y - 5, width: 10, height: 10)),
+                            with: .color(segment.color.opacity(0.7))
+                        )
+                        canvas.fill(
+                            Path(ellipseIn: CGRect(x: x - 2, y: y - 2, width: 4, height: 4)),
+                            with: .color(.white.opacity(0.95))
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

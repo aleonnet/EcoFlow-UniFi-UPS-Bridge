@@ -1,6 +1,6 @@
-// Main window: aurora atmosphere behind, glass panels above. Navigation is
-// a glass capsule (Energia / Saúde / Ajustes) instead of stock tabs — the
-// window IS the product's mood, not chrome around it.
+// v5 "Central de Energia": glass side rail (UniFi pattern), the power flow
+// as the central hero, full-width dense chart. Glass lives ONLY on the
+// control layer; content sits directly on the near-black ground.
 
 import RiverBridgeCore
 import SwiftUI
@@ -8,7 +8,7 @@ import SwiftUI
 struct DashboardWindow: View {
     var store: TelemetryStore
     @State private var section: Section = .energia
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var railNS
 
     enum Section: String, CaseIterable, Identifiable {
         case energia = "Energia"
@@ -28,91 +28,82 @@ struct DashboardWindow: View {
         ZStack {
             AuroraBackground(store: store)
 
-            VStack(spacing: 14) {
-                header
+            HStack(spacing: 0) {
+                rail
+                    .padding(.leading, 14)
+                    .padding(.trailing, 6)
 
                 Group {
                     switch section {
-                    case .energia: DashboardView(store: store)
+                    case .energia: EnergiaSection(store: store)
                     case .saude: HealthView(store: store)
                     case .ajustes: SettingsView(store: store)
                     }
                 }
                 .transition(.opacity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, 20)
+                .padding(.top, 42)
+                .padding(.bottom, 16)
             }
-            .padding(.top, 40)   // clears the hidden title bar traffic lights
-            .padding(.horizontal, 22)
-            .padding(.bottom, 18)
         }
         .animation(.snappy(duration: 0.3), value: section)
     }
 
-    private var header: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: "bolt.shield.fill")
-                    .font(.title3)
-                    .foregroundStyle(
-                        Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
-                    )
-                Text("River Bridge")
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-            }
-            Spacer()
-            GlassEffectContainer {
-                HStack(spacing: 2) {
-                    ForEach(Section.allCases) { item in
-                        Button {
-                            section = item
-                        } label: {
-                            Label(item.rawValue, systemImage: item.symbol)
-                                .labelStyle(.titleAndIcon)
-                                .font(.callout.weight(section == item ? .semibold : .regular))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.plain)
-                        .background {
-                            if section == item {
-                                Capsule().fill(.primary.opacity(0.12))
-                            }
-                        }
+    // Glass rail — the control layer (UniFi-style icon column).
+    private var rail: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "bolt.shield.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(
+                    Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+                )
+                .padding(.bottom, 14)
+
+            ForEach(Section.allCases) { item in
+                Button {
+                    section = item
+                } label: {
+                    Image(systemName: item.symbol)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(section == item ? .primary : .secondary)
+                        .frame(width: 38, height: 38)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .background {
+                    if section == item {
+                        Circle()
+                            .fill(.primary.opacity(0.14))
+                            .matchedGeometryEffect(id: "rail-sel", in: railNS)
                     }
                 }
-                .padding(3)
-                .glassEffect(.regular, in: Capsule())
+                .help(item.rawValue)
+                .accessibilityLabel(item.rawValue)
             }
+            Spacer()
         }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 6)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.top, 44)
+        .padding(.bottom, 18)
+        .frame(width: 64)
     }
 }
 
-struct DashboardView: View {
+// Energia = hero flow + dense chart + compact events, all on the ground.
+struct EnergiaSection: View {
     var store: TelemetryStore
 
     var body: some View {
-        HStack(alignment: .top, spacing: 18) {
-            VStack(spacing: 18) {
-                EnergyRing(store: store)
-                    .frame(width: 250, height: 250)
-                    .padding(.vertical, 10)
-                PowerFlowView(store: store)
+        VStack(alignment: .leading, spacing: 10) {
+            if case .serviceDown(let reason) = store.phase {
+                ConnectionBanner(reason: reason)
             }
-            .frame(maxWidth: .infinity)
-            .glassCard(cornerRadius: 26)
-            .frame(width: 330)
-
-            VStack(alignment: .leading, spacing: 14) {
-                if case .serviceDown(let reason) = store.phase {
-                    ConnectionBanner(reason: reason)
-                }
-                StatsGrid(store: store)
-                ChartsView(store: store)
-                    .glassCard()
-                EventsTimeline(store: store)
-                    .glassCard()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            FlowScene(store: store)
+            ChartsView(store: store)
+            EventsTimeline(store: store)
         }
     }
 }
@@ -130,44 +121,6 @@ struct ConnectionBanner: View {
             }
             Spacer()
         }
-        .glassCard(cornerRadius: 14)
-        .tint(.orange)
-    }
-}
-
-struct StatsGrid: View {
-    var store: TelemetryStore
-
-    var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                StatTile(label: "Carga", value: store.powerText, symbol: "bolt.fill")
-                StatTile(label: "Uso", value: store.loadText, symbol: "gauge.with.needle")
-                StatTile(label: "Saída", value: store.outputVoltageText, symbol: "powerplug.fill")
-            }
-        }
-    }
-}
-
-struct StatTile: View {
-    let label: String
-    let value: String
-    let symbol: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(label).eyebrow()
-            }
-            Text(value)
-                .font(.system(.title2, design: .rounded).weight(.semibold))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }

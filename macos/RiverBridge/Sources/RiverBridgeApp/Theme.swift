@@ -52,11 +52,11 @@ struct AuroraBackground: View {
             let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate / 16
             Canvas { canvas, size in
                 canvas.addFilter(.blur(radius: 95))
-                blob(&canvas, size, palette[0].opacity(0.28),
+                blob(&canvas, size, palette[0].opacity(0.20),
                      cx: 0.12 + 0.06 * sin(t), cy: 0.10 + 0.05 * cos(t * 1.3), r: 0.38)
-                blob(&canvas, size, palette[1].opacity(0.20),
+                blob(&canvas, size, palette[1].opacity(0.14),
                      cx: 0.92 + 0.05 * cos(t * 0.8), cy: 0.85 + 0.06 * sin(t * 1.1), r: 0.42)
-                blob(&canvas, size, palette[0].opacity(0.12),
+                blob(&canvas, size, palette[0].opacity(0.09),
                      cx: 0.85 + 0.07 * sin(t * 0.6 + 2), cy: 0.10 + 0.04 * cos(t + 1), r: 0.26)
             }
             .background(scheme == .dark ? Color(white: 0.045) : Color(white: 0.94))

@@ -24,5 +24,7 @@ struct RiverBridgeApp: App {
         }
         .defaultSize(width: 960, height: 640)
         .windowStyle(.hiddenTitleBar)
+        // A power panel always opens on Energia — never on a restored tab.
+        .restorationBehavior(.disabled)
     }
 }

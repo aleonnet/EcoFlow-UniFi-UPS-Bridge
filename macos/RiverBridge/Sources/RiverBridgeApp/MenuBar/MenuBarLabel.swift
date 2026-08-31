@@ -7,6 +7,7 @@ import SwiftUI
 struct MenuBarLabel: View {
     var store: TelemetryStore
     @AppStorage("menuBarShowsPercent") private var showsPercent = true
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 3) {
@@ -20,6 +21,14 @@ struct MenuBarLabel: View {
                     .monospacedDigit()
             }
         }
-        .task { store.start() }
+        .task {
+            store.start()
+            // Dev affordance: `--abrir-painel` opens the dashboard at launch
+            // (screenshots, demos); normal launches stay menu-bar-only.
+            if ProcessInfo.processInfo.arguments.contains("--abrir-painel") {
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
     }
 }

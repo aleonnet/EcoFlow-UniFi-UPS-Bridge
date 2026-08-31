@@ -1,5 +1,6 @@
-// History charts (Swift Charts): battery % and power W, with a scrub cursor.
-// Exactly two time-series charts + the event timeline (YAGNI fence §7A.7).
+// Dense Tesla-style chart: 60-minute sliding window, 10 s buckets, thin
+// BarMarks (~2 px), "Pico" annotation, consumption header with live value.
+// No glass — the chart is content and lives on the ground.
 
 import Charts
 import RiverBridgeCore
@@ -8,142 +9,168 @@ import SwiftUI
 struct ChartsView: View {
     var store: TelemetryStore
 
-    @State private var metric: Metric = .charge
+    @State private var metric: Metric = .powerW
     @State private var rows: [HistoryRow] = []
     @State private var scrubTS: Int?
 
     enum Metric: String, CaseIterable, Identifiable {
-        case charge, powerW
+        case powerW, charge
         var id: String { rawValue }
-        var label: String { self == .charge ? "Bateria %" : "Potência W" }
+        var label: String { self == .charge ? "Bateria" : "Potência" }
         var apiName: String { self == .charge ? "charge" : "power_w" }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Histórico").eyebrow()
-                Spacer()
-                Picker("Métrica", selection: $metric) {
-                    ForEach(Metric.allCases) { m in Text(m.label).tag(m) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .tint(Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery))
-                .frame(width: 220)
-            }
-
-            if rows.isEmpty {
-                emptyChart
-            } else {
-                chart
-            }
-        }
-        .task(id: metric) { await load() }
-        .task {
-            // Refresh every 30 s while the view is on screen.
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                await load()
-            }
-        }
-    }
-
-    private var emptyChart: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(.quaternary.opacity(0.4))
-            .frame(height: 150)
-            .overlay {
-                Text("Sem histórico ainda — os dados aparecem conforme o serviço coleta.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding()
-            }
-    }
-
-    @ViewBuilder
-    private var chart: some View {
-        if metric == .charge {
-            baseChart.chartYScale(domain: 0...100)
-        } else {
-            baseChart
-        }
     }
 
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
     }
 
-    private var baseChart: some View {
+    private var peak: HistoryRow? {
+        rows.compactMap { row in row.avg.map { _ in row } }
+            .max { ($0.avg ?? 0) < ($1.avg ?? 0) }
+    }
+
+    private func format(_ value: Double?) -> String {
+        metric == .charge
+            ? TelemetryStore.percentText(value)
+            : TelemetryStore.wattsText(value)
+    }
+
+    private var nowValue: String {
+        metric == .charge ? store.chargeText : store.powerText
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            header
+            if rows.isEmpty {
+                Text("Sem histórico ainda — os dados aparecem conforme o serviço coleta.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else {
+                chart
+            }
+        }
+        .task(id: metric) { await load() }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                await load()
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Consumo — última hora").eyebrow()
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(nowValue)
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                    if let peak, let avg = peak.avg {
+                        Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            Spacer()
+            chip("Uso", store.loadText)
+            chip("Saída", store.outputVoltageText)
+            picker
+        }
+    }
+
+    private var picker: some View {
+        HStack(spacing: 2) {
+            ForEach(Metric.allCases) { m in
+                Button {
+                    metric = m
+                } label: {
+                    Text(m.label)
+                        .font(.callout.weight(metric == m ? .semibold : .regular))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+                .background {
+                    if metric == m {
+                        Capsule().fill(.primary.opacity(0.14))
+                    }
+                }
+            }
+        }
+        .padding(2)
+        .glassEffect(.regular, in: Capsule())
+    }
+
+    private func chip(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            Text(label).eyebrow()
+            Text(value)
+                .font(.system(.callout, design: .rounded).weight(.medium))
+                .monospacedDigit()
+        }
+        .padding(.trailing, 6)
+    }
+
+    private var chart: some View {
         Chart(rows, id: \.ts) { row in
             if let avg = row.avg {
-                AreaMark(
+                BarMark(
                     x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
-                    y: .value(metric.label, avg)
+                    y: .value(metric.label, avg),
+                    width: .fixed(2)
                 )
-                .interpolationMethod(.catmullRom)
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [accent.opacity(0.30), accent.opacity(0.02)],
+                        colors: [accent, accent.opacity(0.35)],
                         startPoint: .top, endPoint: .bottom
                     )
                 )
-                // Glow pass: the same line, wide and translucent, under the
-                // crisp one — the luminous stroke of the reference apps.
-                LineMark(
-                    x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
-                    y: .value(metric.label, avg),
-                    series: .value("s", "glow")
-                )
-                .interpolationMethod(.catmullRom)
-                .lineStyle(StrokeStyle(lineWidth: 7, lineCap: .round))
-                .foregroundStyle(accent.opacity(0.22))
-                LineMark(
-                    x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
-                    y: .value(metric.label, avg),
-                    series: .value("s", "core")
-                )
-                .interpolationMethod(.catmullRom)
-                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                .foregroundStyle(accent)
             }
-            if let scrubTS, scrubTS == row.ts, let avg = row.avg {
-                RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))))
-                    .foregroundStyle(.secondary.opacity(0.5))
+            if let peak, peak.ts == row.ts, let avg = row.avg {
                 PointMark(
                     x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))),
                     y: .value(metric.label, avg)
                 )
-                .annotation(position: .top) {
-                    Text(metric == .charge
-                         ? TelemetryStore.percentText(avg)
-                         : TelemetryStore.wattsText(avg))
-                        .font(.caption.weight(.semibold))
-                        .monospacedDigit()
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(.background.opacity(0.9), in: Capsule())
+                .symbolSize(0)
+                .annotation(position: .top, spacing: 2) {
+                    Text("Pico")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
+            }
+            if let scrubTS, scrubTS == row.ts, let avg = row.avg {
+                RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))))
+                    .foregroundStyle(.secondary.opacity(0.4))
+                    .annotation(position: .top) {
+                        Text(format(avg))
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.background.opacity(0.9), in: Capsule())
+                    }
             }
         }
         .chartXAxis {
             AxisMarks { _ in
-                AxisValueLabel()
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                AxisValueLabel().font(.caption2).foregroundStyle(.secondary)
             }
         }
         .chartYAxis {
             AxisMarks(position: .trailing) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
                     .foregroundStyle(.quaternary)
-                AxisValueLabel()
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                AxisValueLabel().font(.caption2).foregroundStyle(.secondary)
             }
         }
         .frame(height: 150)
+        .tint(accent)   // axis labels follow the state palette, never default blue
         .chartOverlay { proxy in
             GeometryReader { _ in
                 Rectangle().fill(.clear).contentShape(Rectangle())
@@ -163,12 +190,18 @@ struct ChartsView: View {
         }
     }
 
+    private func timeLabel(_ ts: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: Date(timeIntervalSince1970: Double(ts)))
+    }
+
     private func load() async {
         guard let endpoint = ApiEndpoint.discover() else { return }
         let client = APIClient(endpoint: endpoint)
-        let from = Int(Date().addingTimeInterval(-6 * 3600).timeIntervalSince1970)
+        let from = Int(Date().addingTimeInterval(-3600).timeIntervalSince1970)
         if let response = try? await client.history(
-            metric: metric.apiName, bucketSeconds: 120, from: from
+            metric: metric.apiName, bucketSeconds: 10, from: from
         ) {
             rows = response.rows
         }
