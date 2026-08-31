@@ -627,9 +627,13 @@ flag, passo brew falha com exit 4; a flag só é passada após tela de consentim
 comando exato). Botão permanente "Abrir no Terminal". Uninstall guiado decide pelo
 manifesto, nunca pela UI.
 
-**Premissa declarada:** LaunchAgent `gui/$uid` exige sessão de login ativa —
-"sobreviver a reboot" (§16) pressupõe **auto-login no Mac mini** (sondagem PENDENTE);
-sem auto-login, a decisão muda para LaunchDaemon e volta ao dono.
+**Decisão do dono (2026-08-31, após sondagem):** o mini está com auto-login OFF
+([FATO] `sysadminctl -autologin status`), e um monitor de UPS precisa voltar sozinho
+após queda de energia. Portanto **NUT + bridge rodam como LaunchDaemon** (domínio
+system, sobem no boot sem login; plists com `UserName` para não rodar como root
+desnecessariamente — validar semântica no build). O instalador pede senha de admin
+uma vez para gravar em `/Library/LaunchDaemons`. O app da UI continua por sessão de
+login (comportamento normal de app). Gates de serviço usam `launchctl print system/...`.
 
 ## 7A.7 YAGNI v1 (cortes)
 
@@ -1145,6 +1149,11 @@ launchd/com.river.unifi-bridge.plist
 **Gerente de serviço único:** launchd com plists próprios. `brew services` **não** deve
 ser usado — dois gerentes concorrentes para o mesmo processo é defeito de desenho, e o
 padrão da casa é launchd puro.
+
+**Domínio (decisão do dono, 2026-08-31):** **LaunchDaemon** (system) para NUT e bridge
+— o mini opera com auto-login OFF e o serviço deve subir no boot sem login (ver §7A.6).
+Plists em `/Library/LaunchDaemons`, com `UserName` definido; instalador solicita admin
+uma única vez, com registro no manifesto.
 
 **Foreground obrigatório:** há bug confirmado de daemonização do driver NUT em macOS
 Apple Silicon (Sonoma/Sequoia + M2, NUT 2.8.2: `upsdrvctl`/`usbhid-ups` falham ao forkar;
