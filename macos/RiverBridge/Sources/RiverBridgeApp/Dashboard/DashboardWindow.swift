@@ -28,10 +28,11 @@ struct DashboardWindow: View {
         ZStack {
             AuroraBackground(store: store)
 
-            HStack(spacing: 0) {
-                rail
-                    .padding(.leading, 14)
-                    .padding(.trailing, 6)
+            VStack(spacing: 10) {
+                // Nav lives in the hidden-title-bar dead strip: zero useful
+                // height spent (owner's call 2026-08-31 — top over side rail,
+                // and the same capsule becomes a bottom tab bar on iPhone).
+                header
 
                 Group {
                     switch section {
@@ -42,60 +43,60 @@ struct DashboardWindow: View {
                 }
                 .transition(.opacity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, 20)
-                .padding(.top, 42)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 16)
             }
         }
         .animation(.snappy(duration: 0.3), value: section)
     }
 
-    // Glass rail — the control layer (UniFi-style icon column). The capsule
-    // hugs its icons (fixed intrinsic height, pinned to the top): a growing
-    // Spacer INSIDE the glass made it stretch and dance with the window.
-    private var rail: some View {
-        VStack(spacing: 16) {
-            // Brand mark OUTSIDE the glass: it is identity, not a tab —
-            // inside the capsule it read as an unclickable button.
-            Image(systemName: "bolt.shield.fill")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(
-                    Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
-                )
+    private var header: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.shield.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(
+                        Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+                    )
+                Text("River Bridge")
+                    .font(.system(.headline, design: .rounded))
+            }
+            .padding(.leading, 86)   // clears the traffic lights
 
-            VStack(spacing: 8) {
+            Spacer()
+
+            HStack(spacing: 2) {
                 ForEach(Section.allCases) { item in
                     Button {
                         section = item
                     } label: {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 18, weight: .medium))
+                        Label(item.rawValue, systemImage: item.symbol)
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(.callout, design: .rounded)
+                                .weight(section == item ? .semibold : .regular))
                             .foregroundStyle(section == item ? .primary : .secondary)
-                            .frame(width: 46, height: 46)
-                            .contentShape(Circle())
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .background {
                         if section == item {
-                            Circle()
+                            Capsule()
                                 .fill(.primary.opacity(0.14))
                                 .matchedGeometryEffect(id: "rail-sel", in: railNS)
                         }
                     }
-                    .help(item.rawValue)
                     .accessibilityLabel(item.rawValue)
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 6)
-            .fixedSize()
+            .padding(3)
             .glassEffect(.regular.interactive(), in: Capsule())
-
-            Spacer(minLength: 0)
+            .padding(.trailing, 18)
         }
-        .padding(.top, 44)
-        .frame(width: 72)
+        .padding(.top, 10)
     }
+
 }
 
 // Energia = hero flow + dense chart + compact events, all on the ground.
