@@ -84,39 +84,45 @@ private struct EventRow: View {
     private var color: Color { EventsTimeline.color(for: event.event) }
 
     var body: some View {
-        Button {
-            selected = isSelected ? nil : event
-        } label: {
-            HStack(spacing: 8) {
+        // Inline expansion (owner 2026-08-31): a system popover is its own
+        // window and ALWAYS leaks past the app frame near edges. The detail
+        // opens INSIDE the row card — accordion, phone-identical, never
+        // overflows, scrolls with the list.
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(duration: 0.3)) {
+                    selected = isSelected ? nil : event
+                }
+            } label: {
                 HStack(spacing: 8) {
                     Image(systemName: EventsTimeline.symbol(for: event.event))
                         .foregroundStyle(color)
                         .frame(width: 18)
                     Text(EventsTimeline.label(for: event.event))
                         .font(.system(.callout, design: .rounded).weight(.medium))
+                    Spacer()
+                    Text(event.dayTimeText)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isSelected ? 180 : 0))
                 }
-                .popover(
-                    isPresented: Binding(
-                        get: { isSelected },
-                        set: { if !$0 { selected = nil } }
-                    ),
-                    // Narrow/phone: open BELOW the label so the popover
-                    // stays inside the app instead of leaking sideways.
-                    arrowEdge: narrow ? .bottom : .trailing
-                ) {
-                    EventDetailPopover(event: event, compact: narrow)
-                }
-                Spacer()
-                Text(event.dayTimeText)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(RoundedRectangle(cornerRadius: 9))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(RoundedRectangle(cornerRadius: 9))
+            .buttonStyle(.plain)
+
+            if isSelected {
+                EventDetailInline(event: event)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .buttonStyle(.plain)
         .background {
             RoundedRectangle(cornerRadius: 9)
                 .fill(lit ? Color.primary.opacity(0.10) : .clear)
@@ -131,11 +137,10 @@ private struct EventRow: View {
     }
 }
 
-// Detail popover: system glass material, our type voice, friendly time with
-// the raw value kept small and selectable — honest data, native dress.
-struct EventDetailPopover: View {
+// Inline detail (expands inside the row card): our type voice, friendly
+// time, raw value small and selectable — honest data that never overflows.
+struct EventDetailInline: View {
     let event: BridgeEvent
-    var compact = false
 
     private var friendlyWhen: String {
         let formatter = DateFormatter()
@@ -149,15 +154,8 @@ struct EventDetailPopover: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: EventsTimeline.symbol(for: event.event))
-                    .font(.title3)
-                    .foregroundStyle(EventsTimeline.color(for: event.event))
-                Text(EventsTimeline.label(for: event.event))
-                    .font(.system(.headline, design: .rounded))
-            }
-
+        VStack(alignment: .leading, spacing: 10) {
+            // No title here: the row above already carries icon + label.
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
                 detailRow("Quando", friendlyWhen)
                 if let state = event.state { detailRow("Estado do UPS", state) }
@@ -173,8 +171,7 @@ struct EventDetailPopover: View {
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
         }
-        .padding(compact ? 12 : 16)
-        .frame(minWidth: compact ? 240 : 300, maxWidth: compact ? 310 : 380, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

@@ -91,6 +91,7 @@ struct ChartsView: View {
                     metric = m
                 } label: {
                     Text(m.label)
+                        .fixedSize()   // never hyphenate ("Potên-cia" no telefone)
                         .font(.callout.weight(metric == m ? .semibold : .regular))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)

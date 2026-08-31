@@ -90,7 +90,7 @@ struct EnergyRing: View {
                     Text("Autonomia").eyebrow()
                     Text(store.runtimeText)
                         .modifier(HeroNumber(value: store.runtimeText))
-                        .minimumScaleFactor(0.5)
+                        .minimumScaleFactor(0.3)   // small rings (phone) shrink, never truncate
                         .lineLimit(1)
                     Text(hasData ? "\(store.chargeText) · \(store.stateLabel)" : store.stateLabel)
                         .font(.system(.callout, design: .rounded))
