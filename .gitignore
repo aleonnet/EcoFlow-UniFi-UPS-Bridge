@@ -7,3 +7,5 @@
 *.code-workspace
 .DS_Store
 __pycache__/
+*.egg-info/
+.venv/
