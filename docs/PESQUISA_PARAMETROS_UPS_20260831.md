@@ -129,7 +129,49 @@ nunca preenchido.**
 
 ---
 
-## 4. Comparativo: nossos parâmetros × mercado
+## 4. Inventário COMPLETO — do universo do mercado para nós
+
+> Correção metodológica (2026-08-31, apontada pelo dono): a primeira versão
+> desta seção partia dos NOSSOS 5 parâmetros e buscava âncora para cada um —
+> enquadramento enviesado. Esta tabela parte da TOTALIDADE encontrada na
+> pesquisa e mapeia contra a bridge. "N/A hardware" sempre traz o porquê.
+
+| # | Parâmetro (classe) | Quem tem / default documentado | Nós hoje | Veredicto p/ nosso cenário |
+|---|---|---|---|---|
+| **A — Coleta** | | | | |
+| 1 | Poll normal | NUT `pollinterval` 2 s; upsmon 5 s; usbhid-ups 30 s; apcupsd 60 s; HA 60 s; QNAP 15 s | ✅ 2 s | mantém (âncora ups.conf) |
+| 2 | Poll acelerado EM BATERIA | upsmon POLLFREQALERT 5 s; apcupsd →1 s; QNAP →5 s | ❌ | **ADICIONAR** — padrão em 3 referências |
+| **B — Detecção/alarme** | | | | |
+| 3 | Debounce "entrou em bateria" | apcupsd ONBATTERYDELAY 6 s | ✅ 3 s | ajustar → 6 s |
+| 4 | Notificação de restauração | ninguém debouncia; UniFi nem alerta | ✅ 5 s | ajustar → 0 s |
+| 5 | Comunicação perdida | upsmon DEADTIME 15 s | ✅ 20 s | ajustar → 15 s |
+| 6 | Repetição do aviso sem-comm | upsmon NOCOMMWARNTIME 300 s | ❌ | avaliar (política de re-aviso) |
+| 7 | Aviso "trocar bateria" (RB) + repetição | upsmon RBWARNTIME 12 h; driver EcoFlow mapeia NeedReplacement (mas ativa no Discharge Limit — não confiável) | ❌ | exibir honesto; sem alarme repetido até medir |
+| 8 | Bateria baixa por **%** | usbhid-ups fallback 30%; QNAP fixo 15%; EcoFlow reminder fixo 20%; apcupsd 5% (shutdown) | ✅ 15% | ajustar → 30% (LB do NUT nunca dispara no River — comparação é nossa) |
+| 9 | Bateria baixa por **AUTONOMIA (min)** | **eixo dominante do mercado**: UniFi (único gatilho deles), apcupsd MINUTES 3, PowerChute runtime limit, pmset haltremain | ❌ | **ADICIONAR** — mas só após medir a qualidade do runtime do River (driver: estimativa p/ capacidade cheia, quirk de 40 h) |
+| 10 | Bateria baixa por **tempo em bateria** | apcupsd TIMEOUT 0 (off); pmset haltafter; PowerChute "after N on battery" | ❌ | avaliar (3º eixo; apcupsd embarca desligado) |
+| **C — Ação (shutdown/orquestração)** | | | | |
+| 11 | Critério de shutdown do host | upsmon OB+LB→FSD; apcupsd 1º-de(%,min,tempo); UniFi minutos; Synology standby; pmset | ❌ (READ_ONLY) | decisão de produto pendente (dono) |
+| 12 | Tempo p/ SO desligar / sync | PowerChute 180 s; upsmon FINALDELAY 5 s + HOSTSYNC 15 s | ❌ | junto com o 11 |
+| 13 | Corte da saída do UPS pós-shutdown | apcupsd KILLDELAY 0; Synology "shut down UPS"; upsmon powerdown | — | **N/A hardware**: `upscmd` não funciona no River (driver, [P]) |
+| 14 | Auto-recovery / power-cycle delay | UniFi 60 s (configurável) | — | **N/A hardware**: idem 13 |
+| 15 | Religar condicionado (ondelay/offdelay) | usbhid-ups 30 s/20 s | — | **N/A hardware**: idem 13 |
+| **D — Notificação ao humano** | | | | |
+| 16 | Buzzer/luz on/off | UniFi buzzer on/off; River: luz só pelo app EcoFlow | — | **N/A via NUT** (beeper cmds não funcionam); registrar no app EcoFlow |
+| 17 | Notificação no desktop | apcupsd ANNOY 300 s/ANNOYDELAY 60 s (era multi-usuário); UniFi alerta "on battery" | ❌ (só timeline) | **ADICIONAR** — notificação macOS nos eventos críticos |
+| **E — Dados/histórico** | | | | |
+| 18 | Retenção | sem default de mercado (UniFi não tem histórico; HA delega ao recorder) | ✅ 7 d | mantém PROVISÓRIO-SEM-FONTE |
+| 19 | Histórico/gráficos | UniFi: feature request aberto | ✅ | vantagem nossa; mantém |
+| **F — Exposição NUT (p/ UDR7)** | | | | |
+| 20 | NUT server: ID, porta, credenciais | UniFi expõe os 3 na UI | ⚠️ parcial (.env NUT_*, upsd.users manual) | relevante na Fase 0/3 |
+| **G — Lado do aparelho (app EcoFlow)** | | | | |
+| 21 | Discharge/Charge Limit, AC Timeout, veloc. carga, X-Boost, Port Memory | app EcoFlow (manual oficial) | — | não é nosso; checklist do hardware + exibir `battery.charge.low` honesto |
+| **H — Não aplicáveis com fonte** | | | | |
+| 22 | Sensibilidade de tensão | UniFi 2U Pro H/M/L; apcupsd SENSITIVITY | — | **N/A hardware**: River não expõe tensão de entrada |
+| 23 | Teste/calibração de bateria | nem a UniFi tem | — | N/A |
+| 24 | MINSUPPLIES (multi-UPS) | upsmon ≥1 | — | N/A (1 UPS) |
+
+### 4b. Comparativo dos 5 existentes (mantido por rastreabilidade)
 
 | Nosso parâmetro | Valor atual (inventado) | Âncora SOTA com fonte | Proposta |
 |---|---|---|---|
@@ -140,17 +182,16 @@ nunca preenchido.**
 | Intervalo de leitura | 2 s | ups.conf `pollinterval` **2 s** [P] | **2 s (mantém — agora com fonte)** |
 | Retenção de histórico | 7 dias | sem default de mercado (UniFi não tem histórico; HA delega ao recorder) | mantém 7 d marcado PROVISÓRIO-SEM-FONTE |
 
-## 5. Classes de parâmetros que o mercado tem e nós NÃO temos (avaliar com o dono)
+## 5. Síntese da tabela invertida
 
-1. **Ação de shutdown** (upsmon OB+LB; apcupsd %/min/tempo; UniFi minutos de
-   autonomia; Synology standby; pmset). Hoje somos READ_ONLY e não desligamos o
-   Mac mini. Decisão de produto pendente.
-2. **Auto-recovery/power-cycle** — impossível via NUT no River (upscmd não
-   funciona). N/A por hardware.
-3. **Buzzer/luz** — idem, não controlável via NUT (só no app EcoFlow). N/A.
-4. **Teste de bateria/calibração** — nem a UniFi tem. N/A.
-5. **Credenciais/ID do nosso servidor NUT** — a UniFi expõe (ID, porta,
-   credenciais); relevante quando o UDR7 entrar (Fase 0/3).
+Dos 24 parâmetros do universo: **5 já existem** (todos precisando de ajuste de
+default ou nota), **4 são candidatos a ADICIONAR** (poll em bateria, limiar por
+autonomia, notificação macOS, política de re-aviso), **2 são decisão de produto**
+(shutdown do host + tempo de desligamento), **6 são N/A por hardware com fonte**
+(controles que o River não aceita via NUT / telemetria que não expõe), e o resto
+é lado-do-app ou multi-UPS. Ou seja: o conjunto atual NÃO coincide com o
+mercado — é um subconjunto pequeno, e o eixo dominante do mercado (autonomia em
+minutos) está ausente.
 
 ## NÃO ENCONTRADO (consolidado)
 - Dump de River 3 Plus SEM overrides confirmando defaults de charge.low/warning/runtime.low (defaults vêm do código do driver + dump do Delta 3 Plus).
