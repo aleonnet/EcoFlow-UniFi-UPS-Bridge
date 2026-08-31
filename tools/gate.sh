@@ -152,7 +152,7 @@ esac
 exit 0
 EOF
 chmod +x "$INST/bin/brew" "$INST/bin/launchctl"
-INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python"
+INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python"
 
 # S8 — dry-run não escreve nada
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_dry.log 2>&1

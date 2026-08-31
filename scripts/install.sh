@@ -93,8 +93,22 @@ diga "river-unifi-bridge install v$VERSAO  (usuário de serviço: $SERVICE_USER)
 [ "$DRYRUN" = "1" ] && diga "DRY-RUN: nada será escrito"
 
 # ── fase: Homebrew + pacote ──────────────────────────────────────────────────
+# O PATH do root NÃO contém o Homebrew (defeito real de 2026-08-31 17:14 no
+# mini: morte em 0 s com 'brew: command not found') — resolver o binário
+# explicitamente, nunca confiar no PATH do chamador.
+BREW="${RUB_BREW:-}"
+if [ -z "$BREW" ]; then
+  for cand in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$cand" ] && BREW="$cand" && break
+  done
+  [ -z "$BREW" ] && BREW="$(command -v brew 2>/dev/null || true)"
+fi
+[ -n "$BREW" ] && [ -x "$BREW" ] \
+  || { echo "Homebrew não encontrado (procurei /opt/homebrew e /usr/local) — instale-o primeiro (dependência)"; exit 4; }
+
 brew_do_usuario() {
-  if [ "$(id -u)" = "0" ]; then sudo -u "$SERVICE_USER" brew "$@"; else brew "$@"; fi
+  # -H: brew exige HOME do usuário real, não o do root.
+  if [ "$(id -u)" = "0" ]; then sudo -H -u "$SERVICE_USER" "$BREW" "$@"; else "$BREW" "$@"; fi
 }
 
 garantir_brew_pacote() {  # $1=formula  $2=rotulo
