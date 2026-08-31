@@ -38,24 +38,34 @@ struct HealthView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Cadeia de integração").eyebrow()
-
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 330), spacing: 14)],
-                    alignment: .leading, spacing: 14
-                ) {
-                    ForEach(links) { item in
-                        card(item)
+            // STICKY section header (owner 2026-08-31): the eyebrow pins to
+            // the top of the scroll and the cards pass UNDER it — never over.
+            LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 330), spacing: 14)],
+                        alignment: .leading, spacing: 14
+                    ) {
+                        ForEach(links) { item in
+                            card(item)
+                        }
                     }
+                } header: {
+                    Text("Cadeia de integração").eyebrow()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                        .background {
+                            Rectangle().fill(.ultraThinMaterial)
+                                .mask {
+                                    LinearGradient(colors: [.black, .black, .clear],
+                                                   startPoint: .top, endPoint: .bottom)
+                                }
+                        }
                 }
             }
             .frame(maxWidth: 900)
             .frame(maxWidth: .infinity)
-            .padding(.top, 6)
-            // Inner breathing room so the hover glow fits INSIDE the clip —
-            // scrollClipDisabled was the wrong fix (scrolled content invaded
-            // the sections above; owner's print).
+            // Inner breathing room so the hover glow fits INSIDE the clip.
             .padding(.horizontal, 10)
             .padding(.bottom, 14)
         }

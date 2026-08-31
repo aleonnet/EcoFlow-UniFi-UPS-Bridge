@@ -96,7 +96,9 @@ struct ChartsView: View {
                 }
             }
         } else {
-            HStack(alignment: .firstTextBaseline) {
+            // .center: the right cluster (chips + picker) aligns vertically
+            // with the hero block instead of floating on the eyebrow line.
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Consumo — última hora").eyebrow()
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
