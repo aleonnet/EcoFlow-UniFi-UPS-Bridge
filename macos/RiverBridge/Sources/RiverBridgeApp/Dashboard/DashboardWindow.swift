@@ -54,23 +54,24 @@ struct DashboardWindow: View {
     // hugs its icons (fixed intrinsic height, pinned to the top): a growing
     // Spacer INSIDE the glass made it stretch and dance with the window.
     private var rail: some View {
-        VStack {
-            VStack(spacing: 6) {
-                Image(systemName: "bolt.shield.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(
-                        Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
-                    )
-                    .padding(.bottom, 14)
+        VStack(spacing: 16) {
+            // Brand mark OUTSIDE the glass: it is identity, not a tab —
+            // inside the capsule it read as an unclickable button.
+            Image(systemName: "bolt.shield.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(
+                    Theme.accentGradient(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
+                )
 
+            VStack(spacing: 8) {
                 ForEach(Section.allCases) { item in
                     Button {
                         section = item
                     } label: {
                         Image(systemName: item.symbol)
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(section == item ? .primary : .secondary)
-                            .frame(width: 38, height: 38)
+                            .frame(width: 46, height: 46)
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -85,7 +86,7 @@ struct DashboardWindow: View {
                     .accessibilityLabel(item.rawValue)
                 }
             }
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
             .padding(.horizontal, 6)
             .fixedSize()
             .glassEffect(.regular.interactive(), in: Capsule())
@@ -93,7 +94,7 @@ struct DashboardWindow: View {
             Spacer(minLength: 0)
         }
         .padding(.top, 44)
-        .frame(width: 64)
+        .frame(width: 72)
     }
 }
 

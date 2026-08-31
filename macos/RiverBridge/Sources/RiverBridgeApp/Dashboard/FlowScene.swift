@@ -89,7 +89,7 @@ struct FlowScene: View {
                     )
             }
         }
-        .frame(height: 290)
+        .frame(height: 330)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             store.isOnBattery
