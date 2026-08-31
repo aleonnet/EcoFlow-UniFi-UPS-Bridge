@@ -59,6 +59,8 @@ passo() { PASSOS="$PASSOS$1=$2\n"; }
 # de registro. Best-effort — nunca derruba a instalação.
 escrever_last_run() {
   local rc=$?
+  # Regra da casa: dry-run é só leitura — nunca escreve nem o last-run.log.
+  [ "$DRYRUN" = "1" ] && return 0
   { mkdir -p "$PREFIX" 2>/dev/null && {
       echo "install.sh v$VERSAO  $(date '+%Y-%m-%dT%H:%M:%S%z')  rc=$rc  dry=$DRYRUN"
       printf '%b' "$PASSOS"
@@ -130,7 +132,7 @@ instalar_codigo() {
   jp codigo checando
   if [ "$DRYRUN" = "1" ]; then diga "código: copiaria src/ para $PREFIX/src"; passo codigo plano; return 0; fi
   if [ -d "$PREFIX/src/river_unifi_bridge" ] \
-     && diff -rq "$RAIZ/src/river_unifi_bridge" "$PREFIX/src/river_unifi_bridge" >/dev/null 2>&1; then
+     && diff -rq -x '__pycache__' "$RAIZ/src/river_unifi_bridge" "$PREFIX/src/river_unifi_bridge" >/dev/null 2>&1; then
     diga "código: já está atual"; jp codigo ja_estava; passo codigo 100; return 100
   fi
   man_set "dir:$PREFIX/src" pending
@@ -182,7 +184,7 @@ detectar_river() {
     jp river detectado; passo river 0
   else
     diga "RIVER: não conectado — serviços NUT ficam PENDENTES no manifesto (o bridge sobe e reporta COMM_LOST honesto)"
-    man_set "svc:nut-driver" pending
+    [ "$DRYRUN" = "1" ] || man_set "svc:nut-driver" pending
     jp river ausente; passo river 100
   fi
 }

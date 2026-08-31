@@ -130,6 +130,63 @@ if [ -d "$APP_DIR" ]; then
     fi
 fi
 
+# S8..S10 — instalador (ordem 7): dry-run inócuo, idempotência 0→100,
+# uninstall preserva o alheio. Tudo em scratch com stubs de brew/launchctl.
+INST="$(mktemp -d)"
+mkdir -p "$INST/bin" "$INST/ld" "$INST/prefix"
+cat > "$INST/bin/brew" <<EOF
+#!/bin/bash
+case "\$1" in
+  list) exit 0 ;;
+  --prefix) echo "$INST/brewprefix" ;;
+esac
+exit 0
+EOF
+cat > "$INST/bin/launchctl" <<EOF
+#!/bin/bash
+case "\$1" in
+  print) [ -f "$INST/ld/.carregado" ] && exit 0 || exit 1 ;;
+  bootstrap) touch "$INST/ld/.carregado"; exit 0 ;;
+  bootout) rm -f "$INST/ld/.carregado"; exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$INST/bin/brew" "$INST/bin/launchctl"
+INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python"
+
+# S8 — dry-run não escreve nada
+env $INSTALL_ENV "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_dry.log 2>&1
+if [ -z "$(find "$INST/prefix" "$INST/ld" -type f 2>/dev/null | grep -v last-run)" ]; then
+    ok "S8 install --dry-run não escreve"
+else
+    erro "S8 dry-run escreveu arquivos:"; find "$INST/prefix" "$INST/ld" -type f | head -5
+fi
+
+# S9 — 1ª execução faz (exit 0); 2ª reporta que já estava (exit 100)
+env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_1.log 2>&1
+RC1=$?
+env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_2.log 2>&1
+RC2=$?
+if [ "$RC1" = "0" ] && [ "$RC2" = "100" ]; then
+    ok "S9 idempotência do instalador (1ª=0, 2ª=100)"
+else
+    erro "S9 idempotência: rc1=$RC1 rc2=$RC2 — caudas:"
+    tail -3 /tmp/gate_inst_1.log /tmp/gate_inst_2.log
+fi
+
+# S10 — uninstall remove o criado e PRESERVA arquivo alheio
+echo alheio > "$INST/prefix/arquivo-do-dono.txt"
+env $INSTALL_ENV "$RAIZ/scripts/uninstall.sh" --confirm >/tmp/gate_inst_un.log 2>&1
+if [ -f "$INST/prefix/arquivo-do-dono.txt" ] \
+   && [ ! -d "$INST/prefix/src" ] && [ ! -d "$INST/prefix/venv" ] \
+   && [ ! -f "$INST/ld/com.river.unifi-bridge.plist" ] \
+   && [ ! -f "$INST/ld/.carregado" ]; then
+    ok "S10 uninstall: só o nosso saiu; o alheio ficou"
+else
+    erro "S10 uninstall — estado final inesperado:"; find "$INST/prefix" "$INST/ld" 2>/dev/null | head -8
+fi
+rm -rf "$INST"
+
 if [ "$FALHAS" -eq 0 ]; then
     printf 'GATE: VERDE\n'
     exit 0
