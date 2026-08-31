@@ -635,6 +635,19 @@ desnecessariamente — validar semântica no build). O instalador pede senha de 
 uma vez para gravar em `/Library/LaunchDaemons`. O app da UI continua por sessão de
 login (comportamento normal de app). Gates de serviço usam `launchctl print system/...`.
 
+## 7A.6b Versão iPhone e acesso remoto (decisão do dono, 2026-08-31)
+
+A UI ganhará versão iPhone. Fundações já entregues: Core 100% portável (Foundation +
+CoreGraphics, zero AppKit) e layout adaptativo (largura compacta → fluxo vertical com
+a MESMA geometria provada por teste). O app iOS nasce junto com o projeto Xcode da
+Fase 6a/UI-4 (necessário de todo modo para assinatura e instalação no aparelho).
+
+**Conectividade (não altera a cerca §7A.3):** o daemon permanece loopback-only; o
+Mac mini publica a API via **`tailscale serve`** apenas na tailnet da casa (Tailscale
+já é infraestrutura da casa — ABHOME-rede). O iPhone acessa de qualquer lugar,
+criptografado, com o mesmo token bearer; nada é exposto na LAN nem na Internet.
+Rejeitado: bind na LAN + TLS (mexeria na cerca aprovada e só funcionaria em casa).
+
 ## 7A.7 YAGNI v1 (cortes)
 
 Edição de configs NUT pela UI; multi-UPS; notificações macOS (HA já alerta — evitar
