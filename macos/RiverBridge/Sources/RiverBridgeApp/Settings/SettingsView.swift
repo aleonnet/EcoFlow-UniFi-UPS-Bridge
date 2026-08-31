@@ -97,10 +97,11 @@ struct SettingsView: View {
     private func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).eyebrow()
+            // No hover on big containers — hover belongs to interactive
+            // elements only (owner 2026-08-31, print do bloco aceso).
             VStack(spacing: 8) { content() }
                 .padding(14)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .hoverLift(glow: accent, scale: 1.004)
         }
     }
 
