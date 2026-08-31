@@ -45,24 +45,25 @@ struct SettingsView: View {
                                value: $pollInterval, range: 1...60, unit: "s")
                 }
 
-                HStack(spacing: 12) {
-                    if restartRequired {
-                        Button("Reiniciar serviço") { Task { await restart() } }
-                            .buttonStyle(.glass)
-                            .tint(.orange)
-                    }
-                    Spacer()
-                    if let feedback {
-                        Text(feedback)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .contentTransition(.opacity)
+                // Auto-save is SILENT on success (macOS/iOS settings
+                // convention — owner 2026-08-31): only errors and the
+                // pending-restart action ever appear here.
+                if restartRequired || feedback != nil {
+                    HStack(spacing: 12) {
+                        if restartRequired {
+                            Button("Reiniciar serviço para aplicar") { Task { await restart() } }
+                                .buttonStyle(.glass)
+                                .tint(.orange)
+                        }
+                        Spacer()
+                        if let feedback {
+                            Label(feedback, systemImage: "exclamationmark.triangle.fill")
+                                .font(.callout)
+                                .foregroundStyle(.orange)
+                                .contentTransition(.opacity)
+                        }
                     }
                 }
-
-                Text("As mudanças são salvas automaticamente; valores fora de faixa são recusados pelo serviço — a mesma validação do arquivo de configuração.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
@@ -177,9 +178,7 @@ struct SettingsView: View {
         do {
             let result = try await APIClient(endpoint: endpoint).putConfig(changes)
             restartRequired = result.restartRequired
-            feedback = result.restartRequired
-                ? "Salvo — reinício necessário para aplicar tudo."
-                : "Salvo e aplicado."
+            feedback = nil   // success is silent; the restart button is the notice
         } catch let APIError.badStatus(_, body) {
             feedback = "Recusado: \(body)"
         } catch {
