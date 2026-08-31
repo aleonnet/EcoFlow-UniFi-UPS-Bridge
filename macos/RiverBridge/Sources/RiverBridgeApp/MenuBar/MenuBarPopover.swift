@@ -10,6 +10,7 @@ struct MenuBarPopover: View {
     var store: TelemetryStore
     @Environment(\.openWindow) private var openWindow
     @AppStorage("menuBarShowsPercent") private var showsPercent = true
+    @AppStorage("showsDockIcon") private var showsDockIcon = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -59,6 +60,13 @@ struct MenuBarPopover: View {
                 title: "Mostrar percentual na barra"
             ) {
                 showsPercent.toggle()
+            }
+            MenuRow(
+                symbol: showsDockIcon ? "checkmark.circle.fill" : "circle",
+                title: "Mostrar ícone no Dock"
+            ) {
+                showsDockIcon.toggle()
+                DockIcon.apply(show: showsDockIcon)
             }
 
             divider

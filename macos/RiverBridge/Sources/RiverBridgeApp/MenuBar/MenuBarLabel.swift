@@ -23,6 +23,7 @@ struct MenuBarLabel: View {
         }
         .task {
             store.start()
+            DockIcon.applyStoredPreference()
             // Dev affordance: `--abrir-painel` opens the dashboard at launch
             // (screenshots, demos); normal launches stay menu-bar-only.
             if ProcessInfo.processInfo.arguments.contains("--abrir-painel") {

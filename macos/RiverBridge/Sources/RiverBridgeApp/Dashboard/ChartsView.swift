@@ -157,21 +157,37 @@ struct ChartsView: View {
                     }
             }
         }
+        // Axis labels need EXPLICIT Text content: styling an empty
+        // AxisValueLabel() does nothing (verified on screen — they rendered
+        // in default blue and the edge label truncated).
         .chartXAxis {
-            AxisMarks { _ in
-                AxisValueLabel().font(.caption2).foregroundStyle(.secondary)
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(date, format: .dateTime.hour().minute())
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
             }
         }
         .chartYAxis {
-            AxisMarks(position: .trailing) { _ in
+            AxisMarks(position: .trailing) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
                     .foregroundStyle(.quaternary)
-                AxisValueLabel().font(.caption2).foregroundStyle(.secondary)
+                AxisValueLabel {
+                    if let number = value.as(Double.self) {
+                        Text(number, format: .number.precision(.fractionLength(0)))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
             }
         }
         .frame(height: 150)
-        .padding(.trailing, 10)   // last axis label never clips at the window edge
-        .tint(accent)   // axis labels follow the state palette, never default blue
+        .padding(.trailing, 26)   // room for trailing labels — nothing clips
         .chartOverlay { proxy in
             GeometryReader { _ in
                 Rectangle().fill(.clear).contentShape(Rectangle())
