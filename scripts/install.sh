@@ -142,6 +142,7 @@ fi
 garantir_brew_pacote python@3.13 "python313" || true
 
 # ── fase: código + venv ──────────────────────────────────────────────────────
+CODIGO_MUDOU=0
 instalar_codigo() {
   jp codigo checando
   if [ "$DRYRUN" = "1" ]; then diga "código: copiaria src/ para $PREFIX/src"; passo codigo plano; return 0; fi
@@ -155,6 +156,7 @@ instalar_codigo() {
   cp -R "$RAIZ/src/river_unifi_bridge" "$PREFIX/src/"
   find "$PREFIX/src" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
   man_set "dir:$PREFIX/src" created
+  CODIGO_MUDOU=1
   diga "código: instalado em $PREFIX/src"; jp codigo ok; passo codigo 0; FEZ=1
 }
 instalar_codigo || true
@@ -172,6 +174,7 @@ criar_venv() {
   "$py" -m venv "$PREFIX/venv"
   "$PREFIX/venv/bin/pip" -q install "aiohttp>=3.12"
   man_set "dir:$PREFIX/venv" created
+  CODIGO_MUDOU=1
   diga "venv: criado"; jp venv ok; passo venv 0; FEZ=1
 }
 criar_venv || true
@@ -267,6 +270,14 @@ EOF
       launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
         || { echo "bridge: recarga NÃO provada por launchctl print após $tent tentativas (falha)"; exit 1; }
       diga "plist: atualizado, recarregado e provado (launchctl print)"; jp plist ok; passo plist 0; FEZ=1
+    elif [ "$CODIGO_MUDOU" = "1" ]; then
+      # Plist igual mas código/venv novos: o job carregado ainda roda o código
+      # antigo (medido no mini, 2026-09-01). kickstart -k reinicia no ato; o
+      # print prova que voltou.
+      launchctl kickstart -k "system/$LABEL_BRIDGE" 2>/dev/null || true
+      launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
+        || { echo "bridge: job não provado após kickstart (falha)"; exit 1; }
+      diga "plist: igual; código novo → serviço reiniciado (kickstart) e provado"; jp plist ok; passo plist 0; FEZ=1
     else
       diga "plist: já instalado e carregado"; jp plist ja_estava; passo plist 100; return 100
     fi

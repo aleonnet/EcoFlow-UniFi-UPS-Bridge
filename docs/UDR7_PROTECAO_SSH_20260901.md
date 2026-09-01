@@ -190,13 +190,14 @@ ao armar (spec §15, exceção 6).
 - Mac mini (`macmini.home.arpa`): simulador religado em `apagao` (python 3.13, porta 3493);
   `~/Applications/River Bridge.app` atualizado; árvore do repo em `~/river-bridge-deploy/`
   com `pos-install-fase3exp.sh`. **O daemon instalado ainda é o anterior** — o código em
-  `/usr/local/river-unifi-bridge` é root:wheel e `sudo` pede senha. Para instalar (dono):
+  `/usr/local/river-unifi-bridge` é root:wheel e `sudo` pede senha. Para instalar (dono), em
+  UMA linha, senha uma vez (instalador da casa — docs/INSTALACAO_UMA_LINHA_20260901.md):
   ```bash
   ssh macmini.home.arpa
-  cd ~/river-bridge-deploy && sudo scripts/install.sh --consent-homebrew
-  sudo launchctl kickstart -k system/com.river.unifi-bridge
+  ~/river-bridge-deploy/river-bridge-install.sh --src ~/river-bridge-deploy   # serviço + app + kickstart
   ~/river-bridge-deploy/pos-install-fase3exp.sh      # liga a proteção EM ENSAIO (PUT)
   ```
+  (a forma remota `curl … | bash` só funciona quando o repositório estiver público — hoje é privado.)
   Depois: `DRYRUN ↔ REARMED` a cada ciclo do `apagao`, Saúde `udr7 = fonte_nao_real`,
   `dry_run = true`, `unifi = sem_caminho_nativo_documentado`. Nada armado: `PROTECT_DRY_RUN=1`,
   `UDR7_ARM_ALLOWED=0`.

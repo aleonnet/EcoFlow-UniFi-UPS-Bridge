@@ -229,6 +229,98 @@ else
 fi
 rm -rf "$INST"
 
+# ── S11..S14 — o instalador em uma linha (river-bridge-install.sh) ──────────
+ONE="$RAIZ/river-bridge-install.sh"
+# S11 — sintaxe em /bin/bash 3.2 + --help pelo CANO (curl | bash) sob locale C = ASCII puro
+if /bin/bash -n "$ONE" 2>/dev/null \
+   && [ "$(cat "$ONE" | LC_ALL=C LANG=C /bin/bash -s -- --help 2>&1 | LC_ALL=C tr -d '[:print:][:space:]' | wc -c | tr -d ' ')" = "0" ] \
+   && cat "$ONE" | LC_ALL=C /bin/bash -s -- --help 2>/dev/null | grep -q -- '--dry-run'; then
+    ok "S11 one-liner: bash -n + --help pelo cano sob locale C (ASCII puro)"
+else
+    erro "S11 one-liner: sintaxe ou --help pelo cano"
+fi
+
+# S12 — contrato 0 → 100 → kickstart com código novo → download por file:// (stubs, sem root, sem rede)
+OL="$(mktemp -d)"
+mkdir -p "$OL/bin" "$OL/ld" "$OL/prefix" "$OL/state" "$OL/cache" "$OL/apps"
+cat > "$OL/bin/brew" <<EOF
+#!/bin/bash
+case "\$1" in list) exit 0 ;; --prefix) echo "$OL/brewprefix" ;; esac
+exit 0
+EOF
+cat > "$OL/bin/launchctl" <<EOF
+#!/bin/bash
+case "\$1" in
+  print) [ -f "$OL/ld/.carregado" ] && exit 0 || exit 1 ;;
+  bootstrap) touch "$OL/ld/.carregado"; exit 0 ;;
+  bootout) rm -f "$OL/ld/.carregado"; exit 0 ;;
+  kickstart) echo kick >> "$OL/ld/.kicks"; exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$OL/bin/brew" "$OL/bin/launchctl"
+OL_ENV="PATH=$OL/bin:/usr/bin:/bin RUB_BREW=$OL/bin/brew RUB_PREFIX=$OL/prefix RUB_LAUNCHD_DIR=$OL/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$PY RUB_SUDO= RUB_STATE_DIR=$OL/state RUB_CACHE_DIR=$OL/cache RUB_APP_DEST=$OL/apps/app RUB_SKIP_HEALTH=1 NO_COLOR=1"
+env $OL_ENV "$ONE" --yes --no-anim --no-app --src "$RAIZ" >"$OL/r1.log" 2>&1; OL_RC1=$?
+env $OL_ENV "$ONE" --yes --no-anim --no-app --src "$RAIZ" >"$OL/r2.log" 2>&1; OL_RC2=$?
+echo "# gate" >> "$OL/prefix/src/river_unifi_bridge/__init__.py"
+env $OL_ENV "$ONE" --yes --no-anim --no-app --src "$RAIZ" >"$OL/r3.log" 2>&1; OL_RC3=$?
+OL_KICKS="$(grep -c kick "$OL/ld/.kicks" 2>/dev/null || echo 0)"
+(cd "$RAIZ" && tar -czf "$OL/repo.tgz" --exclude .git --exclude .venv --exclude .build --exclude __pycache__ --exclude 'macos/RiverBridge/dist' -s '|^\./|repo-main/|' . 2>/dev/null)
+env $OL_ENV RUB_SRC_URL="file://$OL/repo.tgz" "$ONE" --yes --no-anim --no-app >"$OL/r4.log" 2>&1; OL_RC4=$?
+if [ "$OL_RC1" = "0" ] && [ "$OL_RC2" = "100" ] && [ "$OL_RC3" = "0" ] && [ "$OL_KICKS" = "1" ] \
+   && [ "$OL_RC4" = "0" ] && [ -x "$OL"/cache/src-*/scripts/install.sh ] && [ -f "$OL/state/installer-last-run.log" ]; then
+    ok "S12 one-liner: 0 → 100 → kickstart (1) → download file:// extraído e instalado"
+else
+    erro "S12 one-liner: rc1=$OL_RC1 rc2=$OL_RC2 rc3=$OL_RC3 kicks=$OL_KICKS rc4=$OL_RC4 — caudas:"
+    tail -3 "$OL/r1.log" "$OL/r2.log" "$OL/r3.log" "$OL/r4.log" 2>/dev/null
+fi
+# S13 — dry-run pelo cano não escreve NADA (nem estado, nem cache)
+OL2="$(mktemp -d)"
+cat "$ONE" | env RUB_STATE_DIR="$OL2/state" RUB_CACHE_DIR="$OL2/cache" NO_COLOR=1 LC_ALL=C /bin/bash -s -- --dry-run --src "$RAIZ" >"$OL2/dry.log" 2>&1; OL_RC5=$?
+if [ "$OL_RC5" = "0" ] && [ ! -e "$OL2/state" ] && [ ! -e "$OL2/cache" ] && grep -q "dry-run" "$OL2/dry.log"; then
+    ok "S13 one-liner: dry-run pelo cano sai 0 e não escreve nada"
+else
+    erro "S13 one-liner: dry-run rc=$OL_RC5 ou escreveu (state/cache)"; tail -3 "$OL2/dry.log"
+fi
+rm -rf "$OL" "$OL2"
+
+# S14 — snapshot da abertura (quadro final) num pty de 80 colunas, escapes removidos.
+# Só num pty a camada visual vê TTY; sem ele degrada para texto e o snapshot não diria nada.
+SNAP_DIR="$RAIZ/tests/snapshots"; mkdir -p "$SNAP_DIR"
+SNAP_OUT="$(mktemp)"
+"$PY" - "$ONE" > "$SNAP_OUT" <<'EOF'
+import os, pty, re, sys, fcntl, termios, struct
+script = sys.argv[1]
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", "COLUMNS": "80",
+                       "LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8", "UI_NO_ANIM": "1"})
+    os.execv("/bin/bash", ["/bin/bash", script, "--demo-frame", "-1"])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 80, 0, 0))
+out = b""
+while True:
+    try:
+        chunk = os.read(fd, 65536)
+    except OSError:
+        break
+    if not chunk:
+        break
+    out += chunk
+os.waitpid(pid, 0)
+text = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", out).decode("utf-8", "replace").replace("\r", "")
+print("\n".join(l.rstrip() for l in text.splitlines()).rstrip())
+EOF
+if [ "${GATE_UPDATE:-0}" = "1" ] || [ ! -f "$SNAP_DIR/abertura-80-utf8.txt" ]; then
+    cp "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt"
+    ok "S14 abertura: snapshot (re)gravado em tests/snapshots/abertura-80-utf8.txt"
+elif diff -q "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt" >/dev/null; then
+    ok "S14 abertura: quadro final idêntico ao snapshot (pty 80 col)"
+else
+    erro "S14 abertura: quadro final divergiu do snapshot (GATE_UPDATE=1 regrava se a mudança for intencional)"
+    diff "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt" | head -6
+fi
+rm -f "$SNAP_OUT"
+
 if [ "$FALHAS" -eq 0 ]; then
     printf 'GATE: VERDE\n'
     exit 0
