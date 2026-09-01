@@ -240,6 +240,6 @@ struct ConnectionBanner: View {
             Spacer()
         }
         .padding(12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

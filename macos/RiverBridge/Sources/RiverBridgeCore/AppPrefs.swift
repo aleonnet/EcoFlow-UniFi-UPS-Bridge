@@ -42,9 +42,36 @@ public final class AppPrefs {
         }
     }
 
+    /// Boot resolution, PURE and testable. Screenshot seams use DEDICATED
+    /// flags (--seam-idioma/--seam-tema): they win only at launch and are
+    /// never persisted. They deliberately do NOT share the UserDefaults key —
+    /// `-rub.theme`-style args enter the argument domain and shadow every
+    /// read, freezing the picker (owner's bugs: idioma, depois tema auto).
+    nonisolated public static func resolveLanguage(persisted: String?, seam: String?) -> Language {
+        if let seam, let language = Language(rawValue: seam) { return language }
+        return Language(rawValue: persisted ?? "") ?? .system
+    }
+
+    nonisolated public static func resolveTheme(persisted: String?, seam: String?) -> ThemeMode {
+        if let seam, let mode = ThemeMode(rawValue: seam) { return mode }
+        return ThemeMode(rawValue: persisted ?? "") ?? .auto
+    }
+
+    private static func seamValue(_ flag: String) -> String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
+        return args[index + 1]
+    }
+
     private init() {
-        language = Language(rawValue: UserDefaults.standard.string(forKey: "rub.language") ?? "") ?? .system
-        themeMode = ThemeMode(rawValue: UserDefaults.standard.string(forKey: "rub.theme") ?? "") ?? .auto
+        language = Self.resolveLanguage(
+            persisted: UserDefaults.standard.string(forKey: "rub.language"),
+            seam: Self.seamValue("--seam-idioma")
+        )
+        themeMode = Self.resolveTheme(
+            persisted: UserDefaults.standard.string(forKey: "rub.theme"),
+            seam: Self.seamValue("--seam-tema")
+        )
         L10n.cachedIsPT = isPT
     }
 }

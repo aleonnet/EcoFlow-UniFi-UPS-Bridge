@@ -240,7 +240,11 @@ struct SettingsView: View {
             // elements only (owner 2026-08-31, print do bloco aceso).
             VStack(spacing: 8) { content() }
                 .padding(14)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                // Material, NOT glassEffect: neighbouring glass shapes merge
+                // their backdrop into a gray wash when the window is key
+                // (measured 2026-08-31). House grammar: glass is for the
+                // CONTROL layer; content panels sit on material.
         }
     }
 

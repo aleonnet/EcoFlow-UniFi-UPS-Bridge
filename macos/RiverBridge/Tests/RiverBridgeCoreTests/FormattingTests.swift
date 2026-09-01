@@ -72,3 +72,16 @@ import Testing
     #expect(L10n.t("Eventos", "Events") == "Eventos")
     AppPrefs.shared.language = before
 }
+
+@Test func bootResolutionSeamWinsOnceAndPersistedOtherwise() {
+    // Seam wins at boot only; persisted value rules without it; garbage falls
+    // back to defaults. (Class fence for the argument-domain poisoning bugs.)
+    #expect(AppPrefs.resolveLanguage(persisted: "enUS", seam: nil) == .enUS)
+    #expect(AppPrefs.resolveLanguage(persisted: "enUS", seam: "ptBR") == .ptBR)
+    #expect(AppPrefs.resolveLanguage(persisted: nil, seam: nil) == .system)
+    #expect(AppPrefs.resolveLanguage(persisted: "lixo", seam: "lixo") == .system)
+    #expect(AppPrefs.resolveTheme(persisted: "dark", seam: nil) == .dark)
+    #expect(AppPrefs.resolveTheme(persisted: "dark", seam: "light") == .light)
+    #expect(AppPrefs.resolveTheme(persisted: nil, seam: nil) == .auto)
+    #expect(AppPrefs.resolveTheme(persisted: "lixo", seam: "lixo") == .auto)
+}

@@ -117,7 +117,7 @@ struct HealthView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .hoverLift(glow: color)
     }
 
