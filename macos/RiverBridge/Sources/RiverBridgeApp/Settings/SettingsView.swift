@@ -145,7 +145,7 @@ struct SettingsView: View {
                                 showDisarmDialog = true
                             } label: {
                                 Text(L10n.t("Desligar modo ensaio…", "Turn rehearsal off…"))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(armAllowed && protectEnabled ? Color.red : Color.secondary)
                                     .frame(minHeight: 28)
                                     .contentShape(Rectangle())
                             }

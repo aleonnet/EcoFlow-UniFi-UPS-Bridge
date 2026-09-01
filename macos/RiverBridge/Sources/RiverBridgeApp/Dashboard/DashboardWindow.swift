@@ -168,7 +168,8 @@ struct EnergiaSection: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var headerMinY: CGFloat = 1000
     @State private var eventChips: Set<EventChip> =
-        ProcessInfo.processInfo.arguments.contains("--seam-chip-queda") ? [.queda] : []
+        ProcessInfo.processInfo.arguments.contains("--seam-chip-queda") ? [.queda]
+        : ProcessInfo.processInfo.arguments.contains("--seam-chip-protecao") ? [.protecao] : []
     // Dev seam (screenshot runs): --periodo-datas opens with Datas active.
     @State private var eventPeriod: EventPeriod =
         ProcessInfo.processInfo.arguments.contains("--periodo-datas") ? .personalizado : .tudo
