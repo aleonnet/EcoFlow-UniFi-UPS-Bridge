@@ -128,6 +128,13 @@ class Handler(socketserver.StreamRequestHandler):
             if cmd in ("USERNAME", "PASSWORD"):
                 self.wfile.write(b"OK\n")
                 continue
+            if cmd == "LIST" and len(parts) >= 2 and parts[1].upper() == "UPS":
+                # HA's NUT integration discovers UPSs via LIST UPS first.
+                out = ["BEGIN LIST UPS",
+                       f'UPS {ups} "EcoFlow RIVER 3 Plus (simulado)"',
+                       "END LIST UPS"]
+                self.wfile.write(("\n".join(out) + "\n").encode("utf-8"))
+                continue
             if cmd == "LIST" and len(parts) >= 3 and parts[1].upper() == "VAR":
                 if parts[2] != ups:
                     self.wfile.write(b"ERR UNKNOWN-UPS\n")
@@ -157,6 +164,10 @@ class Server(socketserver.ThreadingTCPServer):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Simulador NUT (spec §19)")
     parser.add_argument("--port", type=int, default=3493)
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="endereço de escuta (0.0.0.0 para servir a LAN — Fase 2/HA; nunca internet)",
+    )
     parser.add_argument("--ups", default="river-office")
     parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="online")
     parser.add_argument(
@@ -165,11 +176,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    server = Server(("127.0.0.1", args.port), Handler)
+    server = Server((args.host, args.port), Handler)
     server.ups_name = args.ups  # type: ignore[attr-defined]
     server.scenario = SCENARIOS[args.scenario]  # type: ignore[attr-defined]
     port = server.server_address[1]
-    print(f"fake-nut-ups: cenário={args.scenario} ups={args.ups} porta={port}", flush=True)
+    print(f"fake-nut-ups: cenário={args.scenario} ups={args.ups} host={args.host} porta={port}", flush=True)
 
     if args.die_after > 0:
         import threading

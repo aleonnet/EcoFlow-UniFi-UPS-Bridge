@@ -111,3 +111,26 @@ def test_t08_upsd_loss_detected(sim):
             events += tracker.observe_failure()
         time.sleep(0.3)
     assert "COMM_LOST" in events
+
+
+def test_simulator_lists_ups_for_ha_discovery(tmp_path):
+    # HA's NUT integration begins with LIST UPS — the simulator must answer.
+    import socket
+    import subprocess
+    import time as _t
+
+    proc = subprocess.Popen(
+        [sys.executable, str(SIMULATOR), "--scenario", "online", "--port", "0"],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        line = proc.stdout.readline()
+        port = int(line.rsplit("porta=", 1)[1])
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+            sock.sendall(b"LIST UPS\n")
+            data = sock.recv(4096).decode()
+        assert "BEGIN LIST UPS" in data
+        assert 'UPS river-office' in data
+        assert "END LIST UPS" in data
+    finally:
+        proc.terminate()
