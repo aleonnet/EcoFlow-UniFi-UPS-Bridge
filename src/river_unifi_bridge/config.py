@@ -14,6 +14,7 @@ source of truth for what a valid configuration is.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field, fields
 
 
@@ -64,6 +65,33 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "UI_API_PORT": (int, False, 35493, (1024, 65535)),
     "HISTORY_RETENTION_DAYS": (int, False, 7, (1, 365)),
 }
+
+
+# Fase 3'-EXP — shape of string keys that end up in an ssh argv or in a file path.
+# Structure fences (first char alphanumeric/letter, no whitespace) so a value can
+# never be parsed as an ssh option; sources/marks in docs/UDR7_PROTECAO_SSH_20260901.md.
+_PATTERNS: dict[str, re.Pattern[str]] = {
+    "UDR7_SSH_HOST": re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}"),
+    "UDR7_SSH_USER": re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}"),
+    "UDR7_SSH_KEY": re.compile(r"/[^\s~]+"),
+    "UDR7_EXPECTED_SERIAL": re.compile(r"[A-Za-z0-9-]{1,64}"),
+    "UDR7_WOL_MAC": re.compile(r"[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}"),
+}
+# Values that are syntactically fine but must never be accepted: the simulator's
+# serial would make synthetic telemetry look "registered" (fence M1).
+_FORBIDDEN_VALUES: dict[str, dict[str, str]] = {
+    "UDR7_EXPECTED_SERIAL": {"SIM0001": "serial_de_simulador"},
+}
+
+
+def _validate_str(key: str, value: str, where: str = "") -> None:
+    """Shape check for a non-empty string value (same rule for file and PUT)."""
+    pattern = _PATTERNS.get(key)
+    if pattern is not None and pattern.fullmatch(value) is None:
+        raise ConfigError(f"{where}{key}: valor inválido para o formato exigido")
+    reason = _FORBIDDEN_VALUES.get(key, {}).get(value)
+    if reason is not None:
+        raise ConfigError(f"{where}{key}: valor recusado ({reason})")
 
 
 @dataclass
@@ -139,6 +167,8 @@ def load_config(path: str) -> BridgeConfig:
             if value == "":
                 # Empty value: treated below as absent (required check decides).
                 continue
+            if typ is str:
+                _validate_str(key, value, f"{path}:{lineno}: ")
             value = value.replace("~", os.path.expanduser("~")) if typ is str else value
             try:
                 if typ is bool:
@@ -228,6 +258,8 @@ def validate_update(key: str, raw_value: str) -> object:
         if required:
             raise ConfigError(f"{key}: valor obrigatório não pode ser vazio")
         return ""
+    if typ is str:
+        _validate_str(key, value)
     try:
         if typ is bool:
             parsed: object = _parse_bool(value)

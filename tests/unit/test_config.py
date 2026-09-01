@@ -100,6 +100,75 @@ def test_allowlist_matches_spec_keys():
     assert len(expected) == 32
 
 
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("UDR7_SSH_USER", "-oProxyCommand=/bin/echo"),
+        ("UDR7_SSH_USER", "--"),
+        ("UDR7_SSH_USER", "-E"),
+        ("UDR7_SSH_USER", "-J"),
+        ("UDR7_SSH_USER", "root evil"),
+        ("UDR7_SSH_USER", "1234"),               # numeric-only (first char must be a letter)
+        ("UDR7_SSH_USER", "r" * 33),
+        ("UDR7_SSH_HOST", "-oProxyCommand=x"),
+        ("UDR7_SSH_HOST", "host name"),
+        ("UDR7_SSH_HOST", "a_b"),
+        ("UDR7_SSH_HOST", "::1"),
+        ("UDR7_SSH_KEY", "~/.ssh/id_ed25519"),
+        ("UDR7_SSH_KEY", "relative/key"),
+        ("UDR7_SSH_KEY", "-i"),
+        ("UDR7_EXPECTED_SERIAL", "SIM0001"),      # simulator serial can never be registered
+        ("UDR7_EXPECTED_SERIAL", "has space"),
+        ("UDR7_WOL_MAC", "AA:BB:CC:DD:EE"),
+        ("UDR7_WOL_MAC", "AA:BB-CC:DD-EE:FF"),    # mixed separators
+        ("UDR7_WOL_MAC", "GG:BB:CC:DD:EE:FF"),
+    ],
+)
+def test_protection_string_shapes_are_rejected_in_file_and_put(tmp_path, key, value):
+    from river_unifi_bridge.config import validate_update
+
+    with pytest.raises(ConfigError, match=key):
+        load_config(write(tmp_path, MINIMAL + f"{key}={value}\n"))
+    with pytest.raises(ConfigError, match=key):
+        validate_update(key, value)
+
+
+def test_protection_string_with_embedded_newline_is_rejected_by_put():
+    from river_unifi_bridge.config import validate_update
+
+    with pytest.raises(ConfigError, match="UDR7_SSH_USER"):
+        validate_update("UDR7_SSH_USER", "root\nUDR7_SSH_HOST=evil")
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("UDR7_SSH_USER", "root"),
+        ("UDR7_SSH_USER", "svc.bridge-01"),
+        ("UDR7_SSH_HOST", "192.168.1.1"),
+        ("UDR7_SSH_HOST", "udr7.home.arpa"),
+        ("UDR7_SSH_KEY", "/Users/svc/.ssh/river-bridge-udr7"),
+        ("UDR7_EXPECTED_SERIAL", "R3P-1234567890"),
+        ("UDR7_WOL_MAC", "aa:bb:cc:dd:ee:ff"),
+        ("UDR7_WOL_MAC", "AA-BB-CC-DD-EE-FF"),
+    ],
+)
+def test_protection_string_shapes_accepted(tmp_path, key, value):
+    from river_unifi_bridge.config import validate_update
+
+    cfg = load_config(write(tmp_path, MINIMAL + f"{key}={value}\n"))
+    assert getattr(cfg, key.lower()) == value
+    assert validate_update(key, value) == value
+
+
+def test_empty_protection_string_is_absent_not_invalid(tmp_path):
+    from river_unifi_bridge.config import validate_update
+
+    cfg = load_config(write(tmp_path, MINIMAL + "UDR7_SSH_HOST=\nUDR7_SSH_KEY=\n"))
+    assert cfg.udr7_ssh_host == "" and cfg.udr7_ssh_key == ""
+    assert validate_update("UDR7_SSH_HOST", "") == ""
+
+
 def test_protection_key_sets_are_consistent():
     from river_unifi_bridge.config import (
         FILE_ONLY_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS, RESTART_REQUIRED_KEYS,
