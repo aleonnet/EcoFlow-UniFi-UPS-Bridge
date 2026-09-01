@@ -116,7 +116,8 @@ snapshot.
 - [API local](docs/API_LOCAL_20260831.md).
 - Pesquisas: [UniFi × UPS de terceiros](docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md),
   [parâmetros de UPS](docs/PESQUISA_PARAMETROS_UPS_20260831.md),
-  [RIVER 3 Plus e Wi-Fi](docs/PESQUISA_ECOFLOW_WIFI_20260901.md); hipóteses e achados em `research/`.
+  [RIVER 3 Plus e Wi-Fi](docs/PESQUISA_ECOFLOW_WIFI_20260901.md),
+  [arquitetura de plugins](docs/PESQUISA_ARQUITETURA_PLUGINS_20260901.md); hipóteses e achados em `research/`.
 - [Backlog](docs/BACKLOG_20260901.md) · [Changelog](CHANGELOG.md).
 
 Licença MIT.
