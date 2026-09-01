@@ -1461,10 +1461,13 @@ READ_ONLY=1
 EMULATE_MODEL=0
 
 # ── 4. alarms ─────────────────────────────
-POWER_LOSS_DELAY_SECONDS=3
-RESTORE_DELAY_SECONDS=5
-COMM_LOSS_DELAY_SECONDS=20
-LOW_BATTERY_PERCENT=15
+# Defaults ancorados (docs/PESQUISA_PARAMETROS_UPS_20260831.md, 2026-08-31):
+# 6=apcupsd ONBATTERYDELAY · 0=restauração imediata (NUT/apcupsd)
+# 15=NUT upsmon DEADTIME · 30=fallback lowbatt do usbhid-ups
+POWER_LOSS_DELAY_SECONDS=6
+RESTORE_DELAY_SECONDS=0
+COMM_LOSS_DELAY_SECONDS=15
+LOW_BATTERY_PERCENT=30
 
 # ── 5. ui api (§7A) ───────────────────────
 UI_API_ENABLED=1

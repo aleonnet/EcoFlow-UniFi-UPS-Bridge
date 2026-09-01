@@ -32,10 +32,14 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "POLL_INTERVAL_SECONDS": (int, False, 2, (1, 60)),
     "READ_ONLY": (bool, False, True, None),
     "EMULATE_MODEL": (bool, False, False, None),
-    "POWER_LOSS_DELAY_SECONDS": (int, False, 3, (0, 600)),
-    "RESTORE_DELAY_SECONDS": (int, False, 5, (0, 600)),
-    "COMM_LOSS_DELAY_SECONDS": (int, False, 20, (0, 600)),
-    "LOW_BATTERY_PERCENT": (int, False, 15, (5, 50)),
+    # Defaults ancorados em fonte (docs/PESQUISA_PARAMETROS_UPS_20260831.md):
+    # 6 = apcupsd ONBATTERYDELAY; 0 = NUT/apcupsd notificam restauração na hora;
+    # 15 = NUT upsmon DEADTIME; 30 = fallback lowbatt do usbhid-ups (o LB do
+    # NUT nunca dispara no River 3 Plus — issue NUT #3068).
+    "POWER_LOSS_DELAY_SECONDS": (int, False, 6, (0, 600)),
+    "RESTORE_DELAY_SECONDS": (int, False, 0, (0, 600)),
+    "COMM_LOSS_DELAY_SECONDS": (int, False, 15, (0, 600)),
+    "LOW_BATTERY_PERCENT": (int, False, 30, (5, 50)),
     "UI_API_ENABLED": (bool, False, True, None),
     "UI_API_PORT": (int, False, 35493, (1024, 65535)),
     "HISTORY_RETENTION_DAYS": (int, False, 7, (1, 365)),
@@ -53,10 +57,10 @@ class BridgeConfig:
     poll_interval_seconds: int = 2
     read_only: bool = True
     emulate_model: bool = False
-    power_loss_delay_seconds: int = 3
-    restore_delay_seconds: int = 5
-    comm_loss_delay_seconds: int = 20
-    low_battery_percent: int = 15
+    power_loss_delay_seconds: int = 6
+    restore_delay_seconds: int = 0
+    comm_loss_delay_seconds: int = 15
+    low_battery_percent: int = 30
     ui_api_enabled: bool = True
     ui_api_port: int = 35493
     history_retention_days: int = 7

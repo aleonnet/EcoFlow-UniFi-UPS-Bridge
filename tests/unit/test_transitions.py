@@ -53,6 +53,18 @@ def test_restore_debounced_and_resets():
     assert t.observe(snap("OL CHRG")) == ["POWER_RESTORED"]
 
 
+def test_restore_delay_zero_fires_same_tick():
+    # Default de produção (pesquisa 2026-08-31): restauração imediata, como
+    # NUT/apcupsd. Com delay 0 o evento sai no MESMO tick da volta ao OL.
+    clock = FakeClock()
+    t = TransitionTracker(make_cfg(restore_delay_seconds=0), clock)
+    t.observe(snap("OB DISCHRG"))
+    clock.now = 4
+    assert "POWER_LOSS" in t.observe(snap("OB DISCHRG"))
+    clock.now = 5
+    assert t.observe(snap("OL CHRG")) == ["POWER_RESTORED"]
+
+
 def test_blip_shorter_than_delay_never_fires():
     clock = FakeClock()
     t = TransitionTracker(make_cfg(), clock)

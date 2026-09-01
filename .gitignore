@@ -11,3 +11,5 @@ __pycache__/
 .venv/
 macos/RiverBridge/.build/
 macos/RiverBridge/dist/
+
+.playwright-mcp/

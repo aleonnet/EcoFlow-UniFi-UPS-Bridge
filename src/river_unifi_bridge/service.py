@@ -54,11 +54,14 @@ class TransitionTracker:
             self._comm_lost = False
         self._last_ok_poll = now
 
+        # A janela abre E a condição é avaliada no MESMO tick: com delay 0 o
+        # evento sai imediatamente (semântica NUT/apcupsd — pesquisa
+        # 2026-08-31); com delay > 0 o primeiro tick nunca satisfaz (0 >= d).
         if snap.state == "ON_BATTERY":
             self._online_since = None
             if self._on_battery_since is None:
                 self._on_battery_since = now
-            elif (
+            if (
                 not self._power_lost
                 and now - self._on_battery_since >= self._cfg.power_loss_delay_seconds
             ):
@@ -68,7 +71,7 @@ class TransitionTracker:
             self._on_battery_since = None
             if self._online_since is None:
                 self._online_since = now
-            elif (
+            if (
                 self._power_lost
                 and now - self._online_since >= self._cfg.restore_delay_seconds
             ):
