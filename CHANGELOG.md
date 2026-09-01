@@ -2,7 +2,16 @@
 
 Formato de [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Ainda não há tags
 de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninstall.sh` e
-`tools/build-app.sh`, e cobre tudo até o commit atual de `main`.
+`tools/build-app.sh`. O que veio depois dela está em `[Unreleased]`.
+
+## [Unreleased]
+
+### Instalação
+- A abertura passa a mostrar **só o escudo** do ícone (antes era o quadrado arredondado
+  inteiro, que encostava nas bordas e cortava o halo e o traço) com **2 px de margem**, e toda
+  a paleta vem do ícone — raio no gradiente verde, partícula derivada do glow, halo verde no
+  lugar do ciano. 34×40 pixels, 5,67 s medidos num terminal real. O gate (S14) passou a
+  comparar o quadro do terminal com a máscara declarada no script, bordas incluídas.
 
 ## [0.1.0] — 2026-09-01
 
@@ -14,7 +23,7 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 - Repositório tornado público; instalação remota verificada (dry-run `0`, instalação `0`,
   reexecução `100`).
 - Abertura com o **ícone real do app** (`tools/gera-logo.py` roda o mesmo render do AppIcon;
-  40×40 pixels, cada um com a própria cor) em quatro atos — constelação, traço, batimento
+  40×40 pixels do ícone inteiro, cada um com a própria cor — o recorte pelo escudo veio depois) em quatro atos — constelação, traço, batimento
   cardíaco, assenta — e fecho no molde da casa (`relatorio_final`: título com o tempo, caixa
   do que ficou instalado, o app aberto como norte, `--no-open`).
 - `scripts/install.sh`: manifesto do que criou (created/preexisting/pending), `--dry-run`

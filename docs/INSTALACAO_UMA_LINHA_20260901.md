@@ -54,29 +54,26 @@ repassa a senha.
 `RUB_SERVICE_USER`, `RUB_PYTHON`, `RUB_SUDO` (vazio = sem sudo, para stubs), `RUB_APP_DEST`,
 `RUB_SKIP_HEALTH`, `UI_NO_ANIM`, `NO_COLOR`.
 
-## Abertura — o ícone real do app
+## Abertura — o escudo do app
 
 `tools/gera-logo.py` roda o mesmo render do AppIcon (`tools/app-icon-render.swift`,
-compartilhado com `tools/make-app-icon.sh`), recorta o squircle, reduz a 40×40 pixels com o
-`sips` e embute no instalador um bitmap com a cor de cada pixel (meio-bloco: 20 linhas — o
+compartilhado com `tools/make-app-icon.sh`), mede a caixa do **escudo** (não do quadrado
+arredondado), recorta só ele, reduz com o `sips` e o cola num canvas de 34×40 pixels com
+**2 px de margem vazia** — a margem não é enfeite: o halo e o traço só existem em volta do que
+está dentro do canvas, e sem ela sumiam onde o desenho encostava na borda (era o "cortando ao
+redor"). O instalador recebe um bitmap com a cor de cada pixel (meio-bloco: 20 linhas — o
 maior que cabe com o título num terminal de 24 linhas). Quatro atos, como a abertura do
-`haos-install.sh`: o fundo do squircle sobe como líquido com o escudo vazado enquanto cada
-pixel do escudo voa de fora da tela e assenta (constelação); a caneta branca contorna o
-escudo e se retrai; o escudo **bate como um coração** — tum-tum, pausa, tum-tum — clareando,
-acendendo o raio e soltando um halo ciano no pico; e assenta. Medido num pty (2026-09-01): 95
-quadros em 5,5 s. Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro
-parado; sem cor/UTF-8 = só o título. `--demo` mostra só a abertura; `--demo-frame N` um
-quadro. O quadro final é snapshot no gate (S14, pty de 80 colunas). Mudou o ícone? Rode o
-gerador e cole o fragmento entre os marcadores `GERADO` do instalador.
-
-## Fecho — o relatório do molde da casa
-
-Como o `relatorio_final` do `haos-install.sh`: título com o tempo na mesma linha ("Feito até
-aqui · concluído em 43s" ou "Nada a fazer — tudo já estava no lugar"), caixa do que ficou
-instalado (✔ serviço com a versão lida de `/v1/version`, ✔ app, ✔ configuração; `gum` se
-houver, texto puro se não), o **norte** — "O River Bridge está na sua barra de menus", e o app
-é aberto sozinho (`--no-open` desliga) —, o aviso de que a proteção do UDR7 nasce em ensaio,
-e o caminho do relatório desta execução.
+`haos-install.sh`: cada pixel do escudo voa de fora da tela e assenta, de baixo para cima
+(constelação); a caneta branca contorna o escudo e se retrai; o escudo **bate como um
+coração** — tum-tum, pausa, tum-tum — clareando, acendendo o raio e soltando um halo **verde**
+no pico; e assenta. Toda a paleta vem do próprio ícone: o raio mostra o gradiente verde do
+render, a partícula deriva do glow (`38,230,178`) e o halo é o verde do fundo (`26,166,140`).
+Medido num pty (2026-09-01): **5,67 s**, 823 partículas em 26 quadros de constelação.
+Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro parado; sem cor/UTF-8
+= só o título. `--demo` mostra só a abertura; `--demo-frame N` um quadro. No gate (S14) o
+quadro do terminal é comparado **com a máscara declarada no próprio script**, bordas incluídas,
+além do snapshot. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre os marcadores
+`GERADO` do instalador (`--medir` imprime as dimensões e o custo do primeiro ato).
 
 ## Cercas no gate (`tools/gate.sh`)
 

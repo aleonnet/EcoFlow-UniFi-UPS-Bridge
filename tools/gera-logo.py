@@ -3,55 +3,91 @@
 gera-logo.py — gera o logo do River Bridge para a abertura do instalador.
 
 A fonte é o ÍCONE REAL do app: roda tools/app-icon-render.swift (o mesmo render
-que produz o AppIcon.icns), recorta o squircle, reduz a LADO×LADO pixels com o
-`sips` do macOS e lê o BMP com a biblioteca padrão (sem PIL). Meio-bloco: cada
-célula do terminal vira DOIS pixels (topo = frente do "▀", base = fundo), cada
-pixel com a SUA cor de verdade — não uma paleta de classes.
+que produz o AppIcon.icns), recorta **o escudo** (não o quadrado arredondado), o
+reduz com o `sips` do macOS e o cola num canvas com MARGEM px de vazio em volta.
+A margem não é enfeite: `halo()` só cria pixels em volta do que está dentro do
+canvas e `contorno()` exige vizinho de fora — onde a máscara encosta na borda,
+halo e traço somem (é o "cortando ao redor" que o dono viu em 2026-09-01).
+
+O BMP é lido com a biblioteca padrão (sem PIL). Meio-bloco: cada célula do
+terminal vira DOIS pixels (topo = frente do "▀", base = fundo), cada pixel com a
+SUA cor de verdade — não uma paleta de classes.
 
 Classes por pixel (LG_MASK):
-    .  fora (transparente)      b  fundo do squircle (gradiente)
-    s  escudo (branco)          r  raio (o vazado do escudo, brilha no batimento)
+    .  fora (margem, e todo pixel alcançável a partir da borda)
+    s  escudo (branco)      r  raio (o vazado do escudo, brilha no batimento)
 
 Saem também, em vetores paralelos (índice = y*LG_W + x quando é por pixel):
     LG_RGB              "r;g;b" de cada pixel (fora = "0;0;0")
     LG_TX/LG_TY         contorno do escudo, ordenado por posição de ARCO
                         (índice = posição: o traço desenha e retrai por arco)
-    LG_AX/LG_AY/LG_AOX/LG_AOY/LG_ADL  partículas da constelação (só o escudo):
-                        destino, origem fora do canvas (radial com giro de 40°)
-                        e atraso — construção de baixo para cima, determinística
-    LG_HX/LG_HY         o halo: pixels de fora encostados no squircle (o anel
+    LG_AX/LG_AY/LG_AOX/LG_AOY/LG_ADL  partículas da constelação: destino,
+                        origem fora do canvas (radial com giro de 40°) e atraso
+                        — construção de baixo para cima, determinística
+    LG_HX/LG_HY         o halo: pixels de fora encostados no escudo (o anel
                         que acende a cada batida do coração)
 
     ./tools/gera-logo.py            imprime o fragmento bash
     ./tools/gera-logo.py --preview  desenha no terminal (truecolor) para conferir
-    ./tools/gera-logo.py --medir    só os números
-    LADO=40 por padrão (20 linhas: o maior que cabe com o título em 24 linhas).
+    ./tools/gera-logo.py --medir    os números, incluindo o produto do orçamento
+    ALTURA=40 por padrão (20 linhas: o maior que cabe com o título em 24 linhas);
+    MARGEM=2. `ALTURA` tem de ser par — o render lê `mask[y+1]`.
 """
 import math, os, struct, subprocess, sys, tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LADO = int(os.environ.get("LADO", "40"))
-INSET_PT, SQUIRCLE_PT, MASTER_PT = 60, 904, 1024   # geometria do app-icon-render.swift
-A_DUR = 8                                           # quadros de voo de cada partícula
+ALTURA = int(os.environ.get("ALTURA", "40"))
+MARGEM = int(os.environ.get("MARGEM", "2"))
+A_DUR = 8                    # quadros de voo de cada partícula
+SONDA = 256                  # resolução da sonda onde o bbox do escudo é medido
+BRANCO = 150                 # min(r,g,b) a partir do qual o pixel é escudo
+OPACO = 96                   # alpha a partir do qual o pixel conta
 
 
-def renderizar_bmp(lado):
-    """Ícone real → recorte do squircle → lado×lado → BMP 32 bpp. Devolve bytes."""
+def _bbox_do_escudo(dados):
+    """Caixa (y0, x0, h, w) do escudo branco na sonda."""
+    img = ler_bmp(dados)
+    pts = [(y, x) for y, linha in enumerate(img) for x, (r, g, b, a) in enumerate(linha)
+           if a >= OPACO and min(r, g, b) >= BRANCO]
+    assert pts, "bbox vazio: o escudo não foi encontrado na sonda"
+    ys = [p[0] for p in pts]; xs = [p[1] for p in pts]
+    return min(ys), min(xs), max(ys) - min(ys) + 1, max(xs) - min(xs) + 1
+
+
+def renderizar_bmp(altura: int, margem: int) -> bytes:
+    """Ícone real → bbox do escudo → recorte → resize → canvas com margem.
+
+    O canvas já sai no BMP (padding transparente), então `classificar` vê a
+    margem como '.' e o halo/contorno cabem inteiros. `sips` opera IN PLACE
+    quando não recebe `--out` — por isso a sonda vai para outro arquivo.
+    Ordem dos argumentos medida em `man sips`: `--cropToHeightWidth pixelsH
+    pixelsW`, `--cropOffset offsetY offsetX`, `--resampleHeightWidth pixelsH
+    pixelsW` — ALTURA antes de LARGURA, Y antes de X.
+    """
+    assert altura % 2 == 0, f"ALTURA tem de ser par (é {altura}): o render lê mask[y+1]"
     work = tempfile.mkdtemp(prefix="gera-logo.")
     master = os.path.join(work, "master.png")
     subprocess.run(["swift", os.path.join(RAIZ, "tools", "app-icon-render.swift"), master],
                    check=True, stdout=subprocess.DEVNULL)
-    out = subprocess.run(["sips", "-g", "pixelWidth", master], check=True,
-                         capture_output=True, text=True).stdout
-    px = int(out.strip().rsplit(":", 1)[1])
-    escala = px / MASTER_PT                         # o AppKit renderiza em retina (2048)
-    inset, lado_sq = round(INSET_PT * escala), round(SQUIRCLE_PT * escala)
-    subprocess.run(["sips", "--cropOffset", str(inset), str(inset), "-c", str(lado_sq), str(lado_sq),
-                    master], check=True, stdout=subprocess.DEVNULL)
-    bmp = os.path.join(work, "small.bmp")
-    subprocess.run(["sips", "-z", str(lado), str(lado), "-s", "format", "bmp", master, "--out", bmp],
+    saida = subprocess.run(["sips", "-g", "pixelWidth", master], check=True,
+                           capture_output=True, text=True).stdout
+    px_master = int(saida.strip().rsplit(":", 1)[1])   # o AppKit renderiza em retina (2048)
+
+    sonda = os.path.join(work, "sonda.bmp")
+    subprocess.run(["sips", "-z", str(SONDA), str(SONDA), "-s", "format", "bmp",
+                    master, "--out", sonda], check=True, stdout=subprocess.DEVNULL)
+    y0, x0, h, w = _bbox_do_escudo(open(sonda, "rb").read())
+    k = px_master / SONDA                              # sonda → pixels do master
+    cy, cx, ch, cw = round(y0 * k), round(x0 * k), round(h * k), round(w * k)
+
+    escudo_h = altura - 2 * margem
+    escudo_w = max(1, round(escudo_h * cw / ch))
+    subprocess.run(["sips", "--cropOffset", str(cy), str(cx), "-c", str(ch), str(cw), master],
                    check=True, stdout=subprocess.DEVNULL)
-    return open(bmp, "rb").read()
+    bmp = os.path.join(work, "escudo.bmp")
+    subprocess.run(["sips", "-z", str(escudo_h), str(escudo_w), "-s", "format", "bmp",
+                    master, "--out", bmp], check=True, stdout=subprocess.DEVNULL)
+    return open(bmp, "rb").read(), escudo_w + 2 * margem, altura, margem
 
 
 def ler_bmp(dados):
@@ -79,23 +115,41 @@ def ler_bmp(dados):
     return img
 
 
+def com_margem(img, largura, altura, margem):
+    """Cola o escudo reduzido num canvas transparente de largura×altura."""
+    vazio = (0, 0, 0, 0)
+    canvas = [[vazio] * largura for _ in range(altura)]
+    for y, linha in enumerate(img):
+        for x, px in enumerate(linha):
+            cy, cx = y + margem, x + margem
+            if 0 <= cy < altura and 0 <= cx < largura:
+                canvas[cy][cx] = px
+    return canvas
+
+
 def classificar(img):
+    """'.' fora · 's' escudo · 'r' o vazado do escudo.
+
+    O recorte retangular traz, nos cantos, pixels opacos do gradiente do fundo do
+    ícone e a borda anti-aliased do escudo (min < BRANCO). A regra que os elimina:
+    **todo pixel não-'s' alcançável a partir da borda do canvas é '.'**; só o não
+    alcançável (fechado pelo escudo) é o raio. Efeito declarado: a borda
+    anti-aliased vira '.', o escudo encolhe menos de 1 px.
+    """
     W, H = len(img[0]), len(img)
     rgb, mask = [], []
     for y in range(H):
         linha = []
         for x in range(W):
             r, g, b, a = img[y][x]
-            if a < 96:
+            if a < OPACO:
                 linha.append("."); rgb.append((0, 0, 0)); continue
-            # borda do squircle semi-transparente: compõe sobre preto (terminal escuro)
+            # borda semi-transparente: compõe sobre preto (terminal escuro)
             r, g, b = r * a // 255, g * a // 255, b * a // 255
             rgb.append((r, g, b))
-            linha.append("s" if min(r, g, b) >= 150 else "b")
+            linha.append("s" if min(r, g, b) >= BRANCO else "?")
         mask.append(linha)
 
-    # O raio é o vazado do escudo: fundo NÃO alcançável a partir das bordas sem
-    # atravessar o escudo. Flood fill de fora para dentro sobre não-'s'.
     fora = [[False] * W for _ in range(H)]
     pilha = [(x, y) for x in range(W) for y in (0, H - 1)] + [(x, y) for y in range(H) for x in (0, W - 1)]
     while pilha:
@@ -106,9 +160,21 @@ def classificar(img):
         pilha.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
     for y in range(H):
         for x in range(W):
-            if mask[y][x] == "b" and not fora[y][x]:
-                mask[y][x] = "r"
+            if mask[y][x] == "?":
+                if fora[y][x]:
+                    mask[y][x] = "."
+                    rgb[y * W + x] = (0, 0, 0)
+                else:
+                    mask[y][x] = "r"
     return rgb, ["".join(l) for l in mask], fora
+
+
+def conferir(mask):
+    """As duas cercas do gerador — rodam em TODA invocação, não só em --medir."""
+    classes = set("".join(mask))
+    assert classes <= {".", "s", "r"}, f"máscara com classe inesperada: {sorted(classes)}"
+    assert set(mask[0]) == {"."} and set(mask[-1]) == {"."}, "borda horizontal não vazia"
+    assert all(l[0] == "." and l[-1] == "." for l in mask), "borda vertical não vazia"
 
 
 def contorno(mask, fora):
@@ -132,12 +198,13 @@ def contorno(mask, fora):
 
 
 def particulas(mask):
-    """Cada pixel do ESCUDO (s e r) ganha origem radial (giro de 40°) e atraso de
-    baixo para cima — o mesmo desenho do gerador do haos-install; determinístico.
-    Só o escudo voa: o fundo do squircle sobe como líquido (barato no bash — o
-    custo por partícula é o que limita a fluidez, medido em 2026-09-01)."""
+    """Cada pixel do escudo ganha origem radial (giro de 40°) e atraso de baixo
+    para cima — o mesmo desenho do gerador do haos-install; determinístico.
+    `raio` usa max(W, H) porque o canvas não é quadrado: 0,9·max é sempre maior
+    que a meia-diagonal, logo toda origem nasce fora da tela."""
     W, H = len(mask[0]), len(mask)
     cx0, cy0 = W / 2.0, H / 2.0
+    fora_da_tela = max(W, H) * 0.9
     ys = [y for y in range(H) for x in range(W) if mask[y][x] in "sr"]
     y_base = max(ys)
     saida, i = [], 0
@@ -146,7 +213,7 @@ def particulas(mask):
             if mask[y][x] not in "sr":
                 continue
             ang = math.atan2(y + 0.5 - cy0, x + 0.5 - cx0) + math.radians(40)
-            raio = W * 0.9 + (i % 9)
+            raio = fora_da_tela + (i % 9)
             saida.append((x, y, int(cx0 + math.cos(ang) * raio), int(cy0 + math.sin(ang) * raio),
                           (y_base - y) // 2 + (i % 3)))
             i += 1
@@ -176,20 +243,22 @@ def vetor(nome, valores):
 
 
 def main():
-    img = ler_bmp(renderizar_bmp(LADO))
+    dados, largura, altura, margem = renderizar_bmp(ALTURA, MARGEM)
+    img = com_margem(ler_bmp(dados), largura, altura, margem)
     rgb, mask, fora = classificar(img)
-    W, H = LADO, LADO
+    conferir(mask)
+    W, H = len(img[0]), len(img)
     tr = contorno(mask, fora)
     pa = particulas(mask)
     ha = halo(mask)
-    n_icone = sum(1 for l in mask for c in l if c != ".")
+    q_monta = max(p[4] for p in pa) + A_DUR
     n_escudo = sum(l.count("s") for l in mask)
     n_raio = sum(l.count("r") for l in mask)
 
     if "--medir" in sys.argv:
-        print(f"lado {W}  ícone {n_icone} px  escudo {n_escudo}  raio {n_raio}  "
-              f"contorno {len(tr)}  partículas {len(pa)}  halo {len(ha)}  "
-              f"quadros da constelação {max(p[4] for p in pa) + A_DUR}")
+        print(f"{W}×{H}  escudo {n_escudo}  raio {n_raio}  contorno {len(tr)}  "
+              f"halo {len(ha)}  partículas {len(pa)}  LG_Q_MONTA {q_monta}  "
+              f"produto (orçamento do ato 1) {q_monta * len(pa)}")
         return
     if "--preview" in sys.argv:
         for y in range(0, H, 2):
@@ -211,12 +280,13 @@ def main():
         return
 
     print("# ── GERADO por tools/gera-logo.py — NÃO editar à mão ──────────────────────")
-    print(f"# Ícone real do app (tools/app-icon-render.swift) reduzido a {W}×{H} pixels.")
-    print("# LG_MASK: . fora · b fundo · s escudo · r raio. LG_RGB por pixel (y*LG_W+x).")
+    print(f"# Escudo do ícone real (tools/app-icon-render.swift) em {W}×{H} pixels,")
+    print(f"# com {margem} px de margem vazia para o halo e o traço não serem cortados.")
+    print("# LG_MASK: . fora · s escudo · r raio. LG_RGB por pixel (y*LG_W+x).")
     print(f"LG_W={W}")
     print(f"LG_H={H}")
     print(f"LG_CAMINHO={len(tr)}")
-    print(f"LG_Q_MONTA={max(p[4] for p in pa) + A_DUR}")
+    print(f"LG_Q_MONTA={q_monta}")
     print("LG_MASK=(")
     for l in mask:
         print(f"'{l}'")

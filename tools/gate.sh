@@ -287,11 +287,12 @@ else
 fi
 rm -rf "$OL" "$OL2"
 
-# S14 — snapshot da abertura (quadro final) num pty de 80 colunas, escapes removidos.
+# S14 — abertura num pty de 80 colunas: asserção estrutural (o quadro bate com a
+# LG_MASK do próprio script, bordas incluídas) + snapshot do quadro final.
 # Só num pty a camada visual vê TTY; sem ele degrada para texto e o snapshot não diria nada.
 SNAP_DIR="$RAIZ/tests/snapshots"; mkdir -p "$SNAP_DIR"
 SNAP_OUT="$(mktemp)"
-"$PY" - "$ONE" > "$SNAP_OUT" <<'EOF'
+if ! "$PY" - "$ONE" > "$SNAP_OUT" <<'EOF'
 import os, pty, re, sys, fcntl, termios, struct
 script = sys.argv[1]
 pid, fd = pty.fork()
@@ -311,9 +312,32 @@ while True:
     out += chunk
 os.waitpid(pid, 0)
 text = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", out).decode("utf-8", "replace").replace("\r", "")
+
+# Cerca estrutural (P0, 2026-09-01): o snapshot sozinho só prova "não mudou". Aqui o
+# quadro do pty é comparado com a MÁSCARA declarada no próprio script — é o que pega
+# o defeito que o dono viu (logo cortado nas bordas) e uma margem que sumiu.
+src = open(script, encoding="utf-8").read()
+W = int(re.search(r"^LG_W=(\d+)$", src, re.M)[1])
+H = int(re.search(r"^LG_H=(\d+)$", src, re.M)[1])
+bloco = src[src.index("LG_MASK=("):]
+bloco = bloco[:bloco.index("\n)\n")]
+mask = re.findall(r"^'([.sr]+)'$", bloco, re.M)
+assert len(mask) == H and all(len(l) == W for l in mask), "LG_MASK não é LG_W x LG_H"
+assert set(mask[0]) == {"."} and set(mask[-1]) == {"."}, "borda horizontal da máscara não é vazia"
+assert all(l[0] == "." and l[-1] == "." for l in mask), "borda vertical da máscara não é vazia"
+linhas = text.split("\n")[:H // 2]          # as H/2 linhas do logo, ANTES do rstrip final
+assert len(linhas) == H // 2, f"logo com {len(linhas)} linhas, esperado {H // 2}"
+for cy, linha in enumerate(linhas):
+    celulas = linha[2:2 + W].ljust(W)        # lg_render imprime 2 espaços de recuo
+    for x in range(W):
+        esperado = mask[2 * cy][x] != "." or mask[2 * cy + 1][x] != "."
+        assert (celulas[x] != " ") == esperado, f"célula ({cy},{x}) não bate com a máscara"
+
 print("\n".join(l.rstrip() for l in text.splitlines()).rstrip())
 EOF
-if [ "${GATE_UPDATE:-0}" = "1" ] || [ ! -f "$SNAP_DIR/abertura-80-utf8.txt" ]; then
+then
+    erro "S14 abertura: asserção estrutural (máscara × pty) reprovou"
+elif [ "${GATE_UPDATE:-0}" = "1" ] || [ ! -f "$SNAP_DIR/abertura-80-utf8.txt" ]; then
     cp "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt"
     ok "S14 abertura: snapshot (re)gravado em tests/snapshots/abertura-80-utf8.txt"
 elif diff -q "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt" >/dev/null; then
