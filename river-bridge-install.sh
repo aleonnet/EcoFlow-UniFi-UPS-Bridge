@@ -283,7 +283,15 @@ ui_spin() { # ui_spin "rótulo" <pid>
   done
   wait "$pid" || rc=$?
   printf '\r\033[2K'; _ui_show
-  if [ "$rc" = "0" ]; then ui_ok "$label"; else ui_err "$label  (exit $rc)"; fi
+  # 100 é SUCESSO no contrato da casa ("nada a fazer") — a linha 606 já o trata
+  # assim. Sem este ramo o passo saía com ✖ e "(exit 100)" na tela, e logo abaixo
+  # o chamador imprimia "serviço já estava atual": duas linhas em desacordo, com a
+  # errada em vermelho. Visto no Mac mini em 2026-09-01.
+  case "$rc" in
+    0)   ui_ok "$label" ;;
+    100) ui_skip "$label" ;;
+    *)   ui_err "$label  (exit $rc)" ;;
+  esac
   return "$rc"
 }
 

@@ -277,6 +277,54 @@ else
     erro "S12 one-liner: rc1=$OL_RC1 rc2=$OL_RC2 rc3=$OL_RC3 kicks=$OL_KICKS rc4=$OL_RC4 — caudas:"
     tail -3 "$OL/r1.log" "$OL/r2.log" "$OL/r3.log" "$OL/r4.log" 2>/dev/null
 fi
+# S17 — reexecução (rc 100) num PTY COM animação: o passo não pode aparecer como
+# falha. 100 é sucesso no contrato da casa, mas ui_spin rotulava todo rc != 0 como
+# erro, e a tela mostrava "✖ … (exit 100)" seguido de "serviço já estava atual" —
+# dois rótulos em desacordo, com o errado em vermelho (visto no Mac mini em
+# 2026-09-01). Precisa de pty E de animação: com --no-anim (como em S9 e S12)
+# ui_spin devolve antes de rotular, e a cena não tocaria o defeito.
+if [ -d "$OL/state" ]; then
+    if OL_ENV_PTY="$OL_ENV" ONE_PTY="$ONE" RAIZ_PTY="$RAIZ" "$PY" - <<'EOF'
+import os, pty, re, sys, fcntl, termios, struct
+env = dict(p.split("=", 1) for p in os.environ["OL_ENV_PTY"].split() if "=" in p)
+env.pop("NO_COLOR", None)                      # NO_COLOR desligaria a animação
+# Lidos ANTES do clear: depois dele o os.environ não tem mais nada, e o execv
+# receberia caminho vazio (rc 127 em vez do 100 que a cena espera).
+script, raiz = os.environ["ONE_PTY"], os.environ["RAIZ_PTY"]
+lar = os.environ.get("HOME", "/tmp")
+pid, fd = pty.fork()
+if pid == 0:
+    base = {"TERM": "xterm-256color", "COLORTERM": "truecolor", "LC_ALL": "en_US.UTF-8",
+            "LANG": "en_US.UTF-8", "HOME": lar}
+    base.update(env)
+    os.environ.clear(); os.environ.update(base)
+    os.execv("/bin/bash", ["/bin/bash", script, "--yes", "--no-app", "--src", raiz])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 100, 0, 0))
+out = b""
+while True:
+    try:
+        chunk = os.read(fd, 65536)
+    except OSError:
+        break
+    if not chunk:
+        break
+    out += chunk
+_, st = os.waitpid(pid, 0)
+texto = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", out).decode("utf-8", "replace")
+rc = os.waitstatus_to_exitcode(st)
+assert rc == 100, f"reexecução devia sair 100, saiu {rc}"
+assert "(exit 100)" not in texto, "o passo mostrou \"(exit 100)\" na tela"
+assert "✖" not in texto, "o passo apareceu com ✖ numa reexecução bem-sucedida"
+EOF
+    then
+        ok "S17 reexecução num pty com animação: rc 100 sem ✖ e sem \"(exit 100)\" na tela"
+    else
+        erro "S17 reexecução num pty: o passo de sucesso apareceu como falha"
+    fi
+else
+    erro "S17 reexecução num pty: o ambiente de stubs da S12 não existe"
+fi
+
 # S13 — dry-run pelo cano não escreve NADA (nem estado, nem cache)
 OL2="$(mktemp -d)"
 cat "$ONE" | env RUB_STATE_DIR="$OL2/state" RUB_CACHE_DIR="$OL2/cache" NO_COLOR=1 LC_ALL=C /bin/bash -s -- --dry-run --src "$RAIZ" >"$OL2/dry.log" 2>&1; OL_RC5=$?

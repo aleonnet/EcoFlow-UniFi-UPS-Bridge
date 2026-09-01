@@ -110,7 +110,7 @@ No gate: **S14** exige as bordas da máscara vazias (o caso extremo: desenho col
 confere que o render respeita a máscara, além do snapshot; **S15** exige que o bloco `GERADO` no
 instalador seja byte a byte a saída do gerador — é ela, e não a S14, que garante a margem
 publicada: um bloco gerado com outra margem reprova. No gerador, `conferir()` exige que a folga
-entregue seja ao menos a margem pedida nos quatro lados. **S16** roda a abertura num terminal de
+entregue seja ao menos a margem pedida nos quatro lados. **S17** roda uma reexecução num pty com animação e exige que o passo de sucesso (código 100) não apareça com `✖` nem com `(exit 100)`. **S16** roda a abertura num terminal de
 **256 cores** (sem `COLORTERM`, que é o Terminal.app de fábrica) e com o `/bin/bash` 3.2 do
 macOS: S14 sempre pediu truecolor e por isso nunca tocava esse ramo, onde um `printf -v` com
 alvo indexado — que o bash 3.2 recusa — deixava o gradiente inteiro vazio e imprimia erro na

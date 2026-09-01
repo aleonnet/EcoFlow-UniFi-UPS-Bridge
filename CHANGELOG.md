@@ -26,6 +26,13 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
   numa tela mais baixa, o salto é grampeado no topo e os quadros escorregam. Abaixo de
   `LG_LINHAS + 1` cai para o quadro único, como já fazia com terminal estreito. Medido: 21
   linhas anima, 20 não; antes, uma tela de 15 linhas fazia 75 saltos de cursor às cegas.
+- **Conserto de produção:** numa reexecução, o passo do serviço aparecia como **falha** —
+  `✖ sudo scripts/install.sh … (exit 100)` em vermelho — com a linha de sucesso logo abaixo
+  ("serviço já estava atual"). 100 é sucesso no contrato da casa ("nada a fazer"), mas o
+  `ui_spin` rotulava todo código diferente de zero como erro, antes de o chamador classificar.
+  Nova cena S17 roda a reexecução num pty COM animação e exige que a tela não mostre `✖` nem
+  `(exit 100)` — precisa das duas coisas: com `--no-anim`, que é como S9 e S12 rodam, o
+  `ui_spin` devolve antes de rotular e o defeito não aparece.
 - **Conserto de produção:** num terminal de 256 cores — o Terminal.app de fábrica, que não
   define `COLORTERM` — a abertura saía **sem cor nenhuma** e imprimia `printf: 'LG_FGA[y]': not
   a valid identifier`. O `/bin/bash` do macOS é 3.2 e não aceita alvo indexado em `printf -v`;
