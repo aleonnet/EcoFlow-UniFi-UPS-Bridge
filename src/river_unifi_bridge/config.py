@@ -61,11 +61,19 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "UDR7_CONFIRM_SECONDS": (int, False, 6, (0, 600)),
     "UDR7_RETRY_MAX": (int, False, 3, (0, 3)),
     "UDR7_WOL_MAC": (str, False, "", None),
+    # O nome que o usuário dá ao dispositivo — aparece nos relatórios e gráficos.
+    # Não entra em PROTECTION_KEYS: renomear com a proteção armada é permitido.
+    "UDR7_NAME": (str, False, "UDR7", None),
     "UI_API_ENABLED": (bool, False, True, None),
     "UI_API_PORT": (int, False, 35493, (1024, 65535)),
     "HISTORY_RETENTION_DAYS": (int, False, 7, (1, 365)),
 }
 
+
+_NAME_BAD = (r"\s~\x00-\x1f\x7f\u00ad\u061c\u180b-\u180e\u200b-\u200f\u2028-\u202e"
+             r"\u2060-\u206f\u115f\u1160\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0"
+             r"\U000e0000-\U000e01ef")
+_NAME_PATTERN = rf"(?=.{{1,32}}\Z)[^{_NAME_BAD}](?: ?[^{_NAME_BAD}])*"
 
 # Fase 3'-EXP — shape of string keys that end up in an ssh argv or in a file path.
 # Structure fences (first char alphanumeric/letter, no whitespace) so a value can
@@ -76,6 +84,18 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
     "UDR7_SSH_KEY": re.compile(r"/[^\s~]+"),
     "UDR7_EXPECTED_SERIAL": re.compile(r"[A-Za-z0-9-]{1,64}"),
     "UDR7_WOL_MAC": re.compile(r"[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}"),
+    # UDR7_NAME é texto que o usuário escolhe, então a regra é de FORMA, não de
+    # conteúdo: 1 a 32 caracteres (o lookahead conta o total — sem ele o {0,30}
+    # limitaria só os não-brancos e "aaa…" com 61 passaria), espaço apenas U+0020 e
+    # só simples entre dois não-brancos. Proibidos: controle, `\s`, `~` (load_config
+    # expande `~` em toda string), e a família de invisíveis que deixaria um nome
+    # "parecer UDR7" sem ser — hífen suave, zero-width, BOM, bidi (ALM incluído),
+    # preenchedores Hangul, braille em branco, variation selectors (BMP, mongóis e
+    # suplementares) e tags. A classe vai com escapes \uXXXX de propósito: colar os
+    # caracteres de verdade já corrompeu a classe uma vez, criando um range acidental
+    # que rejeitava "Meu UDR". Homóglifos (cirílico) e combinantes ficam de fora por
+    # natureza — lacuna declarada.
+    "UDR7_NAME": re.compile(_NAME_PATTERN),
 }
 # Values that are syntactically fine but must never be accepted: the simulator's
 # serial would make synthetic telemetry look "registered" (fence M1).
@@ -125,6 +145,7 @@ class BridgeConfig:
     udr7_confirm_seconds: int = 6
     udr7_retry_max: int = 3
     udr7_wol_mac: str = ""
+    udr7_name: str = "UDR7"
     ui_api_enabled: bool = True
     ui_api_port: int = 35493
     history_retention_days: int = 7
@@ -230,6 +251,7 @@ HOT_RELOAD_KEYS = frozenset(
         "UDR7_CONFIRM_SECONDS",
         "UDR7_RETRY_MAX",
         "UDR7_WOL_MAC",
+        "UDR7_NAME",
     }
 )
 RESTART_REQUIRED_KEYS = frozenset(_ALLOWLIST) - HOT_RELOAD_KEYS
@@ -238,9 +260,15 @@ RESTART_REQUIRED_KEYS = frozenset(_ALLOWLIST) - HOT_RELOAD_KEYS
 FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED"})
 # Conjunto congelado enquanto o daemon está armado (PUT → 409 `armado`), com a única
 # exceção do desarme (PUT contendo só as chaves do predicado que o torna falso).
-PROTECTION_KEYS = frozenset(
-    {k for k in _ALLOWLIST if k.startswith(("PROTECT_", "UDR7_"))}
-    | {"NUT_HOST", "NUT_PORT", "NUT_UPS"}
+# O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção: pode
+# ser trocado com o daemon armado. Sem o `- DEVICE_NAME_KEYS` o prefixo o engoliria.
+DEVICE_NAME_KEYS = frozenset({"UDR7_NAME"})
+PROTECTION_KEYS = (
+    frozenset(
+        {k for k in _ALLOWLIST if k.startswith(("PROTECT_", "UDR7_"))}
+        | {"NUT_HOST", "NUT_PORT", "NUT_UPS"}
+    )
+    - DEVICE_NAME_KEYS
 )
 
 

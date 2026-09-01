@@ -1583,9 +1583,10 @@ UDR7_MIN_OUTAGE_SECONDS=0
 UDR7_CONFIRM_SECONDS=6
 UDR7_RETRY_MAX=3
 UDR7_WOL_MAC=
+UDR7_NAME=UDR7
 ```
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* semântica das chaves do bloco 6 e fontes dos
+*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v8):* `UDR7_NAME` é o nome que o usuário dá ao dispositivo (1–32 caracteres); aplica a quente e, apesar do prefixo `UDR7_`, **não** entra em `PROTECTION_KEYS` nem nos pinos de armamento — renomear com a proteção armada é permitido. Semântica das chaves do bloco 6 e fontes dos
 defaults estão em `docs/UDR7_PROTECAO_SSH_20260901.md` e no `.env.example`. `READ_ONLY`
 é chave **sem efeito** no código (nenhuma leitura em `src/`); não foi reaproveitada como
 trava de armamento (a trava é `UDR7_ARM_ALLOWED`, somente arquivo); `READ_ONLY=1` pode
@@ -1902,7 +1903,7 @@ Este projeto segue as convenções do monorepo `/Users/alessandro/Development/AB
   ("2ª execução reporta 100"); toda cerca nova passa por teste de mutação
   (plantar o defeito, a cerca TEM de reprovar).
   *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* na Fase 3'-EXP a mutação é
-  **parcial e declarada** (8 cenas para as cercas decisivas; as demais só teste) — ver §18.1.
+  **parcial e declarada** (10 cenas para as cercas decisivas, incluindo S4m — o nome do dispositivo não é congelado com o daemon armado — e S4o — o nome não é pino de armamento; as demais só teste) — ver §18.1.
 - **Reuso direto identificado (2026-08-31):** molde de instalador
   `ABHOME-macmini/macmini-backup.sh`; launchd idempotente
   `ABHOME-haos-macmini/haos-install.sh:1253-1345`; cliente da API local do UniFi OS

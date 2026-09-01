@@ -114,7 +114,7 @@ def _is_loopback(host: str) -> bool:
 
 
 # --- configuration snapshot (single runtime source of truth) ----------------------
-_PIN_EXCLUDED = ("protect_udr7", "protect_dry_run", "udr7_arm_allowed", "read_only")
+_PIN_EXCLUDED = ("protect_udr7", "protect_dry_run", "udr7_arm_allowed", "read_only", "udr7_name")
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,7 @@ class ProtectionConfig:
     udr7_confirm_seconds: int
     udr7_retry_max: int
     udr7_wol_mac: str
+    udr7_name: str
     nut_host: str
     nut_port: int
     nut_ups: str
@@ -677,6 +678,9 @@ class ProtectionPolicy:
             state = self._last_state or ("desabilitado" if not pc.protect_udr7 else "dry_run")
             return {
                 "state": state,
+                # O nome que o usuário deu ao dispositivo. Vazio (PUT "") grava vazio
+                # a quente; o fallback mora AQUI, num lugar só, e não no app.
+                "name": pc.udr7_name or "UDR7",
                 "dry_run": pc.protect_dry_run,
                 "enabled": pc.protect_udr7,
                 "source": (

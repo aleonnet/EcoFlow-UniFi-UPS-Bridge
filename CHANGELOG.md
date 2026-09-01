@@ -6,6 +6,17 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 
 ## [Unreleased]
 
+### Daemon
+- Nova chave **`UDR7_NAME`**: o nome que você dá ao dispositivo, que vai aparecer nos relatórios
+  e gráficos do app (1–32 caracteres). Aplica a quente e, apesar do prefixo `UDR7_`, **não** é
+  congelada com a proteção armada nem entra nos pinos do arquivo de armamento — renomear o
+  aparelho não desarma nada e não bloqueia a queda seguinte. `GET /v1/health` passa a trazer
+  `udr7_detail.name`; com o nome vazio, o próprio daemon repõe `"UDR7"`, num lugar só.
+  A forma barra o que faria um nome "parecer UDR7" sem ser: controle, `~`, hífen suave,
+  zero-width, BOM, bidi, preenchedores Hangul, braille em branco, variation selectors e tags
+  (medido: 7 nomes aceitos, 21 recusados). Duas cenas de gate novas — S4m (o nome fora do
+  congelamento) e S4o (o nome fora dos pinos), ambas provadas por mutação.
+
 ### Instalação
 - A abertura passa a mostrar **só o escudo** do ícone (antes era o quadrado arredondado
   inteiro, que encostava nas bordas e cortava o halo e o traço), no campo do molde

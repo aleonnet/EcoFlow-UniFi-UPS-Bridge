@@ -94,10 +94,10 @@ def test_allowlist_matches_spec_keys():
         "UDR7_EXPECTED_SERIAL", "UDR7_CUTOFF_PERCENT", "UDR7_SHUTDOWN_PERCENT",
         "UDR7_DISCHARGE_SECONDS_PER_PCT", "UDR7_RUNTIME_MINUTES",
         "UDR7_MIN_OUTAGE_SECONDS", "UDR7_CONFIRM_SECONDS", "UDR7_RETRY_MAX",
-        "UDR7_WOL_MAC",
+        "UDR7_WOL_MAC", "UDR7_NAME",
     }
     assert set(allowlist_keys()) == expected
-    assert len(expected) == 32
+    assert len(expected) == 33
 
 
 @pytest.mark.parametrize(
@@ -151,6 +151,12 @@ def test_protection_string_with_embedded_newline_is_rejected_by_put():
         ("UDR7_EXPECTED_SERIAL", "R3P-1234567890"),
         ("UDR7_WOL_MAC", "aa:bb:cc:dd:ee:ff"),
         ("UDR7_WOL_MAC", "AA-BB-CC-DD-EE-FF"),
+        # O nome do dispositivo: texto que o usuário escolhe.
+        ("UDR7_NAME", "Meu UDR"),
+        ("UDR7_NAME", "Café do Zé"),
+        ("UDR7_NAME", "X"),
+        ("UDR7_NAME", "x" * 32),
+        ("UDR7_NAME", "Roteador da Sala 2"),
     ],
 )
 def test_protection_string_shapes_accepted(tmp_path, key, value):
@@ -159,6 +165,57 @@ def test_protection_string_shapes_accepted(tmp_path, key, value):
     cfg = load_config(write(tmp_path, MINIMAL + f"{key}={value}\n"))
     assert getattr(cfg, key.lower()) == value
     assert validate_update(key, value) == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "x" * 33,                 # 33 caracteres: passa do teto
+        "a" + " b" * 30,          # 61 caracteres, todos válidos um a um
+        "a  b",                   # espaço duplo
+        "~",                      # load_config expandiria para o diretório do usuário
+        "a~b",
+        "a\tb",
+        "a\x1bb",
+        "a\xa0b",                 # espaço inquebrável
+        "a\u200bb",               # zero-width space
+        "\ufeffUDR7",             # BOM
+        "\u061cUDR7",             # ALM (bidi)
+        "a\u00adb",               # hífen suave
+        "UDR7\ufe0f",             # variation selector (BMP)
+        "UDR7\U000e0100",         # variation selector suplementar: renderiza "UDR7"
+        "UDR7\U000e0001",         # tag
+        "a\u180bb",               # variation selector mongol
+        "\u2800",                 # braille em branco
+        "a\nb",
+    ],
+)
+def test_device_name_shapes_rejected(value):
+    """A forma do nome barra o que faria um nome "parecer UDR7" sem ser."""
+    from river_unifi_bridge.config import validate_update
+
+    with pytest.raises(ConfigError):
+        validate_update("UDR7_NAME", value)
+
+
+def test_device_name_keeps_the_inner_shape(tmp_path):
+    cfg = load_config(write(tmp_path, MINIMAL + "UDR7_NAME=Meu UDR\n"))
+    assert cfg.udr7_name == "Meu UDR"
+
+
+def test_device_name_is_trimmed_not_refused():
+    """Espaço nas pontas é APARADO, não recusado — é o que load_config e
+    validate_update já fazem com toda chave de texto (`.strip()`), e não uma regra
+    do nome. A forma só decide o miolo; por isso " Meu UDR " vira "Meu UDR"."""
+    from river_unifi_bridge.config import validate_update
+
+    assert validate_update("UDR7_NAME", "  Meu UDR  ") == "Meu UDR"
+    assert validate_update("UDR7_NAME", "   ") == ""
+
+
+def test_device_name_defaults_when_absent(tmp_path):
+    cfg = load_config(write(tmp_path, MINIMAL))
+    assert cfg.udr7_name == "UDR7"
 
 
 def test_empty_protection_string_is_absent_not_invalid(tmp_path):
@@ -179,3 +236,11 @@ def test_protection_key_sets_are_consistent():
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS", "PROTECT_UDR7", "PROTECT_DRY_RUN"} <= PROTECTION_KEYS
     assert len(PROTECTION_KEYS) == 19
     assert (PROTECTION_KEYS - FILE_ONLY_KEYS - {"NUT_HOST", "NUT_PORT", "NUT_UPS"}) <= HOT_RELOAD_KEYS
+    # O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção:
+    # aplica a quente e pode ser trocado com o daemon armado. É o nó da cena S4m —
+    # sem o `- DEVICE_NAME_KEYS` em config.py, o prefixo o engoliria e renomear
+    # passaria a devolver 409.
+    from river_unifi_bridge.config import DEVICE_NAME_KEYS
+
+    assert DEVICE_NAME_KEYS == {"UDR7_NAME"}
+    assert "UDR7_NAME" in HOT_RELOAD_KEYS and "UDR7_NAME" not in PROTECTION_KEYS

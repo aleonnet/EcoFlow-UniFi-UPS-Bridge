@@ -359,6 +359,42 @@ async def test_disarm_is_always_allowed_while_armed(unlocked):
     assert (await _put(c, {"PROTECT_UDR7": "0", "PROTECT_DRY_RUN": "1"}))[0] == 200
 
 
+async def test_rename_allowed_while_armed(unlocked):
+    """Renomear o dispositivo com a proteção ARMADA é permitido, e a quente.
+
+    Nó da cena S4m: UDR7_NAME tem o prefixo UDR7_ e, sem o `- DEVICE_NAME_KEYS`
+    em config.py, cairia em PROTECTION_KEYS — o PUT devolveria 409 `armado` e o
+    usuário não conseguiria dar nome ao aparelho sem antes desarmar a proteção.
+    """
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
+    assert srv.holder.get().armed
+    status, _ = await _put(c, {"UDR7_NAME": "Meu UDR"})
+    assert status == 200
+    assert srv.holder.get().udr7_name == "Meu UDR"      # aplicou a quente
+    assert srv.holder.get().armed                        # e não desarmou
+    assert srv.policy.status()["name"] == "Meu UDR"
+
+
+async def test_rename_empty_via_put_falls_back_to_default(unlocked):
+    """PUT com nome vazio grava vazio; quem repõe o padrão é o status()."""
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"UDR7_NAME": "Meu UDR"}))[0] == 200
+    assert (await _put(c, {"UDR7_NAME": ""}))[0] == 200
+    assert srv.holder.get().udr7_name == ""
+    assert srv.policy.status()["name"] == "UDR7"
+
+
+async def test_rename_with_bad_shape_is_refused(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    status, body = await _put(c, {"UDR7_NAME": "x" * 33})
+    assert status == 400
+    assert srv.holder.get().udr7_name == "UDR7"
+
+
 async def test_disarm_batched_with_other_key_is_refused(unlocked):
     srv, c = unlocked
     srv.state.update_snapshot(REAL)

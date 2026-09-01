@@ -174,6 +174,7 @@ válida; escreva-a.
 | UDR7_CONFIRM_SECONDS | 6 | ANALOGIA apcupsd ONBATTERYDELAY [P] |
 | UDR7_RETRY_MAX | 3 | PROVISÓRIO; 1 tentativa por tick, ≤ 20 s cada (ANALOGIA upsmon HOSTSYNC 15 + FINALDELAY 5) |
 | UDR7_WOL_MAC | vazio | H14; só envia após um `SENT` (ensaio: `UDR7_WOL_DRYRUN`) |
+| UDR7_NAME | UDR7 | o nome do aparelho nos relatórios e gráficos; 1–32 caracteres. **Não é congelada com a proteção armada**: renomear é permitido a qualquer momento |
 
 Seam de teste declarado: `RUB_SSH_BINARY` (env do processo) aponta o binário `ssh`; o plist
 do LaunchDaemon não o define, o valor efetivo aparece em `udr7_detail.ssh_binary` e é pinado
@@ -181,7 +182,7 @@ ao armar (spec §15, exceção 6).
 
 ## 9. Estado em 2026-09-01 (fim da execução em modo madrugada)
 
-- Código: P0–P10 executados e commitados (gate `tools/gate.sh` VERDE, 21 cenas, 164 testes
+- Código: P0–P10 executados e commitados (gate `tools/gate.sh` VERDE, 30 cenas, 196 testes
   Python + 20 Swift; E2E prova DRYRUN com o simulador, 409 ao tentar armar com fonte sintética,
   e `SENT` 1× contra um stub de `ssh` com fonte real-parecida). Nada foi enviado a nenhum
   console: o único `ssh` executado em teste é `ssh -G` (não conecta).

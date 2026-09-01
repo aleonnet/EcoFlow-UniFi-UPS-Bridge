@@ -8,6 +8,7 @@ fixtures are FULLY ARMED and real-looking so that only the mutated fence decides
 from __future__ import annotations
 
 import json
+import pathlib
 import os
 import re
 import shutil
@@ -346,12 +347,55 @@ def test_armed_file_pin_mismatch_blocks(paths, key_file):
     assert rig.spy.calls == []
 
 
+def test_rename_while_armed_keeps_pins(paths, key_file):
+    """Trocar o nome com o daemon ARMADO não é divergência de configuração.
+
+    É o nó da cena S4o: se `udr7_name` deixar de estar em _PIN_EXCLUDED, ele vira
+    pino, a comparação com o arquivo de armamento acusa `config_trocada` e a queda
+    seguinte é BLOQUEADA — o usuário perderia a proteção por ter renomeado o
+    aparelho na tela de Ajustes.
+    """
+    rig = armed_rig(paths, key_file)
+    rig.holder.replace(replace(rig.holder.get(), udr7_name="Meu UDR"))
+    actions = rig.outage()
+    assert events_of(actions) == [EV_SENT]
+    assert all(a.payload.get("detail") != "config_trocada" for a in actions)
+
+
+def test_status_carries_name_with_fallback(paths, key_file):
+    """O nome sai no status(), e o fallback mora aqui — num lugar só."""
+    rig = armed_rig(paths, key_file)
+    assert rig.policy.status()["name"] == "UDR7"
+    rig.holder.replace(replace(rig.holder.get(), udr7_name="Meu UDR"))
+    assert rig.policy.status()["name"] == "Meu UDR"
+    rig.holder.replace(replace(rig.holder.get(), udr7_name=""))
+    assert rig.policy.status()["name"] == "UDR7"
+
+
+def test_status_keys_match_the_fixture(paths, key_file):
+    """A fixture health_udr7.json e o status() real não podem divergir em CHAVES.
+
+    test_fixtures_contract compara valores contra a fixture, o que só prova que a
+    fixture ecoa a si mesma; esta compara o conjunto de chaves com o que o código
+    produz agora.
+    """
+    import json as _json
+
+    raiz = pathlib.Path(__file__).resolve().parents[2]
+    fixture = _json.loads((raiz / "tests" / "fixtures" / "health_udr7.json").read_text())
+    rig = armed_rig(paths, key_file)
+    assert set(rig.policy.status()) == set(fixture["udr7_detail"])
+
+
 def test_arm_disarm_write_and_remove_file_and_emit(paths, key_file):
     rig = Rig(paths, armed_overrides(key_file, protect_dry_run=True))
     assert events_of(rig.apply(protect_dry_run=False)) == [EV_ARMED]
     data = json.loads(open(paths["armed_path"]).read())
     assert data["pins"]["udr7_ssh_host"] == "192.0.2.1"
     assert "protect_udr7" not in data["pins"] and "udr7_arm_allowed" not in data["pins"]
+    # O nome do dispositivo NÃO é pino: renomear com o daemon armado é permitido, e
+    # um arquivo de armamento escrito por um daemon anterior continua válido.
+    assert "udr7_name" not in data["pins"]
     assert oct(os.stat(paths["armed_path"]).st_mode & 0o777) == "0o600"
     assert events_of(rig.apply(protect_dry_run=True)) == [EV_DISARMED]
     assert not os.path.exists(paths["armed_path"])

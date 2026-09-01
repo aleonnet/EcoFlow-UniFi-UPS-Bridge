@@ -131,6 +131,13 @@ cena_mutacao S4k src/river_unifi_bridge/protect.py '        "--",
 cena_mutacao S4l src/river_unifi_bridge/api.py "if _is_pure_disarm(changes, pc):" "if False:" \
     tests/unit/test_api.py::test_disarm_is_always_allowed_while_armed
 
+# P1 — o nome do dispositivo: prefixo UDR7_ mas NÃO é configuração de proteção.
+cena_mutacao S4m src/river_unifi_bridge/config.py "    - DEVICE_NAME_KEYS" "    | DEVICE_NAME_KEYS" \
+    tests/unit/test_api.py::test_rename_allowed_while_armed \
+    tests/unit/test_config.py::test_protection_key_sets_are_consistent
+cena_mutacao S4o src/river_unifi_bridge/protect.py '"read_only", "udr7_name")' '"read_only")' \
+    tests/unit/test_protect.py::test_rename_while_armed_keeps_pins
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys
