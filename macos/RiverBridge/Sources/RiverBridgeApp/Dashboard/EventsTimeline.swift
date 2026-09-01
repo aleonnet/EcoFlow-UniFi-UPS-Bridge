@@ -309,11 +309,12 @@ struct EventsFilterBar: View {
     @Binding var period: EventPeriod
     @Binding var customFrom: Date
     @Binding var customTo: Date
+    @State private var narrow = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 10) {
-                Text(L10n.t("Eventos", "Events")).eyebrow()
+                Text(L10n.t("Eventos", "Events")).eyebrow().fixedSize()
                 Spacer(minLength: 8)
                 // Segmented buttons, not a menu (owner 2026-08-31). With
                 // Datas active the De/Até pickers TAKE THE SEGMENTS' PLACE
@@ -321,13 +322,14 @@ struct EventsFilterBar: View {
                 // Tudo); the ✕ returns to Tudo.
                 HStack(spacing: 2) {
                     if period == .personalizado {
-                        HStack(spacing: 8) {
+                        HStack(spacing: narrow ? 5 : 8) {
                             DatePicker(L10n.t("De", "From"), selection: $customFrom, displayedComponents: .date)
                             DatePicker(L10n.t("Até", "To"), selection: $customTo, displayedComponents: .date)
                         }
                         .datePickerStyle(.compact)
-                        .font(.callout)
-                        .padding(.horizontal, 6)
+                        .controlSize(narrow ? .small : .regular)
+                        .font(narrow ? .caption : .callout)
+                        .padding(.horizontal, narrow ? 3 : 6)
                         Button {
                             period = .tudo
                         } label: {
@@ -344,11 +346,13 @@ struct EventsFilterBar: View {
                             Button {
                                 period = p
                             } label: {
-                                Text(p.short)
+                                // Same compact scale as the chart capsules
+                                // (owner): "7 d" -> "7d", caption, pad 7.
+                                Text(narrow ? p.short.replacingOccurrences(of: " ", with: "") : p.short)
                                     .fixedSize()
-                                    .font(.callout.weight(period == p ? .semibold : .regular))
+                                    .font((narrow ? Font.caption : .callout).weight(period == p ? .semibold : .regular))
                                     .foregroundStyle(period == p ? .primary : .secondary)
-                                    .padding(.horizontal, 9)
+                                    .padding(.horizontal, narrow ? 7 : 9)
                                     .padding(.vertical, 4)
                                     .contentShape(Capsule())
                             }
@@ -377,6 +381,11 @@ struct EventsFilterBar: View {
 
         }
         .animation(.snappy(duration: 0.2), value: period)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            narrow = width < 500
+        }
     }
 
     private func chipButton(_ chip: EventChip) -> some View {
