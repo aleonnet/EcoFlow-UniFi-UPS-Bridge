@@ -59,7 +59,14 @@ struct AuroraBackground: View {
                 blob(&canvas, size, palette[0].opacity(0.09),
                      cx: 0.85 + 0.07 * sin(t * 0.6 + 2), cy: 0.10 + 0.04 * cos(t + 1), r: 0.26)
             }
-            .background(scheme == .dark ? Color(white: 0.045) : Color(white: 0.94))
+            // Tint, not opaque paint: the window's material shows through
+            // (translucent app — owner 2026-08-31); the near-black/near-white
+            // identity survives as a wash over the blurred desktop.
+            .background(
+                scheme == .dark
+                    ? Color(white: 0.045).opacity(0.55)
+                    : Color(white: 0.94).opacity(0.55)
+            )
         }
         .animation(.easeInOut(duration: 1.2), value: store.isOnBattery)
         .ignoresSafeArea()

@@ -25,6 +25,10 @@ struct RiverBridgeApp: App {
                 // below 520pt flips to the vertical phone layout — the window
                 // doubles as an iPhone preview. Floors allow a 414×896 shape.
                 .frame(minWidth: 414, minHeight: 480)
+                // Translucent window (owner 2026-08-31): the desktop reads
+                // through the material, so the control glass floats over a
+                // living ground instead of a poster.
+                .containerBackground(.ultraThinMaterial, for: .window)
                 .task {
                     store.start()
                     applyAppearance()
