@@ -465,6 +465,8 @@ class ProtectionPolicy:
     def _state_for(self, pc: ProtectionConfig, first_fail: str | None) -> str:
         if not pc.protect_udr7:
             return "desabilitado"
+        if first_fail == "aguardando_restauracao" and self._sent_this_outage:
+            return "enviado"   # this process sent it; the gate only guards a restart mid-outage
         if first_fail is not None:
             return first_fail
         if pc.protect_dry_run:
