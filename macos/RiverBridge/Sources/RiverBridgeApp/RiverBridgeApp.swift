@@ -5,17 +5,48 @@
 import RiverBridgeCore
 import SwiftUI
 
+/// Dock-icon reopen (owner 2026-08-31), via the documented AppKit hook
+/// applicationShouldHandleReopen(_:hasVisibleWindows:): clicking the Dock
+/// icon with no visible window reopens the panel. The callback is registered
+/// by the menu bar label (always alive) with its openWindow action.
+@MainActor
+final class ReopenDelegate: NSObject, NSApplicationDelegate {
+    static var abrirPainel: (() -> Void)?
+
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { Self.abrirPainel?() }
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+}
+
+/// Menu bar label wrapper: the one view alive for the app's whole life —
+/// the right home for registering the reopen callback.
+private struct MenuBarLabelHost: View {
+    var store: TelemetryStore
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        MenuBarLabel(store: store)
+            .onAppear {
+                ReopenDelegate.abrirPainel = { openWindow(id: "main") }
+            }
+    }
+}
+
 @main
 struct RiverBridgeApp: App {
     @State private var store = TelemetryStore()
     @State private var prefs = AppPrefs.shared
+    @NSApplicationDelegateAdaptor(ReopenDelegate.self) private var reopenDelegate
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarPopover(store: store)
                 .id(prefs.language)   // rebuild on language change
         } label: {
-            MenuBarLabel(store: store)
+            MenuBarLabelHost(store: store)
         }
         .menuBarExtraStyle(.window)
 
