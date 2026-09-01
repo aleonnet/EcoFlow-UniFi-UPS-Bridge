@@ -178,3 +178,27 @@ válida; escreva-a.
 Seam de teste declarado: `RUB_SSH_BINARY` (env do processo) aponta o binário `ssh`; o plist
 do LaunchDaemon não o define, o valor efetivo aparece em `udr7_detail.ssh_binary` e é pinado
 ao armar (spec §15, exceção 6).
+
+## 9. Estado em 2026-09-01 (fim da execução em modo madrugada)
+
+- Código: P0–P10 executados e commitados (gate `tools/gate.sh` VERDE, 21 cenas, 164 testes
+  Python + 20 Swift; E2E prova DRYRUN com o simulador, 409 ao tentar armar com fonte sintética,
+  e `SENT` 1× contra um stub de `ssh` com fonte real-parecida). Nada foi enviado a nenhum
+  console: o único `ssh` executado em teste é `ssh -G` (não conecta).
+- MacBook: daemon local em ensaio (`scratchpad/demo.env`) + simulador `apagao` → `DRYRUN`
+  ↔ `REARMED` a cada 140 s; capturas focadas de Saúde/Ajustes/Energia validadas.
+- Mac mini (`macmini.home.arpa`): simulador religado em `apagao` (python 3.13, porta 3493);
+  `~/Applications/River Bridge.app` atualizado; árvore do repo em `~/river-bridge-deploy/`
+  com `pos-install-fase3exp.sh`. **O daemon instalado ainda é o anterior** — o código em
+  `/usr/local/river-unifi-bridge` é root:wheel e `sudo` pede senha. Para instalar (dono):
+  ```bash
+  ssh macmini.home.arpa
+  cd ~/river-bridge-deploy && sudo scripts/install.sh --consent-homebrew
+  sudo launchctl kickstart -k system/com.river.unifi-bridge
+  ~/river-bridge-deploy/pos-install-fase3exp.sh      # liga a proteção EM ENSAIO (PUT)
+  ```
+  Depois: `DRYRUN ↔ REARMED` a cada ciclo do `apagao`, Saúde `udr7 = fonte_nao_real`,
+  `dry_run = true`, `unifi = sem_caminho_nativo_documentado`. Nada armado: `PROTECT_DRY_RUN=1`,
+  `UDR7_ARM_ALLOWED=0`.
+- Pendente do dono: ratificar (ou não) a exceção à §26; decidir religamento (H13/H14/H16);
+  quando o River chegar, seguir §2–§6 deste runbook.
