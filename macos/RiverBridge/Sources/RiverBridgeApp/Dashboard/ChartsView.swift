@@ -438,7 +438,10 @@ struct ChartsView: View {
                 if !resumo.isEmpty {
                     RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(bucket))))
                         .foregroundStyle(.secondary.opacity(0.4))
-                        .annotation(position: .top) {
+                        .annotation(
+                            position: .top,
+                            overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))
+                        ) {
                             hoverCallout(valor: resumo, hora: timeLabel(bucket))
                         }
                 }
@@ -552,7 +555,10 @@ struct ChartsView: View {
             if let scrubTS, scrubTS == row.ts, let avg = row.avg {
                 RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))))
                     .foregroundStyle(.secondary.opacity(0.4))
-                    .annotation(position: .top) {
+                    .annotation(
+                        position: .top,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))
+                    ) {
                         hoverCallout(valor: format(avg), hora: timeLabel(row.ts))
                     }
             }
