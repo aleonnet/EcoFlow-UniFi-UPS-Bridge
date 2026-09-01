@@ -56,15 +56,22 @@ repassa a senha.
 
 ## Abertura — o escudo do app
 
-Molde: `lib/haos-ui.sh` do haos-install — **mesmas medidas** (canvas 34×34, 20 linhas de
-meio-bloco; 22 · 34 · 20 quadros a 0,03 s) e mesma gramática, com a identidade daqui: lá a casa
-é **azul** com o circuito **branco**; aqui o escudo é **verde** com o raio **branco**.
+Molde: `lib/haos-ui.sh` do haos-install — mesma largura (34 colunas), mesmo ritmo (0,03 s por
+quadro) e mesma gramática, com a identidade daqui: lá a casa é **azul** com o circuito
+**branco**; aqui o escudo é **verde** com o raio **branco**. A altura é 40 px (20 linhas de
+meio-bloco), não os 34 da casa: o escudo é mais alto que largo, e no canvas quadrado do molde
+ele sairia com 26 px de altura em vez de 32 — **19% menor**, sem necessidade. A duração dos três
+atos (`LG_Q_MONTA` · `LG_Q_TRACO` · `LG_Q_BATE`, hoje 25 · 34 · 20) também não é a da casa:
+`LG_Q_MONTA` é derivado pelo gerador do maior atraso de partícula e muda com a altura.
 
 `tools/gera-logo.py` roda o mesmo render do AppIcon (`tools/app-icon-render.swift`,
 compartilhado com `tools/make-app-icon.sh`), mede a caixa do **escudo**, recorta só ele e o cola
-centrado num canvas 34×34 com **4 px de margem** — a margem não é enfeite: o halo e o traço só
-existem em volta do que está dentro do canvas, e sem ela sumiam onde o desenho encostava na
-borda. O fragmento embutido no instalador traz só a máscara (`.` fora · `s` escudo · `r` raio) e
+centrado num canvas 34×40 com **3 px de margem** — a margem não é enfeite: o halo e o traço só
+existem em volta do que está dentro do canvas, e onde o desenho encosta na borda eles somem. A
+largura sai da razão real do símbolo medida na sonda (0,825): os 34 px de altura que o `sips`
+devolve dão 28 de largura, e sobram 3 px de cada lado na colagem. Na máscara publicada o desenho
+aparece com **27×32** e folga 4/4/4/3: o anti-aliasing da borda vira `.` e come 1 px em cima e 1
+embaixo (medido em ALTURA 34/38/40 × MARGEM 1..4 — sempre 1). O fragmento embutido no instalador traz só a máscara (`.` fora · `s` escudo · `r` raio) e
 as trajetórias; **as cores vivem no runtime**, como no molde: gradiente vertical calculado por
 linha (volume, não sprite), do glow do ícone `38,230,178` no topo ao verde do fundo
 `26,166,140` na base, e o raio no branco do detalhe (`236,242,248`).
@@ -72,16 +79,21 @@ linha (volume, não sprite), do glow do ícone `38,230,178` no topo ao verde do 
 Quatro atos: cada pixel do escudo voa de fora da tela e assenta, de baixo para cima
 (constelação); a caneta branca contorna o escudo e se retrai por posição de arco; o escudo
 **bate como um coração** — tum-tum, pausa — e a cada batida **o raio pisca**, voltando ao branco
-entre elas; e assenta com o raio branco parado. Medido num pty (2026-09-01): **4,10 s**, 402
-partículas em 21 quadros de constelação.
+entre elas; e assenta com o raio branco parado. Medido num pty de 80×40 (2026-09-01, 7
+execuções): mediana **5,53 s**, faixa 5,09–6,36 — 721 partículas em 25 quadros de constelação.
+Abaixo de `LG_LINHAS + 1` linhas de tela a animação não roda: o laço sobe `LG_LINHAS` a cada
+quadro e, numa tela mais baixa, o salto é grampeado no topo e os quadros escorregam. Medido:
+21 linhas anima, 20 cai para o quadro único.
 
 Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro parado; sem cor/UTF-8
 = só o título. Para ver sem instalar nada: **`./tools/ui-demo.sh`** (`--no-anim` para um quadro
 estático, `--logo` só a abertura, `--quadro N` um quadro isolado). No gate: **S14** exige as
-bordas da máscara vazias (é o que pega o desenho encostado) e confere que o render respeita a
+bordas da máscara vazias (o caso extremo: desenho colado na borda) e confere que o render respeita a
 máscara, além do snapshot; **S15** exige que o bloco `GERADO` no instalador seja byte a byte a
-saída do gerador. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre os marcadores
-`GERADO` do instalador (`--medir` imprime as dimensões e o custo do primeiro ato).
+saída do gerador — é ela, e não a S14, que garante a margem publicada: um bloco gerado com outra
+margem reprova. No gerador, `conferir()` exige que a folga entregue seja ao menos a margem
+pedida nos quatro lados. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre o
+marcador `GERADO` e a linha `LG_HY=(` do instalador (`--medir` imprime as dimensões e o custo do primeiro ato).
 
 ## Fecho — o relatório do molde da casa
 

@@ -9,14 +9,23 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 ### Instalação
 - A abertura passa a mostrar **só o escudo** do ícone (antes era o quadrado arredondado
   inteiro, que encostava nas bordas e cortava o halo e o traço), nas medidas do molde
-  `lib/haos-ui.sh`: canvas 34×34 com 4 px de margem, 22 · 34 · 20 quadros. A paleta espelha o
+  `lib/haos-ui.sh`: 34 colunas de campo e 0,03 s por quadro, num canvas 34×40 (o escudo é mais
+  alto que largo; no canvas quadrado da casa ele sairia 19% menor) com 3 px de margem na
+  colagem — a largura vem da razão real do símbolo, 0,825. A paleta espelha o
   molde — lá casa azul com circuito branco, aqui **escudo verde com raio branco**, com o
   gradiente vertical calculado por linha no runtime (glow `38,230,178` no topo, fundo
   `26,166,140` na base) e o raio piscando a cada batida do coração, assentando branco.
-  4,10 s medidos num pty. Novo `tools/ui-demo.sh` mostra a camada visual sem instalar nada.
-  O gate ganhou duas cercas: S14 exige as bordas da máscara vazias (o que pega o desenho
-  encostado) e confere o render contra ela; S15 exige que o bloco gerado dentro do instalador
-  seja idêntico à saída do gerador.
+  Mediana de 5,53 s em 7 execuções num pty de 80×40 (faixa 5,09–6,36). Novo `tools/ui-demo.sh`
+  mostra a camada visual sem instalar nada.
+- A abertura passa a exigir tela alta o bastante: o laço sobe `LG_LINHAS` linhas por quadro e,
+  numa tela mais baixa, o salto é grampeado no topo e os quadros escorregam. Abaixo de
+  `LG_LINHAS + 1` cai para o quadro único, como já fazia com terminal estreito. Medido: 21
+  linhas anima, 20 não; antes, uma tela de 15 linhas fazia 75 saltos de cursor às cegas.
+- Cercas: S14 exige as bordas da máscara vazias (o caso extremo do desenho colado na borda) e
+  confere o render contra a máscara; S15 exige que o bloco gerado dentro do instalador seja
+  idêntico à saída do gerador — é ela que garante a margem publicada. E `conferir()`, no
+  gerador, passou a exigir que a folga entregue seja ao menos a margem pedida nos quatro lados:
+  só "bordas vazias" passava até com margem zero, porque o anti-aliasing sempre esvazia a borda.
 
 ## [0.1.0] — 2026-09-01
 

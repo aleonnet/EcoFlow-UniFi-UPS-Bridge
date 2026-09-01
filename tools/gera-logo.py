@@ -29,15 +29,19 @@ Saem também, em vetores paralelos (índice = y*LG_W + x quando é por pixel):
     ./tools/gera-logo.py            imprime o fragmento bash
     ./tools/gera-logo.py --preview  desenha no terminal (truecolor) para conferir
     ./tools/gera-logo.py --medir    os números, incluindo o produto do orçamento
-    ALTURA=40 por padrão (20 linhas: o maior que cabe com o título em 24 linhas);
-    MARGEM=2. `ALTURA` tem de ser par — o render lê `mask[y+1]`.
+    ALTURA=40 e MARGEM=3 por padrão: o `sips` devolve o escudo com 34 px de altura
+    e, pela razão real do símbolo medida na sonda (0,825), 28 px de largura, que
+    colados no canvas de 34 do molde deixam 3 px de folga de cada lado. Na máscara
+    final o desenho sai com 27×32 e folga 4/4/4/3 — o anti-aliasing vira '.' e come
+    1 px em cima e embaixo (medido em ALTURA 34/38/40 × MARGEM 1..4). `ALTURA` tem
+    de ser par — o render lê `mask[y+1]`.
 """
 import math, os, struct, subprocess, sys, tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ALTURA = int(os.environ.get("ALTURA", "34"))   # medidas do molde: lib/haos-ui.sh (HA_H=34)
-LARGURA = int(os.environ.get("LARGURA", "34"))  # canvas quadrado, escudo centrado (HA_W=34)
-MARGEM = int(os.environ.get("MARGEM", "4"))   # a casa do haos tem 4-5 px de folga
+ALTURA = int(os.environ.get("ALTURA", "40"))   # 20 linhas de meio-bloco (ver docstring)
+LARGURA = int(os.environ.get("LARGURA", "34"))  # largura do molde: lib/haos-ui.sh (HA_W=34)
+MARGEM = int(os.environ.get("MARGEM", "3"))   # a maior que cabe: 28 + 3 + 3 = 34 = LARGURA
 A_DUR = 8                    # quadros de voo de cada partícula
 SONDA = 256                  # resolução da sonda onde o bbox do escudo é medido
 BRANCO = 150                 # min(r,g,b) a partir do qual o pixel é escudo
@@ -150,7 +154,8 @@ def classificar(img):
     ícone e a borda anti-aliased do escudo (min < BRANCO). A regra que os elimina:
     **todo pixel não-'s' alcançável a partir da borda do canvas é '.'**; só o não
     alcançável (fechado pelo escudo) é o raio. Efeito declarado: a borda
-    anti-aliased vira '.', o escudo encolhe menos de 1 px.
+    anti-aliased vira '.', e o escudo encolhe 1 px em cima e 1 embaixo (medido em
+    ALTURA 34/38/40 × MARGEM 1..4: sempre 1, nunca 0 nem 2).
     """
     W, H = len(img[0]), len(img)
     rgb, mask = [], []
@@ -185,13 +190,26 @@ def classificar(img):
     return rgb, ["".join(l) for l in mask], fora
 
 
-def conferir(mask):
-    """As duas cercas do gerador — rodam em TODA invocação, não só em --medir."""
+def conferir(mask, margem):
+    """As cercas do gerador — rodam em TODA invocação, não só em --medir."""
     classes = set("".join(mask))
     assert classes <= {".", "s", "r"}, f"máscara com classe inesperada: {sorted(classes)}"
     assert any("s" in l for l in mask), "máscara sem escudo — o recorte não achou nada"
     assert set(mask[0]) == {"."} and set(mask[-1]) == {"."}, "borda horizontal não vazia"
     assert all(l[0] == "." and l[-1] == "." for l in mask), "borda vertical não vazia"
+    # A folga ENTREGUE tem de ser pelo menos a MARGEM pedida, nos quatro lados.
+    # Sem isto "bordas vazias" passa até com MARGEM=0: o flood fill classifica a
+    # linha anti-aliased como '.' e o desenho fica a 1 px da borda, com o halo e o
+    # traço espremidos contra ela. O limite não é escolhido, é medido: em 12
+    # combinações de ALTURA (34/38/40) × MARGEM (1..4) o anti-aliasing comeu
+    # EXATAMENTE 1 px em cima e embaixo e 0 ou 1 nas laterais, logo a folga real
+    # nunca cai abaixo da margem pedida enquanto a colagem estiver centrada.
+    W, H = len(mask[0]), len(mask)
+    ys = [y for y, l in enumerate(mask) if set(l) != {"."}]
+    xs = [x for x in range(W) if any(l[x] != "." for l in mask)]
+    folga = {"topo": ys[0], "base": H - 1 - ys[-1], "esq": xs[0], "dir": W - 1 - xs[-1]}
+    curtos = {k: v for k, v in folga.items() if v < margem}
+    assert not curtos, f"folga menor que a margem pedida ({margem} px): {curtos}"
 
 
 def contorno(mask, fora):
@@ -263,7 +281,7 @@ def main():
     dados, largura, altura, margem = renderizar_bmp(ALTURA, MARGEM)
     img = com_margem(ler_bmp(dados), largura, altura, margem)
     rgb, mask, fora = classificar(img)
-    conferir(mask)
+    conferir(mask, margem)
     W, H = len(img[0]), len(img)
     tr = contorno(mask, fora)
     pa = particulas(mask)

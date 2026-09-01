@@ -314,8 +314,12 @@ os.waitpid(pid, 0)
 text = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", out).decode("utf-8", "replace").replace("\r", "")
 
 # Cerca estrutural (P0, 2026-09-01). Duas asserções, e cada uma prova uma coisa:
-#  (1) BORDAS da máscara vazias — é ESTA que pega o defeito do dono (logo encostado
-#      na borda do canvas: sem vizinho de fora, halo e traço somem). Não olha o pty.
+#  (1) BORDAS da máscara vazias — o caso extremo: desenho colado na borda, sem
+#      vizinho de fora, e halo e traço somem naquele lado. Não olha o pty. Cerca
+#      ESTREITA por natureza: o flood fill classifica a linha anti-aliased como '.',
+#      então a borda fica vazia mesmo com margem zero. Quem garante a margem
+#      publicada é a S15 (o bloco tem de ser a saída do gerador com os defaults) e,
+#      dentro do gerador, conferir(), que exige folga >= margem nos quatro lados.
 #  (2) render × máscara — prova que lg_render/lg_cel respeitam a máscara (pega
 #      regressão do runtime: recuo, substituição de classe). NÃO prova o conteúdo da
 #      máscara: o quadro final é derivado dela, então os dois lados mudam juntos.
