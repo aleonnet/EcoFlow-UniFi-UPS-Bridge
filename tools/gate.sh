@@ -1,5 +1,5 @@
 #!/bin/bash
-# gate.sh — portão de qualidade da Fase 2 (bash 3.2 compat; saída [OK]/[ERRO]).
+# gate.sh — portão de qualidade (Fase 2 + Fase 3'-EXP; bash 3.2 compat; saída [OK]/[ERRO]).
 # Cenas: sintaxe, unit, integração, mutação de cerca (a cerca TEM de reprovar
 # quando o defeito é plantado — convenção da casa).
 set -uo pipefail
@@ -43,51 +43,93 @@ else
     tail -5 /tmp/gate_int.log
 fi
 
-# S4 — MUTAÇÃO: remover a checagem de chave obrigatória de config.py.
-# Com o defeito plantado, tests/unit/test_config.py TEM de reprovar.
-MUT="$(mktemp -d)"
-cp -R "$RAIZ/src" "$MUT/src"
-cp -R "$RAIZ/tests" "$MUT/tests"
-cp -R "$RAIZ/config" "$MUT/config"
-cp "$RAIZ/pyproject.toml" "$MUT/"
-# Planta o defeito: a lista de obrigatórias vira sempre-vazia.
-"$PY" - "$MUT/src/river_unifi_bridge/config.py" <<'EOF'
-import sys
+# ── Cenas de mutação (convenção da casa, endurecida na Fase 3'-EXP) ─────────
+# cena_mutacao NOME ARQUIVO ÂNCORA MUTANTE NÓ... — três asserções, nunca "qualquer rc≠0":
+#   (1) baseline: os MESMOS nós passam na árvore limpa (N passed, N>0);
+#   (2) mutante (cópia em mktemp com src/tests/config/tools/pyproject): rc == 1
+#       (1 = testes falharam; 2/4/5 = coleta/uso/nada selecionado = cena inválida);
+#   (3) cada nó aparece como FAILED no log do mutante.
+# O mutante preserva sintaxe (troca de token). PYTHONPATH força o import da cópia.
+cena_mutacao() {
+    local nome="$1" arq="$2" ancora="$3" mutante="$4"
+    shift 4
+    if ! (cd "$RAIZ" && "$PY" -m pytest "$@" >"/tmp/gate_base_$nome.log" 2>&1); then
+        erro "$nome baseline: os nós não passam na árvore limpa — cauda:"; tail -3 "/tmp/gate_base_$nome.log"; return
+    fi
+    local n
+    n="$(grep -Eo '[0-9]+ passed' "/tmp/gate_base_$nome.log" | head -1 | cut -d' ' -f1)"
+    if [ -z "$n" ] || [ "$n" -lt 1 ]; then erro "$nome baseline: nenhum teste selecionado"; return; fi
+    local M
+    M="$(mktemp -d)"
+    cp -R "$RAIZ/src" "$M/src"; cp -R "$RAIZ/tests" "$M/tests"; cp -R "$RAIZ/config" "$M/config"
+    cp -R "$RAIZ/tools" "$M/tools"; cp "$RAIZ/pyproject.toml" "$M/"
+    if ! GATE_ANC="$ancora" GATE_MUT="$mutante" "$PY" - "$M/$arq" <<'EOF'
+import os, sys
 p = sys.argv[1]
 s = open(p, encoding="utf-8").read()
-alvo = "if missing:"
-assert alvo in s, "âncora da mutação sumiu — atualizar gate.sh"
-open(p, "w", encoding="utf-8").write(s.replace(alvo, "if False:"))
+anc, mut = os.environ["GATE_ANC"], os.environ["GATE_MUT"]
+if s.count(anc) != 1:
+    sys.exit(f"âncora não única ({s.count(anc)}): {anc!r} — atualizar gate.sh")
+open(p, "w", encoding="utf-8").write(s.replace(anc, mut, 1))
 EOF
-# PYTHONPATH força o import do MUTANTE — o venv tem o pacote em editable
-# apontando para o src original, que venceria em silêncio sem isto.
-if (cd "$MUT" && PYTHONPATH="$MUT/src" "$PY" -m pytest tests/unit/test_config.py >/tmp/gate_mut.log 2>&1); then
-    erro "S4 mutação: cerca NÃO detectou defeito plantado (obrigatórias desativadas)"
-else
-    ok "S4 mutação: cerca reprovou o defeito plantado"
-fi
-rm -rf "$MUT"
+    then erro "$nome: âncora da mutação sumiu — atualizar gate.sh"; rm -rf "$M"; return; fi
+    (cd "$M" && PYTHONPATH="$M/src" "$PY" -m pytest "$@" >"/tmp/gate_mut_$nome.log" 2>&1)
+    local rc=$?
+    if [ "$rc" -ne 1 ]; then
+        erro "$nome mutação: rc=$rc (esperado 1 = a cerca reprovou o defeito plantado)"; tail -3 "/tmp/gate_mut_$nome.log"; rm -rf "$M"; return
+    fi
+    local no faltou=0
+    for no in "$@"; do
+        grep -q "FAILED $no" "/tmp/gate_mut_$nome.log" || { erro "$nome mutação: nó não reprovou: $no"; faltou=1; }
+    done
+    rm -rf "$M"
+    [ "$faltou" -eq 0 ] && ok "$nome mutação: baseline $n verde; cerca reprovou o defeito plantado (rc=1, $# nó(s))"
+}
 
-# S4b — MUTAÇÃO do bind: 127.0.0.1 → 0.0.0.0 em api.py.
-# test_api.py::test_bind_host_is_loopback_constant TEM de reprovar.
-MUT2="$(mktemp -d)"
-cp -R "$RAIZ/src" "$MUT2/src"
-cp -R "$RAIZ/tests" "$MUT2/tests"
-cp "$RAIZ/pyproject.toml" "$MUT2/"
-"$PY" - "$MUT2/src/river_unifi_bridge/api.py" <<'EOF'
-import sys
-p = sys.argv[1]
-s = open(p, encoding="utf-8").read()
-alvo = 'BIND_HOST = "127.0.0.1"'
-assert alvo in s, "âncora da mutação S4b sumiu — atualizar gate.sh"
-open(p, "w", encoding="utf-8").write(s.replace(alvo, 'BIND_HOST = "0.0.0.0"'))
-EOF
-if (cd "$MUT2" && PYTHONPATH="$MUT2/src" "$PY" -m pytest tests/unit/test_api.py -k bind >/tmp/gate_mut2.log 2>&1); then
-    erro "S4b mutação bind: cerca NÃO detectou bind 0.0.0.0"
-else
-    ok "S4b mutação bind: cerca reprovou o defeito plantado"
-fi
-rm -rf "$MUT2"
+# S4 — obrigatórias desativadas em config.py → test_config TEM de reprovar.
+cena_mutacao S4 src/river_unifi_bridge/config.py "if missing:" "if False:" \
+    tests/unit/test_config.py::test_missing_required_key_fails
+# S4b — bind 127.0.0.1 → 0.0.0.0 em api.py.
+cena_mutacao S4b src/river_unifi_bridge/api.py 'BIND_HOST = "127.0.0.1"' 'BIND_HOST = "0.0.0.0"' \
+    tests/unit/test_api.py::test_bind_host_is_loopback_constant
+# S4c — denylist de fontes sintéticas esvaziada (nome E substrings) → M1 condição 1.
+cena_mutacao S4c src/river_unifi_bridge/protect.py \
+    '_SYNTHETIC_DRIVERS = ("fake-nut-ups", "dummy-ups", "dummy", "clone", "clone-outlet")
+_SYNTHETIC_SUBSTRINGS = ("fake", "sim", "dummy")' \
+    '_SYNTHETIC_DRIVERS = ()
+_SYNTHETIC_SUBSTRINGS = ()' \
+    tests/unit/test_protect.py::test_synthetic_source_blocks_even_when_armed \
+    tests/unit/test_protect.py::test_contract_fake_is_caught_by_denylist
+# S4d — modo ensaio ignorado → condição 10.
+cena_mutacao S4d src/river_unifi_bridge/protect.py '                    if pc.protect_dry_run:
+                        self._latched = True
+                        self._dryrun_this_outage = True' '                    if False:
+                        self._latched = True
+                        self._dryrun_this_outage = True' \
+    tests/unit/test_protect.py::test_dry_run_never_spawns
+# S4f — serial não comparado → condição 3.
+cena_mutacao S4f src/river_unifi_bridge/protect.py "if serial != expected_serial:" "if False:" \
+    tests/unit/test_protect.py::test_serial_mismatch_blocks
+# S4g — autorização do PUT desligada (trava, fonte, .env intacto).
+cena_mutacao S4g src/river_unifi_bridge/api.py \
+    "refusal = _authorize(parsed, self.holder, snapshot, comm_ok)" \
+    "refusal = None and _authorize(parsed, self.holder, snapshot, comm_ok)" \
+    tests/unit/test_api.py::test_put_arming_refused_when_lock_closed \
+    tests/unit/test_api.py::test_put_refused_leaves_env_intact \
+    tests/unit/test_api.py::test_arming_requires_real_source_snapshot
+# S4h — loopback do NUT não exigido → condição 2.
+cena_mutacao S4h src/river_unifi_bridge/protect.py "if not _is_loopback(pc.nut_host):" "if False:" \
+    tests/unit/test_protect.py::test_non_loopback_nut_blocks_when_armed
+# S4i — pinos do armed.json não comparados → condição 4.
+cena_mutacao S4i src/river_unifi_bridge/protect.py 'if data.get("pins") != pc.pins():' "if False:" \
+    tests/unit/test_protect.py::test_armed_file_pin_mismatch_blocks
+# S4k — "--" removido do argv (destino poderia virar opção).
+cena_mutacao S4k src/river_unifi_bridge/protect.py '        "--",
+        f"{pc.udr7_ssh_user}@{pc.udr7_ssh_host}",' '        f"{pc.udr7_ssh_user}@{pc.udr7_ssh_host}",' \
+    tests/unit/test_protect.py::test_ssh_argv_is_isolated_and_terminated
+# S4l — exceção de desarme removida (o botão de parada).
+cena_mutacao S4l src/river_unifi_bridge/api.py "if _is_pure_disarm(changes, pc):" "if False:" \
+    tests/unit/test_api.py::test_disarm_is_always_allowed_while_armed
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
