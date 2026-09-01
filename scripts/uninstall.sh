@@ -24,6 +24,32 @@ done
 
 diga() { printf '│ %s\n' "$1"; }
 
+# ── Fase 3'-EXP — estado do daemon (spec §2.4 adendo): arquivos criados em runtime
+# pelo serviço (NÃO pelo instalador) ficam fora do manifesto e por isso NÃO são
+# removidos aqui — só listados. Registrar no manifesto é dívida (docs/BACKLOG_20260901.md).
+SERVICE_USER="${RUB_SERVICE_USER:-${SUDO_USER:-$(id -un)}}"
+USER_HOME="$(eval echo "~$SERVICE_USER")"
+STATE_DIR="${RUB_STATE_DIR:-$USER_HOME/Library/Application Support/river-unifi-bridge}"
+avisar_estado_daemon() {
+  local item achou=0
+  for item in "$STATE_DIR/udr7_armed.json" "$STATE_DIR/udr7_runtime.json" \
+              "$STATE_DIR/udr7_known_hosts" "$STATE_DIR/ui-api.token" \
+              "$USER_HOME/.ssh/river-bridge-udr7" "$USER_HOME/.ssh/river-bridge-udr7.pub"; do
+    if [ -e "$item" ]; then
+      [ "$achou" = "0" ] && diga "AVISO — estado da proteção do UDR7 criado em runtime (não removido por este script):"
+      achou=1; diga "  $item"
+    fi
+  done
+  if [ -f "$PREFIX/etc/bridge.env" ] && grep -q '^PROTECT_DRY_RUN=0' "$PREFIX/etc/bridge.env" 2>/dev/null; then
+    [ "$achou" = "0" ] && diga "AVISO — estado da proteção do UDR7:"
+    achou=1; diga "  $PREFIX/etc/bridge.env está ARMADO (PROTECT_DRY_RUN=0) — desarme pelo app ou edite antes de reinstalar"
+  fi
+  if [ "$achou" = "1" ]; then
+    diga "  remoção manual (runbook docs/UDR7_PROTECAO_SSH_20260901.md): apague os arquivos acima e a chave pública no console"
+  fi
+}
+avisar_estado_daemon || true
+
 [ -f "$MANIFESTO" ] || { echo "sem manifesto em $MANIFESTO — nada a desinstalar (ou nada foi criado por nós)"; exit 100; }
 
 # Caminho seguro por classe: recusa travessia e lugares fora do nosso domínio.
