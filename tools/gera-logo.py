@@ -54,11 +54,13 @@ def _bbox_do_escudo(dados):
     return min(ys), min(xs), max(ys) - min(ys) + 1, max(xs) - min(xs) + 1
 
 
-def renderizar_bmp(altura: int, margem: int) -> bytes:
-    """Ícone real → bbox do escudo → recorte → resize → canvas com margem.
+def renderizar_bmp(altura: int, margem: int) -> tuple[bytes, int, int, int]:
+    """Ícone real → bbox do escudo → recorte → resize. Devolve (bmp, largura do
+    canvas, altura, margem).
 
-    O canvas já sai no BMP (padding transparente), então `classificar` vê a
-    margem como '.' e o halo/contorno cabem inteiros. `sips` opera IN PLACE
+    O BMP sai com o escudo SÓ — quem cola no canvas com a margem é `com_margem`,
+    antes de `classificar`; é a margem que faz o halo e o contorno existirem
+    (sem ela, quem encosta na borda fica sem vizinho de fora). `sips` opera IN PLACE
     quando não recebe `--out` — por isso a sonda vai para outro arquivo.
     Ordem dos argumentos medida em `man sips`: `--cropToHeightWidth pixelsH
     pixelsW`, `--cropOffset offsetY offsetX`, `--resampleHeightWidth pixelsH
@@ -117,6 +119,9 @@ def ler_bmp(dados):
 
 def com_margem(img, largura, altura, margem):
     """Cola o escudo reduzido num canvas transparente de largura×altura."""
+    assert len(img[0]) == largura - 2 * margem and len(img) == altura - 2 * margem, (
+        f"o sips devolveu {len(img[0])}×{len(img)}, esperado "
+        f"{largura - 2 * margem}×{altura - 2 * margem}")
     vazio = (0, 0, 0, 0)
     canvas = [[vazio] * largura for _ in range(altura)]
     for y, linha in enumerate(img):
@@ -173,6 +178,7 @@ def conferir(mask):
     """As duas cercas do gerador — rodam em TODA invocação, não só em --medir."""
     classes = set("".join(mask))
     assert classes <= {".", "s", "r"}, f"máscara com classe inesperada: {sorted(classes)}"
+    assert any("s" in l for l in mask), "máscara sem escudo — o recorte não achou nada"
     assert set(mask[0]) == {"."} and set(mask[-1]) == {"."}, "borda horizontal não vazia"
     assert all(l[0] == "." and l[-1] == "." for l in mask), "borda vertical não vazia"
 

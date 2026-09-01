@@ -10,8 +10,9 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 - A abertura passa a mostrar **só o escudo** do ícone (antes era o quadrado arredondado
   inteiro, que encostava nas bordas e cortava o halo e o traço) com **2 px de margem**, e toda
   a paleta vem do ícone — raio no gradiente verde, partícula derivada do glow, halo verde no
-  lugar do ciano. 34×40 pixels, 5,67 s medidos num terminal real. O gate (S14) passou a
-  comparar o quadro do terminal com a máscara declarada no script, bordas incluídas.
+  lugar do ciano. 34×40 pixels, 5,67 s medidos num pty. O gate ganhou duas cercas: S14 exige as
+  bordas da máscara vazias (o que pega o logo encostado) e confere o render contra ela;
+  S15 exige que o bloco gerado dentro do instalador seja idêntico à saída do gerador.
 
 ## [0.1.0] — 2026-09-01
 
@@ -23,7 +24,7 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 - Repositório tornado público; instalação remota verificada (dry-run `0`, instalação `0`,
   reexecução `100`).
 - Abertura com o **ícone real do app** (`tools/gera-logo.py` roda o mesmo render do AppIcon;
-  40×40 pixels do ícone inteiro, cada um com a própria cor — o recorte pelo escudo veio depois) em quatro atos — constelação, traço, batimento
+  40×40 pixels, cada um com a própria cor) em quatro atos — constelação, traço, batimento
   cardíaco, assenta — e fecho no molde da casa (`relatorio_final`: título com o tempo, caixa
   do que ficou instalado, o app aberto como norte, `--no-open`).
 - `scripts/install.sh`: manifesto do que criou (created/preexisting/pending), `--dry-run`

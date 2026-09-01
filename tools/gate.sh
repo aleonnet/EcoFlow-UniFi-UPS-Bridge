@@ -229,7 +229,7 @@ else
 fi
 rm -rf "$INST"
 
-# ── S11..S14 — o instalador em uma linha (river-bridge-install.sh) ──────────
+# ── S11..S15 — o instalador em uma linha (river-bridge-install.sh) ──────────
 ONE="$RAIZ/river-bridge-install.sh"
 # S11 — sintaxe em /bin/bash 3.2 + --help pelo CANO (curl | bash) sob locale C = ASCII puro
 if /bin/bash -n "$ONE" 2>/dev/null \
@@ -313,9 +313,13 @@ while True:
 os.waitpid(pid, 0)
 text = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", out).decode("utf-8", "replace").replace("\r", "")
 
-# Cerca estrutural (P0, 2026-09-01): o snapshot sozinho só prova "não mudou". Aqui o
-# quadro do pty é comparado com a MÁSCARA declarada no próprio script — é o que pega
-# o defeito que o dono viu (logo cortado nas bordas) e uma margem que sumiu.
+# Cerca estrutural (P0, 2026-09-01). Duas asserções, e cada uma prova uma coisa:
+#  (1) BORDAS da máscara vazias — é ESTA que pega o defeito do dono (logo encostado
+#      na borda do canvas: sem vizinho de fora, halo e traço somem). Não olha o pty.
+#  (2) render × máscara — prova que lg_render/lg_cel respeitam a máscara (pega
+#      regressão do runtime: recuo, substituição de classe). NÃO prova o conteúdo da
+#      máscara: o quadro final é derivado dela, então os dois lados mudam juntos.
+# Que o fragmento GERADO ainda venha do gerador é a cena S15, abaixo.
 src = open(script, encoding="utf-8").read()
 W = int(re.search(r"^LG_W=(\d+)$", src, re.M)[1])
 H = int(re.search(r"^LG_H=(\d+)$", src, re.M)[1])
@@ -347,6 +351,29 @@ else
     diff "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt" | head -6
 fi
 rm -f "$SNAP_OUT"
+
+# S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.
+# Sem isto, uma LG_MASK editada à mão passaria por todas as outras cenas (o quadro
+# final é derivado da própria máscara — ver S14).
+FRAG_OUT="$(mktemp)"; FRAG_NO_SCRIPT="$(mktemp)"
+if "$RAIZ/tools/gera-logo.py" > "$FRAG_OUT" 2>/dev/null; then
+    "$PY" - "$ONE" > "$FRAG_NO_SCRIPT" <<'EOF'
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+ini = src.index("# ── GERADO por tools/gera-logo.py")
+fim = src.index("\n", src.index("\nLG_HY=(") + 1) + 1
+sys.stdout.write(src[ini:fim])
+EOF
+    if diff -q "$FRAG_OUT" "$FRAG_NO_SCRIPT" >/dev/null; then
+        ok "S15 logo: o bloco GERADO é idêntico à saída de tools/gera-logo.py"
+    else
+        erro "S15 logo: o bloco GERADO divergiu do gerador (editado à mão? regere e cole)"
+        diff "$FRAG_OUT" "$FRAG_NO_SCRIPT" | head -6
+    fi
+else
+    erro "S15 logo: tools/gera-logo.py falhou (asserções do gerador?)"
+fi
+rm -f "$FRAG_OUT" "$FRAG_NO_SCRIPT"
 
 if [ "$FALHAS" -eq 0 ]; then
     printf 'GATE: VERDE\n'

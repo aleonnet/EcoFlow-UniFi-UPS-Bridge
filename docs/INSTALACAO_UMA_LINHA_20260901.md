@@ -70,13 +70,23 @@ no pico; e assenta. Toda a paleta vem do próprio ícone: o raio mostra o gradie
 render, a partícula deriva do glow (`38,230,178`) e o halo é o verde do fundo (`26,166,140`).
 Medido num pty (2026-09-01): **5,67 s**, 823 partículas em 26 quadros de constelação.
 Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro parado; sem cor/UTF-8
-= só o título. `--demo` mostra só a abertura; `--demo-frame N` um quadro. No gate (S14) o
-quadro do terminal é comparado **com a máscara declarada no próprio script**, bordas incluídas,
-além do snapshot. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre os marcadores
+= só o título. `--demo` mostra só a abertura; `--demo-frame N` um quadro. No gate: **S14** exige as bordas da máscara vazias (é o que pega o
+logo encostado) e confere que o render respeita a máscara, além do snapshot; **S15** exige que
+o bloco `GERADO` no instalador seja byte a byte a saída do gerador. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre os marcadores
 `GERADO` do instalador (`--medir` imprime as dimensões e o custo do primeiro ato).
+
+## Fecho — o relatório do molde da casa
+
+Como o `relatorio_final` do `haos-install.sh`: título com o tempo na mesma linha ("Feito até
+aqui · concluído em 43s" ou "Nada a fazer — tudo já estava no lugar"), caixa do que ficou
+instalado (✔ serviço com a versão lida de `/v1/version`, ✔ app, ✔ configuração; `gum` se
+houver, texto puro se não), o **norte** — "O River Bridge está na sua barra de menus", e o app
+é aberto sozinho (`--no-open` desliga) —, o aviso de que a proteção do UDR7 nasce em ensaio,
+e o caminho do relatório desta execução.
 
 ## Cercas no gate (`tools/gate.sh`)
 
 S11 sintaxe em bash 3.2 + `--help` pelo cano sob locale C (ASCII puro) · S12 contrato 0 → 100 →
 `kickstart` com código novo → download por `file://` (stubs de brew/launchctl, sem root, sem
-rede) · S13 dry-run pelo cano sai 0 e não escreve nada · S14 snapshot da abertura.
+rede) · S13 dry-run pelo cano sai 0 e não escreve nada · S14 abertura (bordas da máscara vazias · render × máscara · snapshot) · S15 o bloco `GERADO`
+é idêntico à saída de `tools/gera-logo.py`.

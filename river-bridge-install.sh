@@ -363,8 +363,8 @@ LG_HY=(2 2 2 2 2 2 2 2 2 2 3 3 3 3 3 3 3 3 4 4 4 4 4 4 5 5 5 5 5 5 5 5 6 6 6 6 6
 # Sem animação: o quadro final parado. Sem UTF-8 ou sem cor: só o título.
 # Runtime: molde do haos-install.sh (ha_logo_*) com uma diferença medida — cada
 # pixel tem a própria cor, então o custo por célula no bash é o limite (2026-09-01:
-# 177 ms/quadro compondo as 800 células a cada quadro). Por isso os quadros
-# estáticos (fundo, final, batida, pico) são compostos UMA vez em lg_init e cada
+# 177 ms/quadro compondo as 680 células a cada quadro). Por isso os quadros
+# estáticos (final, batida, pico) são compostos UMA vez em lg_init e cada
 # quadro só recompõe as células que mudam (partículas, traço).
 # Classes do QM (máscara mutável, uma string por linha de pixel): . fora ·
 # = pixel com a própria cor · h a própria cor clareada · t traço branco ·
