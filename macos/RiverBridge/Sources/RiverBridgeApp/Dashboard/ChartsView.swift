@@ -127,7 +127,10 @@ struct ChartsView: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in
-            narrow = width < 620
+            // Measured single-line need: hero + peak + Uso/Saída + the two
+            // capsules ≈ 950 pt — below that the one-liner squeezes (owner's
+            // print at ~790 pt), so the header stacks.
+            narrow = width < 960
         }
         .task(id: "\(metric.rawValue)|\(scope.rawValue)|\(fetchBucket)") { await load() }
         .task {
@@ -214,32 +217,41 @@ struct ChartsView: View {
         // Narrow/phone (owner's print at min width): stacked layout, smaller
         // hero, chips+picker on their own line — nothing wraps mid-word.
         if narrow {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(eyebrowText).eyebrow()
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(nowValue)
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .fixedSize()
-                        .contentTransition(.numericText())
-                    if let peak, let avg = peak.avg {
-                        Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .lineLimit(1)
+            // Stacked header (owner 2026-08-31, "layout embolado"): hero and
+            // live chips share the first line; BOTH capsules live on their
+            // own line, scrolling horizontally when the window is narrower
+            // than they are (the chips-row pattern) — nothing ever squeezes.
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(eyebrowText).eyebrow()
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(nowValue)
+                                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .fixedSize()
+                                .contentTransition(.numericText())
+                            if let peak, let avg = peak.avg {
+                                Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                                    .lineLimit(1)
+                            }
+                        }
                     }
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 12) {
+                    Spacer(minLength: 8)
                     chip("Uso", store.loadText)
                     chip("Saída", store.outputVoltageText)
-                    Spacer(minLength: 0)
-                    picker
                 }
-                HStack {
-                    scopePicker
-                    Spacer(minLength: 0)
+                // Both capsules side by side on their own line, scrolling
+                // when the window is narrower than they are (owner kept THIS
+                // version over the stacked one, 2026-08-31).
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        picker
+                        scopePicker
+                    }
                 }
             }
         } else {
