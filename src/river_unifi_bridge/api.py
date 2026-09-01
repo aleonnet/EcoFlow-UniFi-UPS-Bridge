@@ -22,13 +22,16 @@ from . import __version__
 from .config import (
     BridgeConfig,
     ConfigError,
+    FILE_ONLY_KEYS,
     HOT_RELOAD_KEYS,
+    PROTECTION_KEYS,
     config_field_names,
     validate_update,
 )
 from .envfile import update_env_file
 from .history import METRICS, HistoryStore
 from .localtoken import get_or_create_token
+from .protect import ConfigHolder, ProtectionConfig, ProtectionPolicy, _emit, _is_synthetic_driver
 from .state import SharedState
 
 # Fence: the API is loopback-only by design (§7A.3). Tests + gate mutation
@@ -69,6 +72,61 @@ def _empty_state(name: str, comm_ok: bool, last_error: str | None) -> dict:
     }
 
 
+_PREDICATE_KEYS = frozenset({"PROTECT_UDR7", "PROTECT_DRY_RUN"})
+
+
+def _is_pure_disarm(changes: dict, pc: ProtectionConfig) -> bool:
+    """A PUT that contains ONLY the predicate keys and makes `armed` false."""
+    if not set(changes) <= _PREDICATE_KEYS:
+        return False
+    protect = changes.get("PROTECT_UDR7", pc.protect_udr7)
+    dry_run = changes.get("PROTECT_DRY_RUN", pc.protect_dry_run)
+    return not (protect and not dry_run)
+
+
+def _authorize(changes: dict, holder: ConfigHolder | None,
+               snapshot: dict | None, comm_ok: bool) -> tuple[int, str, str] | None:
+    """Fase 3'-EXP arming rules (§7A.5). Runs BEFORE anything is written.
+    Returns (status, motivo, mensagem) to refuse, or None to allow."""
+    file_only = sorted(set(changes) & FILE_ONLY_KEYS)
+    if file_only:
+        return 400, "chave_somente_arquivo", (
+            f"{file_only[0]}: somente no arquivo de configuração do serviço (trava de armamento)")
+    if holder is None:
+        return None
+    pc = holder.get()
+    protect_after = changes.get("PROTECT_UDR7", pc.protect_udr7)
+    dry_run_after = changes.get("PROTECT_DRY_RUN", pc.protect_dry_run)
+    armed_after = bool(protect_after) and not bool(dry_run_after)
+    if pc.armed:
+        if _is_pure_disarm(changes, pc):
+            return None
+        touched = sorted(set(changes) & PROTECTION_KEYS)
+        if touched:
+            return 409, "armado", (
+                f"{touched[0]}: configuração congelada enquanto a proteção está armada — "
+                "desligue a proteção (ligar modo ensaio) antes")
+        return None
+    if armed_after:
+        if not pc.udr7_arm_allowed:
+            return 409, "armamento_bloqueado", (
+                "trava fechada: UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie antes de armar")
+        if snapshot is None or not comm_ok:
+            return 409, "sem_snapshot", "sem leitura corrente do NUT — não há como verificar a fonte"
+        source = snapshot.get("source") or {}
+        name, version = source.get("driver_name"), source.get("driver_version")
+        if not name or not version or _is_synthetic_driver(name, version):
+            return 409, "fonte_nao_real", (
+                "a fonte de telemetria corrente não é aceita para armar "
+                f"(driver {name!r} {version!r})")
+        expected = changes.get("UDR7_EXPECTED_SERIAL", pc.udr7_expected_serial)
+        serial = (snapshot.get("identity") or {}).get("serial")
+        if not expected or serial != expected:
+            return 409, "fonte_nao_real", (
+                "serial da leitura corrente não confere com UDR7_EXPECTED_SERIAL")
+    return None
+
+
 class ApiServer:
     def __init__(
         self,
@@ -78,6 +136,8 @@ class ApiServer:
         env_path: str,
         restart_cb,
         token: str | None = None,
+        policy: ProtectionPolicy | None = None,
+        holder: ConfigHolder | None = None,
     ) -> None:
         ensure_loopback(BIND_HOST)
         self.cfg = cfg
@@ -85,6 +145,8 @@ class ApiServer:
         self.history = history
         self.env_path = env_path
         self.restart_cb = restart_cb
+        self.policy = policy
+        self.holder = holder
         self.token = token if token is not None else get_or_create_token()
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -220,21 +282,42 @@ class ApiServer:
             except ConfigError as exc:
                 return web.json_response({"erro": str(exc)}, status=400)
 
+        # Order is a fence: validate -> authorize -> write -> apply. A refusal never
+        # leaves a trace in the .env file.
+        _version, snapshot, comm_ok, _err = self.state.get()
+        refusal = _authorize(parsed, self.holder, snapshot, comm_ok)
+        if refusal is not None:
+            status, motivo, mensagem = refusal
+            return web.json_response({"erro": mensagem, "motivo": motivo}, status=status)
+
         update_env_file(self.env_path, {k: str(v) if not isinstance(v, bool) else ("1" if v else "0") for k, v in parsed.items()})
 
         applied_hot: list[str] = []
         restart_required = False
         for key, value in parsed.items():
             if key in HOT_RELOAD_KEYS:
-                setattr(self.cfg, key.lower(), value)
+                setattr(self.cfg, key.lower(), value)   # outside any lock (never read by the policy)
                 applied_hot.append(key)
             else:
                 restart_required = True
+        if self.holder is not None:
+            new_pc = ProtectionConfig.from_cfg(self.cfg)
+            old_pc = self.holder.replace(new_pc)          # the single atomic point
+            if self.policy is not None and old_pc != new_pc:
+                actions = self.policy.on_config_applied(old_pc, new_pc)   # after the holder lock
+                _emit(actions, self.state, self.history)
         return web.json_response(
             {"aplicadas_a_quente": applied_hot, "restart_required": restart_required}
         )
 
     async def _h_restart(self, _req: web.Request) -> web.Response:
+        if self.holder is not None and self.holder.get().armed:
+            return web.json_response(
+                {"erro": "proteção armada: desligue a proteção antes de reiniciar; ou reinicie "
+                         "pelo terminal (sudo launchctl kickstart -k system/com.river.unifi-bridge)",
+                 "motivo": "armado"},
+                status=409,
+            )
         # 202 first; the callback fires outside the handler after the response
         # has been flushed (see module docstring for the race this avoids).
         assert self._loop is not None

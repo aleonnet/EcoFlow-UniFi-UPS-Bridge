@@ -135,7 +135,8 @@ async def test_restart_answers_202_then_fires_callback(client, server):
 async def test_health_and_version(client, server):
     resp = await client.get("/v1/health", headers=client.auth)
     body = await resp.json()
-    assert body["unifi"] == "pendente_fase_3"
+    assert body["unifi"] == "sem_caminho_nativo_documentado"
+    assert body["udr7"] == "desabilitado" and body["udr7_detail"] is None
     assert body["ha"] == "nao_observavel"
     resp = await client.get("/v1/version", headers=client.auth)
     assert "version" in await resp.json()
@@ -191,3 +192,222 @@ async def test_events_delete_requires_to_and_removes_range(client, server):
     assert (await resp.json())["removidos"] == 2
     rows = h.query_events(0, 2**33)
     assert [r["type"] for r in rows] == ["COMM_LOST"]
+
+
+# --- Fase 3'-EXP: arming rules of PUT /v1/config (§7A.5) ------------------------------
+import json as _json
+import os as _os
+
+from river_unifi_bridge.protect import (
+    EV_ARMED, EV_DISARMED, ConfigHolder, ProtectionConfig, ProtectionPolicy,
+)
+
+REAL = {
+    "identity": {"name": "r", "manufacturer": "EcoFlow", "model": "RIVER 3 Plus", "serial": "R3P-1"},
+    "power": {"state": "ONLINE", "states": ["ONLINE"]},
+    "battery": {"charge_percent": 80.0},
+    "source": {"nut": True, "usb_hid": True, "usb_cdc": False,
+               "driver_name": "usbhid-ups", "driver_version": "2.8.4"},
+}
+FAKE = {**REAL, "identity": {**REAL["identity"], "serial": "SIM0001"},
+        "source": {**REAL["source"], "driver_name": "fake-nut-ups", "driver_version": "fake-nut-ups"}}
+
+
+def _prot_env(tmp_path, arm_allowed: bool) -> str:
+    key = tmp_path / "k"; key.write_text("k"); key.chmod(0o600)
+    path = tmp_path / "prot.env"
+    path.write_text(
+        "RIVER_NAME=r\nNUT_HOST=127.0.0.1\nNUT_PORT=3493\nNUT_UPS=r\n"
+        f"PROTECT_UDR7=1\nPROTECT_DRY_RUN=1\nUDR7_ARM_ALLOWED={'1' if arm_allowed else '0'}\n"
+        f"UDR7_SSH_HOST=192.0.2.1\nUDR7_SSH_KEY={key}\nUDR7_EXPECTED_SERIAL=R3P-1\n"
+        "UDR7_CUTOFF_PERCENT=10\nUDR7_SHUTDOWN_PERCENT=20\n",
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+def _prot_server(tmp_path, arm_allowed: bool):
+    from river_unifi_bridge.config import load_config
+    env = _prot_env(tmp_path, arm_allowed)
+    cfg = load_config(env)
+    holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
+    state = tmp_path / "state"
+    policy = ProtectionPolicy(
+        holder, runner=lambda *a, **k: None, keygen_runner=lambda *a, **k: None,
+        wol_sender=lambda mac: None,
+        known_hosts_path=str(state / "kh"), armed_path=str(state / "udr7_armed.json"),
+        runtime_path=str(state / "udr7_runtime.json"),
+    )
+    srv = ApiServer(cfg=cfg, state=SharedState(), history=HistoryStore(str(tmp_path / "h.sqlite")),
+                    env_path=env, restart_cb=lambda: None, token=TOKEN, policy=policy, holder=holder)
+    srv.armed_path = str(state / "udr7_armed.json")
+    srv.env = env
+    return srv
+
+
+@pytest.fixture
+async def locked(tmp_path, aiohttp_client):
+    import asyncio
+    srv = _prot_server(tmp_path, arm_allowed=False)
+    c = await aiohttp_client(srv.build_app()); c.auth = {"Authorization": f"Bearer {TOKEN}"}
+    srv._loop = asyncio.get_running_loop()
+    return srv, c
+
+
+@pytest.fixture
+async def unlocked(tmp_path, aiohttp_client):
+    import asyncio
+    srv = _prot_server(tmp_path, arm_allowed=True)
+    c = await aiohttp_client(srv.build_app()); c.auth = {"Authorization": f"Bearer {TOKEN}"}
+    srv._loop = asyncio.get_running_loop()
+    return srv, c
+
+
+async def _put(c, body):
+    resp = await c.put("/v1/config", json=body, headers=c.auth)
+    return resp.status, await resp.json()
+
+
+async def test_put_file_only_key_is_400(locked):
+    srv, c = locked
+    before = open(srv.env).read()
+    status, body = await _put(c, {"UDR7_ARM_ALLOWED": "1"})
+    assert status == 400 and body["motivo"] == "chave_somente_arquivo"
+    assert open(srv.env).read() == before
+
+
+async def test_put_arming_refused_when_lock_closed(locked):
+    srv, c = locked
+    srv.state.update_snapshot(REAL)
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "armamento_bloqueado"
+    assert not _os.path.exists(srv.armed_path)
+
+
+async def test_put_refused_leaves_env_intact(locked):
+    srv, c = locked
+    srv.state.update_snapshot(REAL)
+    before = open(srv.env).read()
+    status, _ = await _put(c, {"PROTECT_DRY_RUN": "0", "UDR7_SSH_PORT": "2222"})
+    assert status == 409
+    assert open(srv.env).read() == before
+    assert srv.cfg.protect_dry_run is True and srv.cfg.udr7_ssh_port == 22
+    assert srv.holder.get().protect_dry_run is True
+
+
+async def test_arming_without_snapshot_is_refused(unlocked):
+    srv, c = unlocked
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "sem_snapshot"
+
+
+async def test_arming_refused_when_comm_lost(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    srv.state.record_failure("upsd fora")        # snapshot survives, comm_ok does not
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "sem_snapshot"
+
+
+async def test_arming_requires_real_source_snapshot(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(FAKE)              # simulator telemetry (serial SIM0001)
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "fonte_nao_real"
+    srv.state.update_snapshot({**REAL, "identity": {**REAL["identity"], "serial": "R3P-2"}})
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "fonte_nao_real"
+    assert not _os.path.exists(srv.armed_path)
+
+
+async def test_arming_ok_writes_armed_file_and_emits(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "0"})
+    assert status == 200 and body["restart_required"] is False
+    assert _os.path.exists(srv.armed_path)
+    pins = _json.loads(open(srv.armed_path).read())["pins"]
+    assert pins["udr7_ssh_host"] == "192.0.2.1" and pins["udr7_expected_serial"] == "R3P-1"
+    assert [e["event"] for e in srv.state.events()] == [EV_ARMED]
+    assert srv.history.query_events(0, 2**33)[0]["type"] == EV_ARMED
+    assert "PROTECT_DRY_RUN=0" in open(srv.env).read()
+
+
+async def test_armed_config_keys_are_frozen_and_restart_refused(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
+    for key, value in (("UDR7_SSH_HOST", "192.0.2.9"), ("NUT_PORT", "3494"),
+                       ("UDR7_SHUTDOWN_PERCENT", "30"), ("UDR7_WOL_MAC", "aa:bb:cc:dd:ee:ff")):
+        status, body = await _put(c, {key: value})
+        assert status == 409 and body["motivo"] == "armado", key
+    resp = await c.post("/v1/service/restart", headers=c.auth)
+    assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
+    # Non-protection keys still flow normally while armed.
+    assert (await _put(c, {"LOW_BATTERY_PERCENT": "25"}))[0] == 200
+
+
+async def test_disarm_is_always_allowed_while_armed(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
+    status, _ = await _put(c, {"PROTECT_DRY_RUN": "1"})
+    assert status == 200
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200     # re-arm (lock still open)
+    status, _ = await _put(c, {"PROTECT_UDR7": "0"})
+    assert status == 200
+    assert (await _put(c, {"PROTECT_UDR7": "0", "PROTECT_DRY_RUN": "1"}))[0] == 200
+
+
+async def test_disarm_batched_with_other_key_is_refused(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
+    status, body = await _put(c, {"PROTECT_DRY_RUN": "1", "UDR7_SSH_PORT": "2222"})
+    assert status == 409 and body["motivo"] == "armado"
+    status, body = await _put(c, {"PROTECT_UDR7": "0", "UDR7_ARM_ALLOWED": "0"})
+    assert status == 400 and body["motivo"] == "chave_somente_arquivo"   # 400 wins
+    assert srv.holder.get().armed
+
+
+async def test_disarm_removes_armed_file_and_emits_disarmed(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
+    assert _os.path.exists(srv.armed_path)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "1"}))[0] == 200
+    assert not _os.path.exists(srv.armed_path)
+    assert [e["event"] for e in srv.state.events()] == [EV_ARMED, EV_DISARMED]
+    resp = await c.post("/v1/service/restart", headers=c.auth)
+    assert resp.status == 202
+
+
+async def test_protect_udr7_toggle_cannot_rearm_with_lock_closed(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200      # armed with the lock open
+    # Owner re-locks (file + restart): simulate the restarted config.
+    srv.cfg.udr7_arm_allowed = False
+    srv.holder.replace(ProtectionConfig.from_cfg(srv.cfg))
+    assert (await _put(c, {"PROTECT_UDR7": "0"}))[0] == 200          # disarm: always allowed
+    assert (await _put(c, {"UDR7_SSH_HOST": "192.0.2.9"}))[0] == 200 # not armed: editable
+    status, body = await _put(c, {"PROTECT_UDR7": "1"})              # re-arm needs the lock
+    assert status == 409 and body["motivo"] == "armamento_bloqueado"
+    assert not _os.path.exists(srv.armed_path)
+
+
+async def test_health_exposes_udr7_detail_after_a_tick(unlocked):
+    from river_unifi_bridge.model import snapshot_from_nut_vars
+    srv, c = unlocked
+    snap = snapshot_from_nut_vars("r", {"ups.status": "OL CHRG", "battery.charge": "80",
+                                        "driver.name": "fake-nut-ups", "driver.version": "x",
+                                        "device.serial": "SIM0001"})
+    srv.policy.observe(snap, [])
+    srv.state.set_protection(srv.policy.status())
+    resp = await c.get("/v1/health", headers=c.auth)
+    body = await resp.json()
+    assert body["udr7"] == "fonte_nao_real"
+    d = body["udr7_detail"]
+    assert d["dry_run"] is True and d["source"] == "sintetica"
+    assert d["source_detail"] == "telemetria_sintetica" and "lock_open" in d["warnings"]
+    assert d["ssh_binary"] == srv.holder.get().ssh_binary

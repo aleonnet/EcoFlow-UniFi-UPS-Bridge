@@ -1,0 +1,10 @@
+{
+  "usb": "nao_observavel",
+  "nut": "sem_dados",
+  "bridge": "ok",
+  "unifi": "pendente_fase_3",
+  "ha": "nao_observavel",
+  "last_error": null,
+  "has_snapshot": false,
+  "version": 0
+}

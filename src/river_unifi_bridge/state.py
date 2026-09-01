@@ -19,6 +19,11 @@ class SharedState:
         self._events: deque[dict] = deque(maxlen=events_maxlen)
         self._comm_ok = False
         self._last_error: str | None = None
+        self._protection: dict | None = None   # Fase 3'-EXP: last policy.status()
+
+    def set_protection(self, status: dict | None) -> None:
+        with self._lock:
+            self._protection = status
 
     def update_snapshot(self, snapshot: dict) -> None:
         with self._lock:
@@ -54,17 +59,23 @@ class SharedState:
 
     def health(self) -> dict:
         """Chain view (§7A.3): honest 'não observável' for links we can't see yet."""
-        version, snapshot, comm_ok, last_error = self._version, None, False, None
         with self._lock:
+            version = self._version
             snapshot = self._snapshot
             comm_ok = self._comm_ok
             last_error = self._last_error
+            protection = dict(self._protection) if self._protection else None
         usb = "nao_observavel"  # only the NUT driver sees USB; Fase 1+ may refine
         return {
             "usb": usb,
             "nut": "ok" if comm_ok else ("falha" if last_error else "sem_dados"),
             "bridge": "ok",
-            "unifi": "pendente_fase_3",
+            # Research verdict (docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md): no documented
+            # native path for a console to consume a third-party UPS — not "impossible".
+            "unifi": "sem_caminho_nativo_documentado",
+            # Fase 3'-EXP: closed enum from the protection policy; None until the first tick.
+            "udr7": protection["state"] if protection else "desabilitado",
+            "udr7_detail": protection,
             "ha": "nao_observavel",
             "last_error": last_error,
             "has_snapshot": snapshot is not None,

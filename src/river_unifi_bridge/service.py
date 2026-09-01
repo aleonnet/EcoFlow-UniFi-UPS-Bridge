@@ -18,8 +18,10 @@ import time
 
 from . import __version__
 from .config import BridgeConfig, ConfigError, load_config
+from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from .nut import NutClient, NutError
+from .protect import ConfigHolder, ProtectionConfig, ProtectionPolicy, _emit
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -118,8 +120,62 @@ def poll_once(cfg: BridgeConfig) -> UpsSnapshot:
 EXIT_RESTART_REQUESTED = 75
 
 
+def _record_tracker_events(events: list[str], payload_fn, shared, history) -> None:
+    for event in events:
+        payload = payload_fn(event)
+        _log("WARN", event, **payload)
+        if shared is not None:
+            shared.add_event(event, payload)
+        if history is not None:
+            history.record_event(event, payload.get("reason"))
+
+
+def _audit_protection(policy) -> None:
+    transition = policy.drain_transition() if policy is not None else None
+    if transition is not None:
+        _log("WARN", "udr7_protection_state", de=transition[0], para=transition[1])
+
+
+def _handle_poll_failure(exc: Exception, tracker, policy, shared, history) -> None:
+    events = tracker.observe_failure()
+    _record_tracker_events(events, lambda _e: {"reason": str(exc)}, shared, history)
+    if policy is not None:
+        _emit(policy.observe_failure(events), shared, history, log=_log)
+        _audit_protection(policy)
+    if shared is not None:
+        shared.record_failure(str(exc))
+
+
+def _process_snapshot(snap: UpsSnapshot, tracker, policy, shared, history) -> None:
+    """One good poll: tracker events -> protection policy -> state/history/log."""
+    snap_dict = snap.to_dict()
+    events = tracker.observe(snap)
+    _record_tracker_events(
+        events, lambda _e: {"state": snap.state, "charge": snap.charge_percent}, shared, history)
+    if policy is not None:
+        _emit(policy.observe(snap, events), shared, history, log=_log)
+        if shared is not None:
+            shared.set_protection(policy.status())
+        _audit_protection(policy)
+    if shared is not None:
+        shared.update_snapshot(snap_dict)
+    if history is not None:
+        history.record_sample(snap_dict)
+    _log("INFO", "state", **snap_dict)
+
+
 def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> int:
     tracker = TransitionTracker(cfg)
+
+    # Fase 3'-EXP: the protection policy reads ONLY this holder (never BridgeConfig);
+    # `--once` is diagnostics and never builds a policy.
+    holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
+    policy = None if once else ProtectionPolicy(
+        holder,
+        known_hosts_path=os.path.join(state_dir(), "udr7_known_hosts"),
+        armed_path=os.path.join(state_dir(), "udr7_armed.json"),
+        runtime_path=os.path.join(state_dir(), "udr7_runtime.json"),
+    )
 
     api_server = None
     shared = None
@@ -129,7 +185,6 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
         # Lazy import: aiohttp only loads when the API is actually enabled.
         from .api import ApiServer
         from .history import HistoryStore
-        from .localtoken import state_dir
         from .state import SharedState
 
         shared = SharedState()
@@ -137,7 +192,8 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
             os.path.join(state_dir(), "history.sqlite"), cfg.history_retention_days
         )
         api_server = ApiServer(
-            cfg, shared, history, env_path, restart_cb=restart_requested.set
+            cfg, shared, history, env_path, restart_cb=restart_requested.set,
+            policy=policy, holder=holder,
         )
         # Bind failures (e.g. EADDRINUSE) get 3 attempts with backoff; a
         # persistent failure is config-class → deliberate stop under launchd.
@@ -159,30 +215,12 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
         try:
             snap = poll_once(cfg)
         except NutError as exc:
-            for event in tracker.observe_failure():
-                _log("WARN", event, reason=str(exc))
-                if shared is not None:
-                    shared.add_event(event, {"reason": str(exc)})
-                if history is not None:
-                    history.record_event(event, str(exc))
-            if shared is not None:
-                shared.record_failure(str(exc))
+            _handle_poll_failure(exc, tracker, policy, shared, history)
             if once:
                 _log("ERROR", "poll_failed", reason=str(exc))
                 return EXIT_CONNECTION
         else:
-            snap_dict = snap.to_dict()
-            for event in tracker.observe(snap):
-                _log("WARN", event, state=snap.state, charge=snap.charge_percent)
-                if shared is not None:
-                    shared.add_event(event, {"state": snap.state, "charge": snap.charge_percent})
-                if history is not None:
-                    history.record_event(event)
-            if shared is not None:
-                shared.update_snapshot(snap_dict)
-            if history is not None:
-                history.record_sample(snap_dict)
-            _log("INFO", "state", **snap_dict)
+            _process_snapshot(snap, tracker, policy, shared, history)
             if once:
                 return EXIT_OK
         if restart_requested.wait(timeout=cfg.poll_interval_seconds):

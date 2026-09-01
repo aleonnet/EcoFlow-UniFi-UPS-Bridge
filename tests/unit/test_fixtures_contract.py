@@ -35,3 +35,18 @@ def test_state_online_fixture_matches_code():
     ).to_dict()
     snap["timestamp"] = "2026-08-31T17:00:00+00:00"  # fixture freezes the clock
     assert load("state_online") == snap
+
+
+def test_health_udr7_fixture_matches_code():
+    from river_unifi_bridge.state import SharedState
+
+    fixture = load("health_udr7")
+    state = SharedState()
+    state.set_protection(fixture["udr7_detail"])   # a status dict as the policy emits it
+    assert state.health() == fixture
+
+
+def test_health_legacy_fixture_is_swift_only():
+    # Decoded only by Swift (udr7 absent -> nil); the daemon never emits it any more.
+    legacy = load("health_legacy")
+    assert "udr7" not in legacy and "udr7_detail" not in legacy
