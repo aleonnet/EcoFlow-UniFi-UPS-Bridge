@@ -20,7 +20,13 @@ public final class AppPrefs {
     }
 
     public var language: Language {
-        didSet { UserDefaults.standard.set(language.rawValue, forKey: "rub.language") }
+        didSet {
+            UserDefaults.standard.set(language.rawValue, forKey: "rub.language")
+            // The LIVE choice always wins: a re-read of UserDefaults can be
+            // shadowed by the argument domain (-rub.language seams used for
+            // screenshot runs poisoned a live session — owner's report).
+            L10n.cachedIsPT = isPT
+        }
     }
     public var themeMode: ThemeMode {
         didSet { UserDefaults.standard.set(themeMode.rawValue, forKey: "rub.theme") }
@@ -39,6 +45,7 @@ public final class AppPrefs {
     private init() {
         language = Language(rawValue: UserDefaults.standard.string(forKey: "rub.language") ?? "") ?? .system
         themeMode = ThemeMode(rawValue: UserDefaults.standard.string(forKey: "rub.theme") ?? "") ?? .auto
+        L10n.cachedIsPT = isPT
     }
 }
 
@@ -48,15 +55,19 @@ public final class AppPrefs {
 /// UserDefaults key AppPrefs writes; UserDefaults is thread-safe. Language
 /// changes re-render via .id(language) at the window root.
 public enum L10n {
-    public static func t(_ pt: String, _ en: String) -> String {
-        isPT ? pt : en
-    }
-
-    public static var isPT: Bool {
+    /// Seeded from UserDefaults at first touch (so -rub.language screenshot
+    /// seams work at LAUNCH), then owned by AppPrefs: the picker's live
+    /// choice always wins. Written only from the main actor; read from
+    /// SwiftUI bodies (also main) — the unsafe marker is benign here.
+    nonisolated(unsafe) public static var cachedIsPT: Bool = {
         switch UserDefaults.standard.string(forKey: "rub.language") {
         case AppPrefs.Language.ptBR.rawValue: true
         case AppPrefs.Language.enUS.rawValue: false
         default: Locale.current.language.languageCode?.identifier != "en"
         }
+    }()
+
+    public static func t(_ pt: String, _ en: String) -> String {
+        cachedIsPT ? pt : en
     }
 }

@@ -61,3 +61,14 @@ import Testing
     #expect(event.timeText != event.ts)
     #expect(event.reason == nil)
 }
+
+@Test @MainActor func languagePickerWinsOverDefaultsShadowing() {
+    // The refuting injection for the owner's bug: even if UserDefaults reads
+    // are shadowed (argument domain), the live picker choice must apply.
+    let before = AppPrefs.shared.language
+    AppPrefs.shared.language = .enUS
+    #expect(L10n.t("Eventos", "Events") == "Events")
+    AppPrefs.shared.language = .ptBR
+    #expect(L10n.t("Eventos", "Events") == "Eventos")
+    AppPrefs.shared.language = before
+}
