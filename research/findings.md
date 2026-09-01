@@ -36,16 +36,21 @@ medido. Nada de inferência sem marca.
   a cadeia de alerta de energia (§6) tem o mini como ponto único; registrar no desenho
   da Fase 1.
 
-## Matriz da Fase 0 (§30) — a preencher
+## Matriz da Fase 0 (§30) — preenchida com o que a pesquisa documental respondeu (2026-09-01)
+
+Gramática deste arquivo: **[CONFIRMAR]** = hipótese com plano de verificação · **PENDENTE** =
+não medido. Nada abaixo foi medido no console; é o que a documentação pública e a comunidade
+responderam (docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md; research/unifi-official.md;
+research/hypotheses.md). A Fase 3'-EXP (proteção via SSH) **não depende** desta matriz.
 
 | Questão | Resultado | Evidência | Confiança |
 |---|---|---|---|
-| Protocolo UPS Tower ↔ UniFi | | | |
-| Discovery | | | |
-| Adoption | | | |
-| Authentication | | | |
-| Telemetry | | | |
-| Alarm transport | | | |
-| UPS UI schema | | | |
-| Third-party support | | | |
-| Emulation viability | | | |
+| Protocolo UPS Tower ↔ UniFi | PENDENTE — não documentado publicamente (H01/H02/H03 UNKNOWN) | unifi-official.md (blog: "instant adoption", NUT só UPS→terceiros) | baixa |
+| Discovery | PENDENTE — "instant adoption" sem detalhe de transporte | blog oficial (unifi-official.md) | baixa |
+| Adoption | PENDENTE — adoção 1-clique de device UniFi; identidade não documentada (H04/H05) | reviews em unifi-official.md | baixa |
+| Authentication | PENDENTE — nenhuma fonte descreve o mecanismo | — | nenhuma |
+| Telemetry | [CONFIRMAR] só visível no controlador para device adotado (H07 ↑) | reviews (unifi-official.md:150-160) | média (doc), não medida |
+| Alarm transport | PENDENTE — sem documentação pública (H08) | — | nenhuma |
+| UPS UI schema | PENDENTE — painel mostra bateria/carga/runtime/firmware/IP/MAC; schema não público | reviews em unifi-official.md | baixa |
+| Third-party support | **não documentado**: console não consome UPS de terceiros (NUT do UPS Tower é servidor, não cliente; feature request aberta; H10 ↓) | PESQUISA_UDR7_UPS_TERCEIROS_20260831.md; E0-B em hypotheses.md | média (ausência em fontes oficiais e comunidade), não é prova |
+| Emulation viability | PENDENTE — sem emulador público do tipo UPS; exigiria reverso (H06 ↓) | hypotheses.md H06 | baixa |

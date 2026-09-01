@@ -88,5 +88,25 @@ def test_allowlist_matches_spec_keys():
         "POWER_LOSS_DELAY_SECONDS", "RESTORE_DELAY_SECONDS",
         "COMM_LOSS_DELAY_SECONDS", "LOW_BATTERY_PERCENT",
         "UI_API_ENABLED", "UI_API_PORT", "HISTORY_RETENTION_DAYS",
+        # Fase 3'-EXP (spec §22 bloco 6)
+        "PROTECT_UDR7", "PROTECT_DRY_RUN", "UDR7_ARM_ALLOWED",
+        "UDR7_SSH_HOST", "UDR7_SSH_PORT", "UDR7_SSH_USER", "UDR7_SSH_KEY",
+        "UDR7_EXPECTED_SERIAL", "UDR7_CUTOFF_PERCENT", "UDR7_SHUTDOWN_PERCENT",
+        "UDR7_DISCHARGE_SECONDS_PER_PCT", "UDR7_RUNTIME_MINUTES",
+        "UDR7_MIN_OUTAGE_SECONDS", "UDR7_CONFIRM_SECONDS", "UDR7_RETRY_MAX",
+        "UDR7_WOL_MAC",
     }
     assert set(allowlist_keys()) == expected
+    assert len(expected) == 32
+
+
+def test_protection_key_sets_are_consistent():
+    from river_unifi_bridge.config import (
+        FILE_ONLY_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS, RESTART_REQUIRED_KEYS,
+    )
+    assert FILE_ONLY_KEYS == {"UDR7_ARM_ALLOWED"}
+    assert "UDR7_ARM_ALLOWED" in RESTART_REQUIRED_KEYS
+    assert "UNIFI_HOST" in RESTART_REQUIRED_KEYS and "UNIFI_HOST" not in PROTECTION_KEYS
+    assert {"NUT_HOST", "NUT_PORT", "NUT_UPS", "PROTECT_UDR7", "PROTECT_DRY_RUN"} <= PROTECTION_KEYS
+    assert len(PROTECTION_KEYS) == 19
+    assert (PROTECTION_KEYS - FILE_ONLY_KEYS - {"NUT_HOST", "NUT_PORT", "NUT_UPS"}) <= HOT_RELOAD_KEYS

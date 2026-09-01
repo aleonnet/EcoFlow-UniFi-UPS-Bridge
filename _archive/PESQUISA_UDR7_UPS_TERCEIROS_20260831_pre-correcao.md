@@ -71,16 +71,8 @@ desliga os pareados via SSH.
 
 ## Consequência para o projeto (Fase 3 redefinida)
 
-"O UDR7 ver o River" **não tem caminho nativo documentado** (a matriz §30 da Fase 0
-segue com H06/H10 UNKNOWN — ausência de evidência, não prova de impossibilidade). O
-objetivo de negócio real — **o UDR7 protegido pelo River** — tem o caminho 1 descrito
-por **uma fonte [S]** (o gist acima: alvo UDM Pro, usuário `root`, autenticação por
-**senha** via `sshpass`); para o UDR7 e para login por chave são hipóteses H11a/H11b
-(`research/hypotheses.md`). Visibilidade fica no nosso app + HA (NUT de verdade);
-proteção do console vira AÇÃO da bridge (shutdown gracioso via SSH no evento certo) como
-**fase experimental separada** (spec §2.5; plano Fase 3'-EXP, 2026-09-01). Emulação
-(caminho 4) só se o dono decidir bancar reverso sem garantia.
-
-*Correção de 2026-09-01: esta seção dizia "inviável nativamente" e "battle-tested";
-ambas excediam a evidência (uma fonte secundária, outro modelo). Versão anterior íntegra
-em `_archive/PESQUISA_UDR7_UPS_TERCEIROS_20260831_pre-correcao.md`.*
+"O UDR7 ver o River" é **inviável nativamente**. O objetivo de negócio real —
+**o UDR7 protegido pelo River** — é viável e battle-tested pelo caminho 1:
+visibilidade fica no nosso app + HA (NUT de verdade); proteção do console vira
+AÇÃO da bridge (shutdown seguro via SSH no evento certo). Emulação (caminho 4)
+só se o dono decidir bancar reverso sem garantia.

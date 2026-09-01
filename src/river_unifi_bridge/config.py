@@ -40,6 +40,26 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "RESTORE_DELAY_SECONDS": (int, False, 0, (0, 600)),
     "COMM_LOSS_DELAY_SECONDS": (int, False, 15, (0, 600)),
     "LOW_BATTERY_PERCENT": (int, False, 30, (5, 50)),
+    # Fase 3'-EXP — proteção do UDR7 (spec §2.5/§7A.5/§22; runbook
+    # docs/UDR7_PROTECAO_SSH_20260901.md). Nasce em ensaio; armar exige a trava
+    # UDR7_ARM_ALLOWED (somente arquivo) + ato no app. Defaults sem fonte são 0
+    # ("não configurado" → a política bloqueia); os demais têm fonte/marca no runbook.
+    "PROTECT_UDR7": (bool, False, False, None),
+    "PROTECT_DRY_RUN": (bool, False, True, None),
+    "UDR7_ARM_ALLOWED": (bool, False, False, None),
+    "UDR7_SSH_HOST": (str, False, "", None),
+    "UDR7_SSH_PORT": (int, False, 22, (1, 65535)),
+    "UDR7_SSH_USER": (str, False, "root", None),
+    "UDR7_SSH_KEY": (str, False, "", None),
+    "UDR7_EXPECTED_SERIAL": (str, False, "", None),
+    "UDR7_CUTOFF_PERCENT": (int, False, 0, (0, 48)),
+    "UDR7_SHUTDOWN_PERCENT": (int, False, 0, (0, 50)),
+    "UDR7_DISCHARGE_SECONDS_PER_PCT": (int, False, 0, (0, 3600)),
+    "UDR7_RUNTIME_MINUTES": (int, False, 0, (0, 60)),
+    "UDR7_MIN_OUTAGE_SECONDS": (int, False, 0, (0, 3600)),
+    "UDR7_CONFIRM_SECONDS": (int, False, 6, (0, 600)),
+    "UDR7_RETRY_MAX": (int, False, 3, (0, 3)),
+    "UDR7_WOL_MAC": (str, False, "", None),
     "UI_API_ENABLED": (bool, False, True, None),
     "UI_API_PORT": (int, False, 35493, (1024, 65535)),
     "HISTORY_RETENTION_DAYS": (int, False, 7, (1, 365)),
@@ -61,6 +81,22 @@ class BridgeConfig:
     restore_delay_seconds: int = 0
     comm_loss_delay_seconds: int = 15
     low_battery_percent: int = 30
+    protect_udr7: bool = False
+    protect_dry_run: bool = True
+    udr7_arm_allowed: bool = False
+    udr7_ssh_host: str = ""
+    udr7_ssh_port: int = 22
+    udr7_ssh_user: str = "root"
+    udr7_ssh_key: str = ""
+    udr7_expected_serial: str = ""
+    udr7_cutoff_percent: int = 0
+    udr7_shutdown_percent: int = 0
+    udr7_discharge_seconds_per_pct: int = 0
+    udr7_runtime_minutes: int = 0
+    udr7_min_outage_seconds: int = 0
+    udr7_confirm_seconds: int = 6
+    udr7_retry_max: int = 3
+    udr7_wol_mac: str = ""
     ui_api_enabled: bool = True
     ui_api_port: int = 35493
     history_retention_days: int = 7
@@ -148,9 +184,34 @@ HOT_RELOAD_KEYS = frozenset(
         "COMM_LOSS_DELAY_SECONDS",
         "LOW_BATTERY_PERCENT",
         "HISTORY_RETENTION_DAYS",
+        # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
+        "PROTECT_UDR7",
+        "PROTECT_DRY_RUN",
+        "UDR7_SSH_HOST",
+        "UDR7_SSH_PORT",
+        "UDR7_SSH_USER",
+        "UDR7_SSH_KEY",
+        "UDR7_EXPECTED_SERIAL",
+        "UDR7_CUTOFF_PERCENT",
+        "UDR7_SHUTDOWN_PERCENT",
+        "UDR7_DISCHARGE_SECONDS_PER_PCT",
+        "UDR7_RUNTIME_MINUTES",
+        "UDR7_MIN_OUTAGE_SECONDS",
+        "UDR7_CONFIRM_SECONDS",
+        "UDR7_RETRY_MAX",
+        "UDR7_WOL_MAC",
     }
 )
 RESTART_REQUIRED_KEYS = frozenset(_ALLOWLIST) - HOT_RELOAD_KEYS
+
+# Fase 3'-EXP — trava de armamento: só o arquivo .env (nunca o PUT) a abre/fecha.
+FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED"})
+# Conjunto congelado enquanto o daemon está armado (PUT → 409 `armado`), com a única
+# exceção do desarme (PUT contendo só as chaves do predicado que o torna falso).
+PROTECTION_KEYS = frozenset(
+    {k for k in _ALLOWLIST if k.startswith(("PROTECT_", "UDR7_"))}
+    | {"NUT_HOST", "NUT_PORT", "NUT_UPS"}
+)
 
 
 def validate_update(key: str, raw_value: str) -> object:

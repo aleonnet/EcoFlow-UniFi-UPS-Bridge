@@ -1,4 +1,4 @@
-# Matriz de Hipóteses H01–H10 (spec §9)
+# Matriz de Hipóteses H01–H17 (spec §9)
 
 > **Regra absoluta:** o estado permanece **UNKNOWN** até haver **evidência reproduzível**
 > (captura de tráfego, firmware ou teste real). Documentação pública pode **fortalecer** ou
@@ -24,7 +24,7 @@
 
 ---
 
-## Tabela H01–H10
+## Tabela H01–H10 (UniFi nativo)
 
 | ID | Enunciado | Estado | Tend. | Evidência pública (URL + data 2026-08-31) |
 |----|-----------|--------|-------|--------------------------------------------|
@@ -40,6 +40,20 @@
 | **H10** | Existe **API de integração de device de terceiros** que permite criar/registrar um UPS na UI do UniFi. | **UNKNOWN** | ↓ | Site Manager API oficial é leitura/inventário (List Hosts/Sites/Devices), **sem endpoint de UPS/power e sem criação de device** nas buscas (developer.ui.com/site-manager-api/listhosts/; getting-started). NUT é unidirecional (UPS→terceiros). Feature "UDMP as NUT client" **não** existe (E0-B). Fortemente enfraquecida, mas não refutada (referência completa da API não lida — páginas JS). |
 
 ---
+
+## Tabela H11–H17 (Fase 3'-EXP — proteção do UDR7 via SSH; adicionada 2026-09-01)
+
+| ID | Enunciado | Estado | Tend. | Evidência (URL + data 2026-09-01) |
+|----|-----------|--------|-------|-----------------------------------|
+| **H11a** | `ubnt-systool poweroff` existe no **UDR7** e desliga graciosamente; o usuário é `root`. | **UNKNOWN** | → | Fonte **única e secundária**: gist Freekers (alvo **UDM Pro**), https://gist.github.com/Freekers/c8e4b75e02bf26e68c4ee6da5a6b2392 — `root`, `ubnt-systool poweroff`. Nada específico do UDR7. Medição: runbook passo 4 (`command -v ubnt-systool`). |
+| **H11b** | Login SSH por **chave pública** para `root` funciona no UDR7 e persiste. | **UNKNOWN** | → | O gist usa **senha** (`sshpass`); chave é premissa nossa (§15 exceção 4). Medição: runbook passo 4. |
+| **H12a** | Firmware update do UniFi OS apaga `authorized_keys`. | **UNKNOWN** | ↑ | docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md:67-68 [S] ("credencial/chave SSH resetada em firmware update"). Mitigação: re-semear após update (runbook). |
+| **H12b** | Firmware update troca a host key do console. | **UNKNOWN** | → | **INFERIDO** (nenhuma fonte). Efeito coberto: `StrictHostKeyChecking=yes` → `UDR7_SHUTDOWN_FAILED` visível, nunca aceite silencioso. |
+| **H13** | O UDR7 boota sozinho ao receber energia após um `poweroff` (cenário: rede volta depois de o River cortar a saída). | **UNKNOWN** | → | research/unifi-official.md:158-160 [CONFIRMADO] fala de UNAS/UNVR pareados ao UPS Tower ("não religam sozinhos"); aplicabilidade ao UDR7 = **INFERIDO**. Medição: runbook passo 5. |
+| **H14** | O UDR7 acorda por Wake-on-LAN após `poweroff` (cenário: rede volta antes do corte). | **UNKNOWN** | → | **Nenhuma fonte** aberta em 2026-09-01 confirma WoL como alvo em consoles UniFi (threads da comunidade não carregaram). Mantido a pedido do dono; o daemon só envia após um `SENT` (ensaio: `UDR7_WOL_DRYRUN`). Medição: runbook passo 5. |
+| **H15** | O River 3 Plus expõe `device.serial` estável via NUT ≥ 2.8.4. | **UNKNOWN** | ↑ | NUT issue #2735, https://github.com/networkupstools/nut/issues/2735 — dump com `device.serial`/`ups.serial` (redigidos) e `driver.name: usbhid-ups`, **`driver.version 2.7.4`** (caminho genérico, pré-`ecoflow-hid`) → para 2.8.4+ é **INFERIDO**. Medição: runbook passo 1, com o simulador parado. |
+| **H16** | O River reenergiza a saída AC sozinho quando a rede volta após corte por Discharge Limit. | **UNKNOWN** | → | Depende de AC Timeout = never (docs/PESQUISA_PARAMETROS_UPS_20260831.md:45-48 [P manual]) e de Output Port Memory — **semântica não encontrada em fonte** (o manual só nomeia). Medição: runbook passo 5. |
+| **H17** | Ponto real de corte da saída AC do River (Discharge Limit + 1 %?). | **UNKNOWN** | → | Dois [P] contraditórios: PESQUISA_PARAMETROS:22-23 ("corta em limite+1 %", código do driver) × :33-38 ("descarga até 0 % sem LB", issue #3068). Medição: runbook passo 1 (descarregar com carga conhecida e anotar). |
 
 ## Notas de convergência para as próximas etapas
 

@@ -86,13 +86,6 @@ Tudo deve possuir:
 - logs claros;
 - nenhuma alteração irreversível no UniFi OS.
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* a Fase 3'-EXP cria em runtime, fora do
-manifesto do instalador, `udr7_known_hosts`, `udr7_armed.json` e `udr7_runtime.json` no
-diretório de estado do daemon, e o runbook cria a chave privada `river-bridge-udr7` e instala
-a pública no console. O `uninstall.sh` **avisa** (lista os caminhos e o `.env` armado) e não
-remove o que não prova ter criado; a remoção da chave pública no console é passo manual do
-runbook. Registrar esses artefatos no manifesto é dívida em `docs/BACKLOG_20260901.md`.
-
 ## 2.5 Sem firmware patch inicialmente
 
 Não alterar firmware do RIVER ou UDR7 no MVP.
@@ -105,12 +98,6 @@ Qualquer hipótese que exija:
 - bypass de assinatura;
 
 deve ser marcada como **fase experimental separada**, e não fazer parte do caminho primário.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* a **Fase 3'-EXP** (desligamento
-gracioso do UDR7 via SSH com chave de `root`, `docs/UDR7_PROTECAO_SSH_20260901.md`) **é** essa
-fase experimental separada — exige root persistente no UDR7. O caminho primário continua
-sendo visibilidade + alerta (app + HA). Nasce em modo ensaio (`PROTECT_DRY_RUN=1`) e só arma
-por ato do dono (§7A.5, §22).
 
 ---
 
@@ -569,11 +556,6 @@ Criar objeto normalizado:
 
 `null` é obrigatório para dados desconhecidos.
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* `source` ganha `driver_name` e
-`driver_version` (de `driver.name`/`driver.version` do NUT; `null` quando ausentes) e
-`battery` ganha `charge_low_percent` (de `battery.charge.low`). `battery.charge_percent`
-fora de [0, 100] é publicado como `null` (token em `unknown_status_tokens`).
-
 ---
 
 # 7A. Componente D — "River Bridge.app" (UI nativa macOS)
@@ -624,11 +606,6 @@ GET  /v1/version
   estado + `exit(0)` = parada deliberada, não relança; modo CLI usa os exit codes da
   casa. Os três comportamentos são cerca de gate (`launchctl print`).
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* o SSE implementado emite `event: state`
-e `event: event`; **não há frame `health`** — o app consulta `/v1/health` por polling
-(5 s). O elo `unifi` do health responde `sem_caminho_nativo_documentado`; o elo novo `udr7`
-(enum fechado) e `udr7_detail` estão em `docs/API_LOCAL_20260831.md`.
-
 ## 7A.4 Histórico para gráficos
 
 O **daemon** guarda (roda 24/7; a UI é intermitente): `src/river_unifi_bridge/history.py`,
@@ -641,22 +618,6 @@ Sempre via API, nunca no arquivo: PUT validado contra a MESMA allowlist do parse
 edição do `.env` linha-a-linha preservando comentários e blocos (aborta em formato
 inesperado); escrita atômica `mkstemp(dir=<diretório do alvo>)` + fsync + `os.replace`
 + backup `.bak`. Configs do NUT ficam FORA da UI (exibidas read-only na tela de saúde).
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* exceções e regras novas do `PUT /v1/config`:
-- `UDR7_ARM_ALLOWED` é **somente arquivo** (`FILE_ONLY_KEYS`): PUT → `400
-  chave_somente_arquivo`. É a trava de armamento — abrir/fechar exige editar o `.env` e
-  reiniciar o serviço (2º e 3º passos do runbook).
-- Predicado `armado = PROTECT_UDR7 ∧ ¬PROTECT_DRY_RUN`. Transição para armado exige
-  `UDR7_ARM_ALLOWED=1` (senão `409 armamento_bloqueado`) e snapshot corrente com
-  `comm_ok`, driver fora da denylist e `identity.serial == UDR7_EXPECTED_SERIAL`
-  (senão `409 sem_snapshot` / `409 fonte_nao_real`).
-- Enquanto armado, qualquer chave de `PROTECTION_KEYS` (`PROTECT_*`, `UDR7_*`, `NUT_*`)
-  → `409 armado`, **exceto o desarme**: PUT contendo somente `PROTECT_UDR7`/
-  `PROTECT_DRY_RUN` com predicado resultante falso é sempre aceito. `POST
-  /v1/service/restart` armado → `409 armado`.
-- A autorização roda **antes** da escrita do `.env`; um 4xx nunca deixa rastro no arquivo.
-- `UDR7_SSH_HOST` e as demais chaves `UDR7_*`/`PROTECT_*` são hot-reload (`UNIFI_HOST`
-  segue restart-required e não é usada pela proteção).
 
 ## 7A.6 Instalação guiada
 
@@ -897,21 +858,6 @@ Com tabela:
 
 Nunca mudar `UNKNOWN` para `TRUE/FALSE` sem evidência reproduzível.
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* hipóteses da proteção do UDR7 (detalhe e
-fontes em `research/hypotheses.md`):
-
-| ID | Hipótese | Estado |
-|---|---|---|
-| H11a | `ubnt-systool poweroff` existe e é gracioso no **UDR7** (fonte: gist para UDM Pro) | UNKNOWN |
-| H11b | login SSH por **chave** para `root` funciona e persiste no UDR7 (o gist usa senha) | UNKNOWN |
-| H12a | firmware update apaga `authorized_keys` | UNKNOWN |
-| H12b | firmware update troca a host key | UNKNOWN (INFERIDO) |
-| H13 | o UDR7 boota sozinho ao receber energia após `poweroff` | UNKNOWN |
-| H14 | o UDR7 acorda por Wake-on-LAN após `poweroff` | UNKNOWN (sem fonte) |
-| H15 | o River expõe `device.serial` estável via NUT ≥ 2.8.4 (dump conhecido é 2.7.4) | UNKNOWN (INFERIDO) |
-| H16 | o River reenergiza a saída AC sozinho quando a rede volta após corte por Discharge Limit | UNKNOWN |
-| H17 | o ponto real de corte da saída AC (a pesquisa tem dois [P] contraditórios) | UNKNOWN |
-
 **Evidência inicial já coletada (2026-08-31, não fecha nenhuma hipótese):**
 
 - Blog oficial Ubiquiti (https://blog.ui.com/article/introducing-uninterruptible-power):
@@ -1033,11 +979,6 @@ low battery     imediato após estado confirmado
 ```
 
 Todos os limites devem ser configuráveis.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* defeito conhecido D-A — o tracker emite
-`LOW_BATTERY` por percentual **sem exigir ON_BATTERY** (dispara também na tomada, durante a
-recarga); a proteção do UDR7 **não** consome esse evento (tem condição própria com queda
-confirmada). Correção do evento: `docs/BACKLOG_20260901.md`.
 
 ---
 
@@ -1199,21 +1140,6 @@ Obrigatório:
 O audit log da §15 cobre a superfície nova: todo `PUT /v1/config` (chaves alteradas,
 secrets redigidos) e `POST /v1/service/restart` são registrados.
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* exceções da proteção do UDR7:
-
-4. **Chave SSH privada em arquivo (0600) em vez de Keychain:** é o único formato que o
-   `ssh` do sistema consome em `BatchMode` sob launchd; dedicada (`river-bridge-udr7`),
-   nunca a chave pessoal.
-5. **Usuário `root` no console:** único usuário documentado para o comando (fonte [S],
-   H11a); não há escopo menor conhecido.
-6. **`RUB_SSH_BINARY`** (variável de ambiente lida no import) é o seam de teste que aponta o
-   binário `ssh`; o plist do LaunchDaemon (root:wheel, `EnvironmentVariables` explícitas)
-   não o define, o valor efetivo aparece em `udr7_detail.ssh_binary` e é pinado no
-   armamento.
-7. **Fronteira declarada:** quem tem o uid do serviço (token, `.env`, chave, estado) pode
-   tudo; o `409` do restart armado é anti-acidente, não fronteira. O ato de armar e cada
-   transição do elo `udr7` entram no audit log (`udr7_protection_state`).
-
 ---
 
 # 16. Serviço macOS
@@ -1298,11 +1224,6 @@ Suportar:
 
 `TRACE` deve mascarar secrets.
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* linha de audit `udr7_protection_state`
-(`de`/`para`) a cada transição do elo `udr7`, e 10 eventos persistidos:
-`UDR7_SHUTDOWN_DRYRUN|_SENT|_FAILED|_BLOCKED`, `UDR7_PROTECTION_REARMED`,
-`UDR7_PROTECTION_BLIND`, `UDR7_ARMED`, `UDR7_DISARMED`, `UDR7_WOL_SENT`, `UDR7_WOL_DRYRUN`.
-
 Métricas desejadas:
 
 ```text
@@ -1354,12 +1275,6 @@ Cobrir:
   `swift test` não executa XCUITest;
 - os três comportamentos do contrato de relançamento (§7A.3) provados com
   `launchctl print`.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* proteção do UDR7 — **mutação parcial**: 8
-cenas de gate (denylist, dry-run, serial, autorização do PUT, loopback, pinos, `--` do argv,
-desarme) para as 10 condições da propriedade M1 + 3 regras de API; as demais condições têm
-teste unitário sem cena. XCUITests continuam fora de escopo (declarado). Nenhum teste
-spawna `ssh`: `tests/unit/conftest.py` troca os seams por funções que falham.
 
 ## 18.2 Testes de integração
 
@@ -1423,11 +1338,6 @@ Permitir:
 
 e payloads reproduzíveis.
 
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* `BASE_VARS` publica `driver.name`
-(`fake-nut-ups`), `driver.version` (`fake-nut-ups`) e `battery.charge.low` (`10`, valor
-simulado); cenário `apagao` (20 s rede / 100 s bateria 40→3 % sem LB / 20 s rede) para
-ensaiar a proteção. O simulador é, por desenho, sempre barrado pela cerca de fonte.
-
 ---
 
 # 20. Captura UniFi reproduzível
@@ -1485,7 +1395,6 @@ river-unifi-bridge/
 │           ├── protocol.py
 │           ├── telemetry.py
 │           ├── alarms.py
-│           ├── protect.py       # Fase 3'-EXP — política de proteção do UDR7
 │           └── adoption.py
 ├── scripts/
 │   ├── install.sh
@@ -1564,32 +1473,7 @@ LOW_BATTERY_PERCENT=30
 UI_API_ENABLED=1
 UI_API_PORT=35493
 HISTORY_RETENTION_DAYS=7
-
-# ── 6. proteção udr7 (Fase 3'-EXP) ────────
-# Nasce em ensaio. Armar = trava aberta no arquivo + reinício + ato no app.
-PROTECT_UDR7=0
-PROTECT_DRY_RUN=1
-UDR7_ARM_ALLOWED=0
-UDR7_SSH_HOST=
-UDR7_SSH_PORT=22
-UDR7_SSH_USER=root
-UDR7_SSH_KEY=
-UDR7_EXPECTED_SERIAL=
-UDR7_CUTOFF_PERCENT=0
-UDR7_SHUTDOWN_PERCENT=0
-UDR7_DISCHARGE_SECONDS_PER_PCT=0
-UDR7_RUNTIME_MINUTES=0
-UDR7_MIN_OUTAGE_SECONDS=0
-UDR7_CONFIRM_SECONDS=6
-UDR7_RETRY_MAX=3
-UDR7_WOL_MAC=
 ```
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* semântica das chaves do bloco 6 e fontes dos
-defaults estão em `docs/UDR7_PROTECAO_SSH_20260901.md` e no `.env.example`. `READ_ONLY`
-é chave **sem efeito** no código (nenhuma leitura em `src/`); não foi reaproveitada como
-trava de armamento (a trava é `UDR7_ARM_ALLOWED`, somente arquivo); `READ_ONLY=1` pode
-conviver com o daemon armado até a aposentadoria da chave (`docs/BACKLOG_20260901.md`).
 
 Nenhuma credencial no `.env.example` versionado; senha nunca em argv (padrão da casa:
 stdin, como `ont-stick-setup/lib/unifi-check.py`).
@@ -1646,13 +1530,6 @@ bridge
 ```
 
 Sem alarm/action inicialmente.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* a Fase 3 como "device visible" **não tem
-caminho nativo documentado** (`docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md`). Em seu lugar
-entra a **Fase 3'-EXP — UDR7 protegido pelo River** (fase experimental separada, §2.5):
-desligamento gracioso do console via SSH quando a queda é confirmada e a bateria cruza o
-limiar acima do corte físico; ensaio primeiro, armamento por ato do dono, religamento
-manual como caminho de base (H13/H14/H16). Runbook: `docs/UDR7_PROTECAO_SSH_20260901.md`.
 
 ## Fase 4 — Telemetria
 
@@ -1717,13 +1594,6 @@ bloqueado por elas — o MVP do §24 não depende de sucesso UniFi.
 - [ ] device aparece no UniFi **ou** relatório prova tecnicamente por que isso não é possível;
 - [ ] telemetria é real;
 - [ ] nenhum valor sintético apresentado como real.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* os critérios da PoC UniFi **não foram
-atingidos** (sem caminho nativo documentado; relatório em
-`docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md`); a visibilidade nativa sai do caminho
-primário. Critério da Fase 3'-EXP: em ensaio com o simulador, `UDR7_SHUTDOWN_DRYRUN` ↔
-`UDR7_PROTECTION_REARMED` com `would_block=fonte_nao_real`; armado, só com telemetria de
-fonte não-sintética, serial registrado e trava aberta pelo dono.
 
 ## UI nativa (Componente D, §7A)
 
@@ -1805,15 +1675,6 @@ Não:
 - instalar dependências sem listar;
 - criar Raspberry Pi/gateway adicional como premissa;
 - afirmar impossibilidade sem evidência.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* **exceção PEDIDA ao item "executar
-destructive command no UDR7" — PENDENTE DE RATIFICAÇÃO DO DONO.** A ordem do dono em
-2026-09-01 ("termina esta porra do plano e executa tudo em modo madrugada. Pela manhã eu
-testo") ordena a execução **do plano**; **não** contém autorização literal para o comando
-destrutivo. A exceção só vale após ratificação escrita e, mesmo então, sob as condições da
-Fase 3'-EXP: ensaio por padrão, trava `UDR7_ARM_ALLOWED` somente arquivo, fonte de
-telemetria não-sintética com serial registrado, `armed.json` pinando a configuração, e
-desarme sempre possível. Até a ratificação, `PROTECT_DRY_RUN=1` e `UDR7_ARM_ALLOWED=0`.
 
 ---
 
@@ -1901,8 +1762,6 @@ Este projeto segue as convenções do monorepo `/Users/alessandro/Development/AB
 - **Teste:** arnês `tools/gate.sh` com dublês/stubs e teste de idempotência
   ("2ª execução reporta 100"); toda cerca nova passa por teste de mutação
   (plantar o defeito, a cerca TEM de reprovar).
-  *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* na Fase 3'-EXP a mutação é
-  **parcial e declarada** (8 cenas para as cercas decisivas; as demais só teste) — ver §18.1.
 - **Reuso direto identificado (2026-08-31):** molde de instalador
   `ABHOME-macmini/macmini-backup.sh`; launchd idempotente
   `ABHOME-haos-macmini/haos-install.sh:1253-1345`; cliente da API local do UniFi OS
@@ -1966,8 +1825,3 @@ A primeira entrega deve ser uma tabela factual:
 | Emulation viability | | | |
 
 Somente depois de fechar essa matriz deve ser escolhido o adapter UniFi definitivo.
-
-*Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* a matriz está preenchida em
-`research/findings.md` com o que a pesquisa documental respondeu (majoritariamente
-`não documentado` / `UNKNOWN`, com evidência e confiança); o adapter UniFi nativo **não**
-foi escolhido — a Fase 3'-EXP não depende dele.
