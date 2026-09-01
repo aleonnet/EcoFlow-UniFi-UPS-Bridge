@@ -42,6 +42,24 @@ desliga os pareados via SSH.
 7. **Spoof/emulação de UniFi UPS**: NÃO ENCONTRADO nenhum projeto público
    (existem emuladores do protocolo inform para APs/switches, nenhum para UPS).
 
+## Adendos da segunda frente (convergiu no mesmo veredito)
+
+- **UDR7 e elegibilidade**: roda a linha "UniFi OS – Dream Routers" 4.x
+  (≥4.4.3 atendido) com Network 10.x — ou seja, PODE gerenciar um UniFi UPS
+  adotado; os recursos de UPS da Network 10.x ("UPS integrations also gain a
+  new battery threshold configuration") referem-se só ao UPS Ubiquiti. [P]
+  https://community.ui.com/releases/UniFi-OS-Dream-Router-7-4-1-21/519ec9ff-8ef1-4275-b59d-c4e21f02004a ·
+  https://blog.ui.com/article/introducing-unifi-network-10-4
+- **Adoção é via protocolo inform, não NUT**: emular só um NUT server não
+  torna nada "adotável"; seria preciso emular um dispositivo UniFi completo.
+  [S] https://www.hostifi.com/blog/how-to-adopt-the-unifi-ups-to-a-remote-unifi-controller
+- **SNMP no UniFi é agente, não gerente** — serve para Zabbix/PRTG monitorarem
+  os UniFi, não para o console monitorar UPS. [P]
+  https://help.ui.com/hc/en-us/articles/33502980942615-SNMP-Monitoring-in-UniFi-Network
+- Curiosidade útil para a Fase futura: o NUT do UPS Tower usa credencial
+  default `nut`/`nut`. [S]
+  https://community.ui.com/questions/UPS-Tower-NUT-server-configuration/daa92174-91fb-40ac-bbe5-19f77195eae6
+
 ## Caminhos reais (esforço/risco crescente)
 
 | # | Caminho | Como | Risco |
