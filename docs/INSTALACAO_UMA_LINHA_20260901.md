@@ -48,19 +48,35 @@ repassa a senha.
 
 ## Flags
 
-`--dry-run` · `--yes` · `--install-deps` · `--no-app` · `--src DIR` · `--no-anim` · `--demo` ·
-`--lang pt|en` · `--version` · `--help`. Seams (bancada/gate): `RUB_SRC_URL`, `RUB_SRC_DIR`,
+`--dry-run` · `--yes` · `--install-deps` · `--no-app` · `--no-open` · `--src DIR` · `--no-anim` ·
+`--demo` · `--demo-frame N` · `--lang pt|en` · `--version` · `--help`. Seams (bancada/gate): `RUB_SRC_URL`, `RUB_SRC_DIR`,
 `RUB_SRC_SHA256`, `RUB_CACHE_DIR`, `RUB_STATE_DIR`, `RUB_PREFIX`, `RUB_LAUNCHD_DIR`,
 `RUB_SERVICE_USER`, `RUB_PYTHON`, `RUB_SUDO` (vazio = sem sudo, para stubs), `RUB_APP_DEST`,
 `RUB_SKIP_HEALTH`, `UI_NO_ANIM`, `NO_COLOR`.
 
-## Abertura
+## Abertura — o ícone real do app
 
-Motor de meio-bloco da casa (ont-ui.sh, via macmini-backup.sh) com a cena do app: o raio se
-desenha, o escudo cresce em volta, pulsa ao ritmo dos dados que correm do River ao UDR7,
-clarão, e assenta aceso. Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um
-quadro parado; sem cor/UTF-8 = só o título. `--demo` mostra só a abertura. O quadro final é
-snapshot no gate (S14, pty de 80 colunas).
+`tools/gera-logo.py` roda o mesmo render do AppIcon (`tools/app-icon-render.swift`,
+compartilhado com `tools/make-app-icon.sh`), recorta o squircle, reduz a 40×40 pixels com o
+`sips` e embute no instalador um bitmap com a cor de cada pixel (meio-bloco: 20 linhas — o
+maior que cabe com o título num terminal de 24 linhas). Quatro atos, como a abertura do
+`haos-install.sh`: o fundo do squircle sobe como líquido com o escudo vazado enquanto cada
+pixel do escudo voa de fora da tela e assenta (constelação); a caneta branca contorna o
+escudo e se retrai; o escudo **bate como um coração** — tum-tum, pausa, tum-tum — clareando,
+acendendo o raio e soltando um halo ciano no pico; e assenta. Medido num pty (2026-09-01): 95
+quadros em 5,5 s. Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro
+parado; sem cor/UTF-8 = só o título. `--demo` mostra só a abertura; `--demo-frame N` um
+quadro. O quadro final é snapshot no gate (S14, pty de 80 colunas). Mudou o ícone? Rode o
+gerador e cole o fragmento entre os marcadores `GERADO` do instalador.
+
+## Fecho — o relatório do molde da casa
+
+Como o `relatorio_final` do `haos-install.sh`: título com o tempo na mesma linha ("Feito até
+aqui · concluído em 43s" ou "Nada a fazer — tudo já estava no lugar"), caixa do que ficou
+instalado (✔ serviço com a versão lida de `/v1/version`, ✔ app, ✔ configuração; `gum` se
+houver, texto puro se não), o **norte** — "O River Bridge está na sua barra de menus", e o app
+é aberto sozinho (`--no-open` desliga) —, o aviso de que a proteção do UDR7 nasce em ensaio,
+e o caminho do relatório desta execução.
 
 ## Cercas no gate (`tools/gate.sh`)
 

@@ -267,9 +267,12 @@ env $OL_ENV "$ONE" --yes --no-anim --no-app --src "$RAIZ" >"$OL/r3.log" 2>&1; OL
 OL_KICKS="$(grep -c kick "$OL/ld/.kicks" 2>/dev/null || echo 0)"
 (cd "$RAIZ" && tar -czf "$OL/repo.tgz" --exclude .git --exclude .venv --exclude .build --exclude __pycache__ --exclude 'macos/RiverBridge/dist' -s '|^\./|repo-main/|' . 2>/dev/null)
 env $OL_ENV RUB_SRC_URL="file://$OL/repo.tgz" "$ONE" --yes --no-anim --no-app >"$OL/r4.log" 2>&1; OL_RC4=$?
+# O fecho segue o molde da casa (relatorio_final): 1ª execução "Feito até aqui", 2ª "Nada a fazer".
 if [ "$OL_RC1" = "0" ] && [ "$OL_RC2" = "100" ] && [ "$OL_RC3" = "0" ] && [ "$OL_KICKS" = "1" ] \
-   && [ "$OL_RC4" = "0" ] && [ -x "$OL"/cache/src-*/scripts/install.sh ] && [ -f "$OL/state/installer-last-run.log" ]; then
-    ok "S12 one-liner: 0 → 100 → kickstart (1) → download file:// extraído e instalado"
+   && [ "$OL_RC4" = "0" ] && [ -x "$OL"/cache/src-*/scripts/install.sh ] && [ -f "$OL/state/installer-last-run.log" ] \
+   && grep -qE "Feito até aqui|Done so far" "$OL/r1.log" && grep -qE "Nada a fazer|Nothing to do" "$OL/r2.log" \
+   && grep -qE "O que ficou instalado|Installed on this machine" "$OL/r2.log"; then
+    ok "S12 one-liner: 0 → 100 → kickstart (1) → download file:// extraído e instalado · fecho no molde (Feito até aqui / Nada a fazer)"
 else
     erro "S12 one-liner: rc1=$OL_RC1 rc2=$OL_RC2 rc3=$OL_RC3 kicks=$OL_KICKS rc4=$OL_RC4 — caudas:"
     tail -3 "$OL/r1.log" "$OL/r2.log" "$OL/r3.log" "$OL/r4.log" 2>/dev/null

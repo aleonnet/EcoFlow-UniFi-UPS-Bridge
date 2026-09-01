@@ -13,6 +13,10 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
   relatório em `installer-last-run.log`.
 - Repositório tornado público; instalação remota verificada (dry-run `0`, instalação `0`,
   reexecução `100`).
+- Abertura com o **ícone real do app** (`tools/gera-logo.py` roda o mesmo render do AppIcon;
+  40×40 pixels, cada um com a própria cor) em quatro atos — constelação, traço, batimento
+  cardíaco, assenta — e fecho no molde da casa (`relatorio_final`: título com o tempo, caixa
+  do que ficou instalado, o app aberto como norte, `--no-open`).
 - `scripts/install.sh`: manifesto do que criou (created/preexisting/pending), `--dry-run`
   inócuo, `--consent-homebrew` obrigatório para `brew install`, LaunchDaemon provado com
   `launchctl print` (com retry na corrida bootstrap/bootout medida no mini), resolução

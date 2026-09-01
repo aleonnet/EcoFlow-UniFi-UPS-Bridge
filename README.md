@@ -40,8 +40,8 @@ Em cinco fases: pré-voo → baixa o código (tarball do `main`, sha256 conferid
 LaunchDaemon) → app em `~/Applications/River Bridge.app` → verificação pela API local.
 Reexecutar é seguro: sai `0` quando fez algo, `100` quando já estava tudo no lugar.
 
-Flags úteis: `--dry-run` (só mostra o plano), `--no-app`, `--install-deps`, `--yes`,
-`--src DIR` (usar uma árvore local em vez de baixar), `--lang pt|en`, `--no-anim`.
+Flags úteis: `--dry-run` (só mostra o plano), `--no-app`, `--no-open`, `--install-deps`,
+`--yes`, `--src DIR` (usar uma árvore local em vez de baixar), `--lang pt|en`, `--no-anim`.
 Detalhes em [docs/INSTALACAO_UMA_LINHA_20260901.md](docs/INSTALACAO_UMA_LINHA_20260901.md).
 
 Já tem o repositório clonado? `sudo scripts/install.sh --consent-homebrew` e
