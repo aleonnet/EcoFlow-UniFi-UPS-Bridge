@@ -64,8 +64,8 @@ struct AuroraBackground: View {
             // identity survives as a wash over the blurred desktop.
             .background(
                 scheme == .dark
-                    ? Color(white: 0.045).opacity(0.55)
-                    : Color(white: 0.94).opacity(0.55)
+                    ? Color(white: 0.045).opacity(0.35)
+                    : Color(white: 0.94).opacity(0.35)
             )
         }
         .animation(.easeInOut(duration: 1.2), value: store.isOnBattery)

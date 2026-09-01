@@ -91,7 +91,7 @@ struct RiverBridgeApp: App {
 
         func makeNSView(context: Context) -> NSVisualEffectView {
             let view = NSVisualEffectView()
-            view.material = .underWindowBackground
+            view.material = .hudWindow   // o material translúcido de verdade (owner: 55%+under nada mudou a olho)
             view.blendingMode = .behindWindow
             view.state = .active
             makeTransparent(view)

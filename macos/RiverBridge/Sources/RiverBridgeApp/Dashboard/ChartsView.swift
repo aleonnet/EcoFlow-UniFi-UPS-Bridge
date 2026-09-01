@@ -8,6 +8,9 @@ import SwiftUI
 
 struct ChartsView: View {
     var store: TelemetryStore
+    /// Type chips shared with the events list (owner): in Events mode the
+    /// histogram honours the same filter; empty = everything.
+    var chips: Set<EventChip> = []
 
     @State private var metric: Metric = ChartsView.initialMetric()
     @State private var rows: [HistoryRow] = []
@@ -96,8 +99,14 @@ struct ChartsView: View {
         switch metric {
         case .charge: store.chargeText
         case .powerW: store.powerText
-        case .eventos: "\(eventRows.count)"
+        case .eventos: "\(filteredEventRows.count)"
         }
+    }
+
+    private var filteredEventRows: [EventLogRow] {
+        guard !chips.isEmpty else { return eventRows }
+        let types = Set(chips.flatMap(\.types))
+        return eventRows.filter { types.contains($0.type) }
     }
 
     private var eyebrowText: String {
@@ -105,7 +114,7 @@ struct ChartsView: View {
     }
 
     private var isEmpty: Bool {
-        metric == .eventos ? eventRows.isEmpty : rows.isEmpty
+        metric == .eventos ? filteredEventRows.isEmpty : rows.isEmpty
     }
 
     var body: some View {
@@ -201,7 +210,7 @@ struct ChartsView: View {
         if metric == .eventos {
             let bucket = eventsBucket
             var counts: [Int: Int] = [:]
-            for row in eventRows where Double(row.ts) >= fromT && Double(row.ts) <= toT {
+            for row in filteredEventRows where Double(row.ts) >= fromT && Double(row.ts) <= toT {
                 counts[row.ts / bucket * bucket, default: 0] += 1
             }
             return niceCeil(Double(counts.values.max() ?? 1))
@@ -399,14 +408,41 @@ struct ChartsView: View {
         }
     }
 
+    /// Per-type breakdown for the hovered bucket ("2 Queda · 1 Restaurada")
+    /// — owner: show the stacked values, not only a total.
+    private func bucketBreakdown(_ bucket: Int) -> String {
+        var counts: [String: Int] = [:]
+        for row in filteredEventRows where row.ts / eventsBucket * eventsBucket == bucket {
+            counts[row.type, default: 0] += 1
+        }
+        let parts = Self.eventTypes.compactMap { type -> String? in
+            guard let n = counts[type], n > 0 else { return nil }
+            return "\(n) \(shortLabel(type))"
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var eventsChartCore: some View {
-        Chart(eventRows) { row in
-            BarMark(
-                x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts / eventsBucket * eventsBucket))),
-                y: .value("Eventos", 1),
-                width: .fixed(7)
-            )
-            .foregroundStyle(by: .value("Tipo", shortLabel(row.type)))
+        Chart {
+            ForEach(filteredEventRows) { row in
+                BarMark(
+                    x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts / eventsBucket * eventsBucket))),
+                    y: .value("Eventos", 1),
+                    width: .fixed(7)
+                )
+                .foregroundStyle(by: .value("Tipo", shortLabel(row.type)))
+            }
+            if let scrubTS {
+                let bucket = scrubTS / eventsBucket * eventsBucket
+                let resumo = bucketBreakdown(bucket)
+                if !resumo.isEmpty {
+                    RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(bucket))))
+                        .foregroundStyle(.secondary.opacity(0.4))
+                        .annotation(position: .top) {
+                            hoverCallout(valor: resumo, hora: timeLabel(bucket))
+                        }
+                }
+            }
         }
         .chartXScale(domain: chartNow.addingTimeInterval(-scope.seconds)...chartNow)
         .chartScrollableAxes(.horizontal)
@@ -448,6 +484,42 @@ struct ChartsView: View {
         }
         .frame(height: 150)
         .padding(.trailing, 26)
+        // Hover scrub on the histogram too (drag stays pan): the callout
+        // shows the stacked breakdown for the bucket under the cursor.
+        .chartOverlay { proxy in
+            Rectangle().fill(.clear).contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let point):
+                        if let date: Date = proxy.value(atX: point.x) {
+                            scrubTS = Int(date.timeIntervalSince1970)
+                        }
+                    case .ended:
+                        scrubTS = nil
+                    }
+                }
+        }
+    }
+
+    /// Discreet GLASS callout for hover values (owner): material capsule,
+    /// theme-accented hairline, value + time.
+    private func hoverCallout(valor: String, hora: String) -> some View {
+        HStack(spacing: 6) {
+            Text(valor)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .fixedSize()
+            Text(hora)
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay { Capsule().strokeBorder(accent.opacity(0.35), lineWidth: 1) }
+        .shadow(color: accent.opacity(0.20), radius: 6)
     }
 
     private var chart: some View {
@@ -481,12 +553,7 @@ struct ChartsView: View {
                 RuleMark(x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts))))
                     .foregroundStyle(.secondary.opacity(0.4))
                     .annotation(position: .top) {
-                        Text(format(avg))
-                            .font(.caption.weight(.semibold))
-                            .monospacedDigit()
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(.background.opacity(0.9), in: Capsule())
+                        hoverCallout(valor: format(avg), hora: timeLabel(row.ts))
                     }
             }
         }
