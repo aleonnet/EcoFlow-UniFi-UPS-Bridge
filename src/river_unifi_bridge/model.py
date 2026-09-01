@@ -26,6 +26,7 @@ STATUS_MAP: dict[str, str] = {
 # NUT variable names consumed from usbhid-ups (spec §5.5)
 _FLOAT_VARS = {
     "battery.charge": ("battery", "charge_percent"),
+    "battery.charge.low": ("battery", "battery_charge_low_percent"),
     "battery.runtime": ("battery", "runtime_seconds"),
     "battery.voltage": ("battery", "voltage_v"),
     "battery.temperature": ("battery", "temperature_c"),
@@ -78,12 +79,20 @@ class UpsSnapshot:
     load_percent: float | None = None
 
     charge_percent: float | None = None
+    # battery.charge.low as published by the driver (EcoFlow: the app's
+    # Discharge Limit). Display only — the protection cutoff is the owner's key.
+    battery_charge_low_percent: float | None = None
     runtime_seconds: float | None = None
     voltage_v: float | None = None
     temperature_c: float | None = None
 
     communication_ok: bool = True
     alarm: list[str] = field(default_factory=list)
+
+    # Fase 3'-EXP: source identity (driver.name / driver.version). None when the
+    # upsd does not publish them — the protection policy fails closed on None.
+    driver_name: str | None = None
+    driver_version: str | None = None
 
     timestamp: str = ""
 
@@ -127,6 +136,7 @@ class UpsSnapshot:
             },
             "battery": {
                 "charge_percent": self.charge_percent,
+                "charge_low_percent": self.battery_charge_low_percent,
                 "runtime_seconds": self.runtime_seconds,
                 "voltage_v": self.voltage_v,
                 "temperature_c": self.temperature_c,
@@ -138,7 +148,11 @@ class UpsSnapshot:
                 "alarm": self.alarm,
                 "unknown_status_tokens": self.unknown_tokens,
             },
-            "source": {"nut": True, "usb_hid": True, "usb_cdc": False},
+            "source": {
+                "nut": True, "usb_hid": True, "usb_cdc": False,
+                "driver_name": self.driver_name,
+                "driver_version": self.driver_version,
+            },
             "timestamp": self.timestamp,
         }
 
@@ -151,6 +165,8 @@ def snapshot_from_nut_vars(name: str, nut_vars: dict[str, str]) -> UpsSnapshot:
         manufacturer=nut_vars.get("device.mfr") or nut_vars.get("ups.mfr"),
         model=nut_vars.get("device.model") or nut_vars.get("ups.model"),
         serial=nut_vars.get("device.serial"),
+        driver_name=nut_vars.get("driver.name") or None,
+        driver_version=nut_vars.get("driver.version") or None,
         states=states,
         unknown_tokens=unknown,
         alarm=[a for a in (nut_vars.get("ups.alarm"),) if a],
@@ -161,8 +177,14 @@ def snapshot_from_nut_vars(name: str, nut_vars: dict[str, str]) -> UpsSnapshot:
         if raw is None:
             continue
         try:
-            setattr(snap, attr, float(raw))
+            value = float(raw)
         except ValueError:
             # Non-numeric value from the driver: preserve honesty, keep None.
             snap.unknown_tokens.append(f"{var}={raw}")
+            continue
+        if var == "battery.charge" and not 0.0 <= value <= 100.0:
+            # Out-of-range charge is not a reading — keep None, keep it visible.
+            snap.unknown_tokens.append(f"{var}={raw}")
+            continue
+        setattr(snap, attr, value)
     return snap

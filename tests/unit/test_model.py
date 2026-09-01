@@ -60,3 +60,27 @@ def test_non_numeric_value_kept_visible_not_invented():
     snap = snapshot_from_nut_vars("x", {"battery.charge": "n/a"})
     assert snap.charge_percent is None
     assert "battery.charge=n/a" in snap.unknown_tokens
+
+
+def test_charge_out_of_range_is_none_and_visible():
+    for raw in ("-1", "101", "250"):
+        snap = snapshot_from_nut_vars("x", {"battery.charge": raw})
+        assert snap.charge_percent is None
+        assert f"battery.charge={raw}" in snap.unknown_tokens
+    assert snapshot_from_nut_vars("x", {"battery.charge": "0"}).charge_percent == 0.0
+    assert snapshot_from_nut_vars("x", {"battery.charge": "100"}).charge_percent == 100.0
+
+
+def test_driver_identity_and_charge_low_are_mapped_or_none():
+    snap = snapshot_from_nut_vars(
+        "x", {"driver.name": "usbhid-ups", "driver.version": "2.8.4",
+              "battery.charge.low": "10"},
+    )
+    assert (snap.driver_name, snap.driver_version) == ("usbhid-ups", "2.8.4")
+    assert snap.battery_charge_low_percent == 10.0
+    d = snap.to_dict()
+    assert d["source"]["driver_name"] == "usbhid-ups"
+    assert d["battery"]["charge_low_percent"] == 10.0
+    bare = snapshot_from_nut_vars("x", {"driver.name": ""})
+    assert bare.driver_name is None and bare.driver_version is None
+    assert bare.to_dict()["source"]["driver_version"] is None

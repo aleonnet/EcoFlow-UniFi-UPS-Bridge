@@ -29,6 +29,8 @@ def test_state_online_fixture_matches_code():
             "input.voltage": "230.0", "output.voltage": "230.0",
             "ups.realpower": "45", "device.mfr": "EcoFlow",
             "device.model": "RIVER 3 Plus", "device.serial": "SIM0001",
+            "driver.name": "fake-nut-ups", "driver.version": "fake-nut-ups",
+            "battery.charge.low": "10",
         },
     ).to_dict()
     snap["timestamp"] = "2026-08-31T17:00:00+00:00"  # fixture freezes the clock

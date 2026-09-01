@@ -16,6 +16,7 @@
   },
   "battery": {
     "charge_percent": null,
+    "charge_low_percent": null,
     "runtime_seconds": null,
     "voltage_v": null,
     "temperature_c": null
@@ -31,7 +32,9 @@
   "source": {
     "nut": true,
     "usb_hid": true,
-    "usb_cdc": false
+    "usb_cdc": false,
+    "driver_name": null,
+    "driver_version": null
   },
   "timestamp": null
 }

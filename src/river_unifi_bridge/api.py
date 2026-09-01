@@ -53,15 +53,18 @@ def _empty_state(name: str, comm_ok: bool, last_error: str | None) -> dict:
             "output_power_w": None, "load_percent": None,
         },
         "battery": {
-            "charge_percent": None, "runtime_seconds": None,
-            "voltage_v": None, "temperature_c": None,
+            "charge_percent": None, "charge_low_percent": None,
+            "runtime_seconds": None, "voltage_v": None, "temperature_c": None,
         },
         "health": {
             "communication_ok": comm_ok, "low_battery": False, "overload": False,
             "alarm": [], "unknown_status_tokens": [],
             "last_error": last_error,
         },
-        "source": {"nut": True, "usb_hid": True, "usb_cdc": False},
+        "source": {
+            "nut": True, "usb_hid": True, "usb_cdc": False,
+            "driver_name": None, "driver_version": None,
+        },
         "timestamp": None,
     }
 

@@ -19,11 +19,16 @@ import socketserver
 import sys
 import time
 
+# Synthetic by construction: driver.name/driver.version identify the simulator so the
+# UDR7 protection policy (src/river_unifi_bridge/protect.py) always refuses to act on
+# it — Fase 3'-EXP fence M1. battery.charge.low is a simulated Discharge Limit.
 BASE_VARS = {
     "device.mfr": "EcoFlow",
     "device.model": "RIVER 3 Plus",
     "device.serial": "SIM0001",
+    "driver.name": "fake-nut-ups",
     "driver.version": "fake-nut-ups",
+    "battery.charge.low": "10",
 }
 
 START = time.monotonic()
@@ -101,12 +106,44 @@ def scenario_instavel(t: float) -> dict[str, str]:
     }
 
 
+APAGAO_GRID_SECONDS = 20.0
+APAGAO_OUTAGE_SECONDS = 100.0
+APAGAO_CYCLE_SECONDS = APAGAO_GRID_SECONDS + APAGAO_OUTAGE_SECONDS + 20.0  # 140 s
+APAGAO_CHARGE_START = 40.0
+APAGAO_CHARGE_END = 3.0
+
+
+def scenario_apagao(t: float) -> dict[str, str]:
+    """Fase 3'-EXP rehearsal: 20 s on grid, a 100 s outage draining 40 % -> 3 %
+    (no LB — the River never raises it, NUT issue #3068), then 20 s on grid.
+    Long enough for the protection policy to fire in dry-run with defaults."""
+    cycle = t % APAGAO_CYCLE_SECONDS
+    if cycle < APAGAO_GRID_SECONDS or cycle >= APAGAO_GRID_SECONDS + APAGAO_OUTAGE_SECONDS:
+        vars_ = scenario_online(t)
+        vars_["battery.charge"] = str(int(APAGAO_CHARGE_START))
+        vars_["battery.runtime"] = str(int(APAGAO_CHARGE_START * 40))
+        return vars_
+    elapsed = cycle - APAGAO_GRID_SECONDS
+    span = APAGAO_CHARGE_START - APAGAO_CHARGE_END
+    charge = max(APAGAO_CHARGE_END, APAGAO_CHARGE_START - span * elapsed / APAGAO_OUTAGE_SECONDS)
+    return {
+        **BASE_VARS,
+        "ups.status": "OB DISCHRG",
+        "battery.charge": str(int(charge)),
+        "battery.runtime": str(int(charge) * 40),
+        "ups.load": "14",
+        "output.voltage": "229.5",
+        "ups.realpower": "52",
+    }
+
+
 SCENARIOS = {
     "online": scenario_online,
     "power-loss": scenario_power_loss,
     "low-battery": scenario_low_battery,
     "overload": scenario_overload,
     "instavel": scenario_instavel,
+    "apagao": scenario_apagao,
 }
 
 

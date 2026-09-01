@@ -19,6 +19,7 @@
   },
   "battery": {
     "charge_percent": 87.0,
+    "charge_low_percent": 10.0,
     "runtime_seconds": 3600.0,
     "voltage_v": null,
     "temperature_c": null
@@ -33,7 +34,9 @@
   "source": {
     "nut": true,
     "usb_hid": true,
-    "usb_cdc": false
+    "usb_cdc": false,
+    "driver_name": "fake-nut-ups",
+    "driver_version": "fake-nut-ups"
   },
   "timestamp": "2026-08-31T17:00:00+00:00"
 }
