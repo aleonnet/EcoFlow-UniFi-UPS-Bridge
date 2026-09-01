@@ -1,0 +1,60 @@
+# UDR7/UniFi OS enxerga UPS de terceiros? — Pesquisa definitiva (2026-08-31)
+
+Pergunta do dono: a UI do UDR7 oferece algum lugar para consumir um UPS de
+terceiros? Regra: fato com URL; [P]=fonte primária Ubiquiti; [S]=secundária;
+NÃO ENCONTRADO jamais preenchido.
+
+## VEREDITO
+
+**Não. Nenhum console UniFi OS (UDR7 incluído) tem mecanismo nativo para
+enxergar ou consumir um UPS de terceiros.** O NUT da Ubiquiti opera numa
+direção só — o UniFi UPS é *servidor* NUT para terceiros consumirem, nunca o
+console como *cliente* — e o Safe Shutdown oficial exige um UPS Ubiquiti, que
+desliga os pareados via SSH.
+
+## Evidência
+
+1. **UI oficial**: o artigo de redundância de energia cobre só hardware
+   próprio (SmartPower RPS, USW Mission Critical, UniFi Power Backup) — nada
+   de UPS externo. [P] https://help.ui.com/hc/en-us/articles/360042834933-Power-Redundancy
+   Nenhuma tela "NUT client"/"External UPS" em help.ui.com, release notes ou
+   capturas de usuários (NÃO ENCONTRADO).
+2. **A direção do NUT é confirmada em texto oficial**: "Built-in NUT server
+   capability extending safe shutdown support to third-party servers" — o UPS
+   deles serve terceiros. [P] https://ui.com/integrations/power-tech/ups-solutions ·
+   https://blog.ui.com/article/introducing-uninterruptible-power
+3. **Safe Shutdown Pairing** (UniFi OS ≥4.4.3): só lista dispositivos
+   Ubiquiti (UNVR/UNAS; consoles chegando por early-access) e o mecanismo é o
+   UPS empurrar shutdown via SSH com credenciais fornecidas. [S]
+   https://community.ui.com/questions/UPS-2U-Safe-Shutdown-Pairing/a6e8855f-f71d-4d5a-9130-941956bc28d4
+4. **"Improved NUT Client reporting to the Network Application"** (UPS fw
+   1.4.30) [P: https://community.ui.com/releases/UniFi-UPS-1-4-30/4a8d4915-c4f8-4f54-8a04-0d66190456b1]:
+   interpretação (inferência declarada) — o UPS reporta ao console os NUT
+   *clients* de terceiros conectados A ELE; nenhuma fonte afirma cliente NUT
+   nativo no console.
+5. **USB**: UDR7 NÃO tem porta USB (1×SFP+, 4×2.5GbE, microSD). [P]
+   https://techspecs.ui.com/unifi/cloud-gateways/udr7 — sem caminho USB-UPS
+   em console algum (pedidos da comunidade sem atendimento). [S]
+6. **Cliente NUT no console — pedidos negados**: feature request no UDM Pro
+   sem atendimento; issues no unifios-utilities fechadas "not planned". [S]
+   https://community.ui.com/questions/Please-add-a-NUT-client-to-UDM-Pro-for-graceful-shutdown/15abe09f-0b39-4d73-bbc3-a2e45d48c5ab ·
+   https://github.com/unifi-utilities/unifios-utilities/issues/528
+7. **Spoof/emulação de UniFi UPS**: NÃO ENCONTRADO nenhum projeto público
+   (existem emuladores do protocolo inform para APs/switches, nenhum para UPS).
+
+## Caminhos reais (esforço/risco crescente)
+
+| # | Caminho | Como | Risco |
+|---|---|---|---|
+| 1 | **NUT externo + SSH poweroff** (padrão da comunidade) | nosso upsmon no mini, em OB+LB/limiar, faz SSH no console e roda `ubnt-systool poweroff` — nada instalado no UniFi | credencial/chave SSH resetada em firmware update (detectável por health-check) [S] https://gist.github.com/Freekers/c8e4b75e02bf26e68c4ee6da5a6b2392 |
+| 2 | nut-client via apt DENTRO do console (é Debian) | upsmon no próprio UDR apontando ao nosso upsd | apagado em firmware update; exige unifi-on-boot [S] https://github.com/WhiskeyTang0F0xtr0t/unifi |
+| 3 | Comprar um UniFi UPS | integração nativa total | não usa o River (troca o problema) |
+| 4 | Emular UniFi UPS (inform) | engenharia reversa do zero | sem precedente público; alto |
+
+## Consequência para o projeto (Fase 3 redefinida)
+
+"O UDR7 ver o River" é **inviável nativamente**. O objetivo de negócio real —
+**o UDR7 protegido pelo River** — é viável e battle-tested pelo caminho 1:
+visibilidade fica no nosso app + HA (NUT de verdade); proteção do console vira
+AÇÃO da bridge (shutdown seguro via SSH no evento certo). Emulação (caminho 4)
+só se o dono decidir bancar reverso sem garantia.
