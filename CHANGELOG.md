@@ -8,16 +8,20 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 
 ### Instalação
 - A abertura passa a mostrar **só o escudo** do ícone (antes era o quadrado arredondado
-  inteiro, que encostava nas bordas e cortava o halo e o traço), nas medidas do molde
-  `lib/haos-ui.sh`: 34 colunas de campo e 0,03 s por quadro, num canvas 34×40 (o escudo é mais
-  alto que largo; no canvas quadrado da casa ele sairia 19% menor) com 3 px de margem na
-  colagem — a largura vem da razão real do símbolo, 0,825. A paleta espelha o
-  molde — lá casa azul com circuito branco, aqui **escudo verde com raio branco**, com o
-  gradiente vertical calculado por linha no runtime (glow `38,230,178` no topo, fundo
-  `26,166,140` na base) e o raio piscando a cada batida do coração, assentando branco.
-  Mediana de 5,53 s em 7 execuções num pty de 80×40 (faixa 5,09–6,36). Novo `tools/ui-demo.sh`
-  mostra a camada visual sem instalar nada, e `--comparar [ref]` põe a abertura de hoje e a de
-  um commit anterior em sequência, separadas por um Enter, para escolher olhando as duas.
+  inteiro, que encostava nas bordas e cortava o halo e o traço), no campo do molde
+  `lib/haos-ui.sh`: 34 colunas e 0,03 s por quadro, num canvas 34×40 — o escudo é mais alto que
+  largo, e no canvas quadrado da casa ele sairia bem menor. A largura vem da razão real do
+  símbolo, 0,825.
+- O desenho leva a **cor real de cada pixel** do render (`LG_RGB`, 1 360 entradas, 15,1 KiB) e
+  uma **auréola** de 2 px do fundo do ícone seguindo a forma do escudo. É o volume do primeiro
+  desenho com o escudo grande do segundo: escudo claro, raio vazado no verde, auréola que o
+  descola do preto do terminal — o AppIcon, não a inversão dele. O gradiente por linha do molde
+  foi medido e descartado: borra o raio e engrossa a auréola num verde chapado (erro médio de
+  18,6 por canal, máximo 155). O pisca da batida acompanha — o raio é verde e pisca em branco.
+  Mediana de 5,51 s em 7 execuções num pty de 80×40 (faixa 5,47–5,54).
+- Novo `tools/ui-demo.sh` mostra a camada visual sem instalar nada, e `--comparar [ref]` põe a
+  abertura de um commit anterior e a de hoje em sequência, separadas por um Enter — nesta ordem,
+  para o desenho novo ser o que fica parado na tela no fim.
 - A abertura passa a exigir tela alta o bastante: o laço sobe `LG_LINHAS` linhas por quadro e,
   numa tela mais baixa, o salto é grampeado no topo e os quadros escorregam. Abaixo de
   `LG_LINHAS + 1` cai para o quadro único, como já fazia com terminal estreito. Medido: 21

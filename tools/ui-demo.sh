@@ -20,13 +20,14 @@
 #   ./tools/ui-demo.sh --no-anim    um quadro estático
 #   ./tools/ui-demo.sh --logo       só a abertura (o escudo)
 #   ./tools/ui-demo.sh --quadro N   um quadro específico (-1 = o final)
-#   ./tools/ui-demo.sh --comparar [ref]   a abertura de hoje, um Enter, e a de
-#                                   antes, para escolher olhando as duas
+#   ./tools/ui-demo.sh --comparar [ref]   a abertura de antes, um Enter, e a de
+#                                   hoje — nesta ordem, para o desenho novo ser o
+#                                   que fica parado na tela no fim
 #
 # O modo --comparar roda cada abertura num PROCESSO À PARTE (bash <script>
 # --demo), nunca duas bibliotecas no mesmo shell. O risco não são as variáveis que
 # a versão antiga tem a mais (LG_RGB) — essas nascem no `source` e são inofensivas:
-# é o contrário. LG_MIN_LINHAS, LG_FGA e LG_BGA existem só na versão de hoje e
+# é o contrário. LG_MIN_LINHAS, LG_FGP e LG_BGP existem só na versão de hoje e
 # SOBREVIVERIAM a um `source` da antiga, que não as redefine. Processo à parte não
 # deixa nada de pé.
 # =============================================================================
@@ -92,24 +93,28 @@ if [ "${1:-}" = "--comparar" ]; then
     printf '%s×%s px · %s linhas · %s' "$w" "$h" "$(( h / 2 ))" "$paleta"
   }
 
+  # A ANTIGA vem primeiro e a de hoje por último, de propósito: o desenho que fica
+  # parado na tela no fim é o que se está julgando. Com a ordem inversa, o que
+  # sobrava era o antigo — e o de ed44a8e é o ícone inteiro, escuro, que passa a
+  # impressão de ter perdido cor quando na verdade tem mais.
   clear 2>/dev/null || true
-  printf '  [DEMO] a abertura de HOJE — %s\n\n' "$(medidas "$RAIZ/river-bridge-install.sh")"
-  bash "$RAIZ/river-bridge-install.sh" --demo; rc_hoje=$?
+  printf '  [DEMO] a abertura de %s — %s\n\n' "$ref" "$(medidas "$antigo")"
+  bash "$antigo" --demo; rc_antiga=$?
   # Sem terminal interativo o `read` fica bloqueado enquanto o cano não fechar
   # (medido: num cano sem EOF o processo não voltava em 2 minutos). Aí segue
   # direto — quem lê por cano quer a saída, não a pausa.
   if [ -t 0 ]; then
-    printf '  Enter para a abertura de %s — %s ' "$ref" "$(medidas "$antigo")"
+    printf '  Enter para a abertura de HOJE — %s ' "$(medidas "$RAIZ/river-bridge-install.sh")"
     read -r _ || printf '\n'
   else
-    printf '  (sem terminal interativo: seguindo direto para a de %s)\n' "$ref"
+    printf '  (sem terminal interativo: seguindo direto para a de hoje)\n'
   fi
   # Aqui NÃO se limpa a tela: o `clear` do macOS emite \033[3J, que apaga o buffer
   # de rolagem — a abertura de hoje sumiria antes da antiga aparecer e não daria
   # nem para rolar de volta. Comparar exige as duas alcançáveis.
   printf '\n  ────────────────────────────────\n\n'
-  printf '  [DEMO] a abertura de %s — %s\n\n' "$ref" "$(medidas "$antigo")"
-  bash "$antigo" --demo; rc_antiga=$?
+  printf '  [DEMO] a abertura de HOJE — %s\n\n' "$(medidas "$RAIZ/river-bridge-install.sh")"
+  bash "$RAIZ/river-bridge-install.sh" --demo; rc_hoje=$?
   [ "$rc_hoje" -eq 0 ] && [ "$rc_antiga" -eq 0 ] || {
     printf '  uma das aberturas falhou (hoje %s · %s %s)\n' "$rc_hoje" "$ref" "$rc_antiga" >&2
     exit 1

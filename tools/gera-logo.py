@@ -41,19 +41,22 @@ import math, os, struct, subprocess, sys, tempfile
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALTURA = int(os.environ.get("ALTURA", "40"))   # 20 linhas de meio-bloco (ver docstring)
 LARGURA = int(os.environ.get("LARGURA", "34"))  # largura do molde: lib/haos-ui.sh (HA_W=34)
-MARGEM = int(os.environ.get("MARGEM", "3"))   # a maior que cabe: 28 + 3 + 3 = 34 = LARGURA
+# MARGEM é o VAZIO em volta do desenho; AUREOLA é fundo do ícone, e portanto
+# desenho. Com auréola de 2 px a distância do escudo à borda do canvas passa de 3
+# para 4 px (2 de auréola + 2 de vazio) — o vazio encolhe, a folga cresce. O vazio
+# serve ao halo (1 px) e ao traço; 2 px bastam para os dois.
+MARGEM = int(os.environ.get("MARGEM", "2"))
+AUREOLA = int(os.environ.get("AUREOLA", "2"))  # px do fundo do ícone em volta do escudo
 A_DUR = 8                    # quadros de voo de cada partícula
 SONDA = 256                  # resolução da sonda onde o bbox do escudo é medido
 BRANCO = 150                 # min(r,g,b) a partir do qual o pixel é escudo
 OPACO = 96                   # alpha a partir do qual o pixel conta
 
-# Paleta — espelho do molde (lib/haos-ui.sh usa casa AZUL + circuito BRANCO; aqui é
-# escudo VERDE + raio BRANCO). Os verdes saem do próprio ícone, tools/app-icon-render.swift:
-#   :27 glow  NSColor(0.15, 0.90, 0.70) -> (38, 230, 178)   topo do gradiente
-#   :21 fundo NSColor(0.10, 0.65, 0.55) -> (26, 166, 140)   base do gradiente
-VERDE_TOPO = (38, 230, 178)
-VERDE_BASE = (26, 166, 140)
-BRANCO_RGB = (236, 242, 248)   # o mesmo branco do detalhe no molde (HA_FG_BRANCO)
+# Paleta — só o que NÃO vem do render. A cor do desenho é a do próprio ícone, pixel
+# a pixel (LG_RGB): escudo claro, raio vazado no verde, auréola no fundo. O único
+# literal é o branco do pisca — a cor com que o raio ACENDE na batida, que por
+# definição não existe no ícone parado e por isso não pode sair do render.
+BRANCO_RGB = (236, 242, 248)   # branco do detalhe no molde (HA_FG_BRANCO): o pisca
 
 
 def _bbox_do_escudo(dados):
@@ -94,15 +97,25 @@ def renderizar_bmp(altura: int, margem: int) -> tuple[bytes, int, int, int]:
     k = px_master / SONDA                              # sonda → pixels do master
     cy, cx, ch, cw = round(y0 * k), round(x0 * k), round(h * k), round(w * k)
 
-    escudo_h = altura - 2 * margem
+    # A janela recortada é o escudo MAIS a auréola: sem esses px de fundo em volta,
+    # a auréola não teria de onde tirar cor (fora do bbox do escudo o recorte
+    # simplesmente não existe). A conversão é por regra de três: quantos px do
+    # master vale 1 px do canvas.
+    escudo_h = altura - 2 * margem - 2 * AUREOLA
     escudo_w = max(1, round(escudo_h * cw / ch))
-    assert escudo_w + 2 * margem <= LARGURA, (
-        f"escudo {escudo_w}px + margens não cabe em LARGURA={LARGURA}")
+    assert escudo_w + 2 * margem + 2 * AUREOLA <= LARGURA, (
+        f"escudo {escudo_w}px + auréola + margens não cabe em LARGURA={LARGURA}")
+    por_px = ch / escudo_h                             # px do master por px do canvas
+    folga = round(AUREOLA * por_px)
+    cy, cx = cy - folga, cx - folga
+    ch, cw = ch + 2 * folga, cw + 2 * folga
+    assert cy >= 0 and cx >= 0, "a auréola saiu do master"
     subprocess.run(["sips", "--cropOffset", str(cy), str(cx), "-c", str(ch), str(cw), master],
                    check=True, stdout=subprocess.DEVNULL)
     bmp = os.path.join(work, "escudo.bmp")
-    subprocess.run(["sips", "-z", str(escudo_h), str(escudo_w), "-s", "format", "bmp",
-                    master, "--out", bmp], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["sips", "-z", str(escudo_h + 2 * AUREOLA), str(escudo_w + 2 * AUREOLA),
+                    "-s", "format", "bmp", master, "--out", bmp],
+                   check=True, stdout=subprocess.DEVNULL)
     return open(bmp, "rb").read(), LARGURA, altura, margem
 
 
@@ -182,18 +195,37 @@ def classificar(img):
     for y in range(H):
         for x in range(W):
             if mask[y][x] == "?":
-                if fora[y][x]:
-                    mask[y][x] = "."
-                    rgb[y * W + x] = (0, 0, 0)
-                else:
-                    mask[y][x] = "r"
-    return rgb, ["".join(l) for l in mask], fora
+                mask[y][x] = "." if fora[y][x] else "r"
+    # A AURÉOLA: os pixels de fundo a até AUREOLA px do escudo viram 'b' e MANTÊM a
+    # cor do ícone. É o contraste dela contra o preto do terminal que dá o volume do
+    # ícone real; sem ela o escudo branco fica chapado. Só depois disso o resto vira
+    # vazio de verdade (cor zerada), para o halo e o traço terem onde existir.
+    if AUREOLA > 0:
+        perto = [[False] * W for _ in range(H)]
+        for y in range(H):
+            for x in range(W):
+                if mask[y][x] in ("s", "r"):
+                    for dy in range(-AUREOLA, AUREOLA + 1):
+                        for dx in range(-AUREOLA, AUREOLA + 1):
+                            if dy * dy + dx * dx <= AUREOLA * AUREOLA:
+                                ny, nx = y + dy, x + dx
+                                if 0 <= ny < H and 0 <= nx < W:
+                                    perto[ny][nx] = True
+        for y in range(H):
+            for x in range(W):
+                if mask[y][x] == "." and perto[y][x] and img[y][x][3] >= OPACO:
+                    mask[y][x] = "b"
+    for y in range(H):
+        for x in range(W):
+            if mask[y][x] == ".":
+                rgb[y * W + x] = (0, 0, 0)
+    return rgb, ["".join(l) for l in mask]
 
 
 def conferir(mask, margem):
     """As cercas do gerador — rodam em TODA invocação, não só em --medir."""
     classes = set("".join(mask))
-    assert classes <= {".", "s", "r"}, f"máscara com classe inesperada: {sorted(classes)}"
+    assert classes <= {".", "s", "r", "b"}, f"máscara com classe inesperada: {sorted(classes)}"
     assert any("s" in l for l in mask), "máscara sem escudo — o recorte não achou nada"
     assert set(mask[0]) == {"."} and set(mask[-1]) == {"."}, "borda horizontal não vazia"
     assert all(l[0] == "." and l[-1] == "." for l in mask), "borda vertical não vazia"
@@ -212,19 +244,22 @@ def conferir(mask, margem):
     assert not curtos, f"folga menor que a margem pedida ({margem} px): {curtos}"
 
 
-def contorno(mask, fora):
-    """Pixels 's' com um vizinho-4 em 'fora' (contorno EXTERNO, não o do raio),
+def contorno(mask):
+    """Pixels do desenho com um vizinho-4 VAZIO (contorno EXTERNO, não o do raio),
     ordenados por ângulo em volta do centroide — começa na ponta de baixo e sobe
-    pela esquerda, como o traço do molde da casa."""
+    pela esquerda, como o traço do molde da casa. A silhueta é a do desenho
+    inteiro: com auréola, a caneta contorna a auréola, que é a borda que se vê.
+    Não usa o `fora` do flood fill, que foi calculado ANTES de a auréola existir e
+    marcaria como externo justamente o que virou desenho."""
     W, H = len(mask[0]), len(mask)
     pts = []
     for y in range(H):
         for x in range(W):
-            if mask[y][x] != "s":
+            if mask[y][x] == ".":
                 continue
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < W and 0 <= ny < H and fora[ny][nx]:
+                if not (0 <= nx < W and 0 <= ny < H) or mask[ny][nx] == ".":
                     pts.append((x, y)); break
     mx = sum(p[0] for p in pts) / len(pts)
     my = sum(p[1] for p in pts) / len(pts)
@@ -240,12 +275,12 @@ def particulas(mask):
     W, H = len(mask[0]), len(mask)
     cx0, cy0 = W / 2.0, H / 2.0
     fora_da_tela = max(W, H) * 0.9
-    ys = [y for y in range(H) for x in range(W) if mask[y][x] in "sr"]
+    ys = [y for y in range(H) for x in range(W) if mask[y][x] in "srb"]
     y_base = max(ys)
     saida, i = [], 0
     for y in range(H):
         for x in range(W):
-            if mask[y][x] not in "sr":
+            if mask[y][x] not in "srb":
                 continue
             ang = math.atan2(y + 0.5 - cy0, x + 0.5 - cx0) + math.radians(40)
             raio = fora_da_tela + (i % 9)
@@ -280,10 +315,10 @@ def vetor(nome, valores):
 def main():
     dados, largura, altura, margem = renderizar_bmp(ALTURA, MARGEM)
     img = com_margem(ler_bmp(dados), largura, altura, margem)
-    rgb, mask, fora = classificar(img)
+    rgb, mask = classificar(img)
     conferir(mask, margem)
     W, H = len(img[0]), len(img)
-    tr = contorno(mask, fora)
+    tr = contorno(mask)
     pa = particulas(mask)
     ha = halo(mask)
     q_monta = max(p[4] for p in pa) + A_DUR
@@ -296,11 +331,11 @@ def main():
               f"produto (orçamento do ato 1) {q_monta * len(pa)}")
         return
     if "--preview" in sys.argv:
-        def cor(c, y):                      # as MESMAS cores do runtime
-            if c == "r":
-                return BRANCO_RGB
-            t = y * 100 // (H - 1)
-            return tuple(VERDE_TOPO[i] + (VERDE_BASE[i] - VERDE_TOPO[i]) * t // 100 for i in range(3))
+        def cor(_c, y, x):
+            """A MESMA cor que o runtime usa: a do pixel, direto de `rgb`. Antes
+            daqui saía o gradiente por linha, e a conferência mostrava um desenho
+            que o instalador não desenha."""
+            return rgb[y * W + x]
         for y in range(0, H, 2):
             linha = ""
             for x in range(W):
@@ -308,11 +343,12 @@ def main():
                 if c1 == "." and c2 == ".":
                     linha += " "; continue
                 if c1 == ".":
-                    linha += "\033[0m\033[38;2;%d;%d;%dm▄" % cor(c2, y + 1)
+                    linha += "\033[0m\033[38;2;%d;%d;%dm▄" % cor(c2, y + 1, x)
                 elif c2 == ".":
-                    linha += "\033[0m\033[38;2;%d;%d;%dm▀" % cor(c1, y)
+                    linha += "\033[0m\033[38;2;%d;%d;%dm▀" % cor(c1, y, x)
                 else:
-                    linha += ("\033[38;2;%d;%d;%dm" % cor(c1, y)) + ("\033[48;2;%d;%d;%dm" % cor(c2, y + 1)) + "▀"
+                    linha += ("\033[38;2;%d;%d;%dm" % cor(c1, y, x)) + \
+                             ("\033[48;2;%d;%d;%dm" % cor(c2, y + 1, x)) + "▀"
             print(linha + "\033[0m")
         print("\n" + "\n".join(mask))
         return
@@ -320,12 +356,14 @@ def main():
     print("# ── GERADO por tools/gera-logo.py — NÃO editar à mão ──────────────────────")
     print(f"# Escudo do ícone real (tools/app-icon-render.swift) em {W}×{H} pixels,")
     print(f"# com {margem} px de margem vazia para o halo e o traço não serem cortados.")
-    print("# LG_MASK: . fora · s escudo (gradiente verde) · r raio (branco).")
-    print("# As cores vivem no runtime, por LINHA — molde de lib/haos-ui.sh (ha_logo_init).")
+    print("# LG_MASK: . vazio · b auréola (o fundo do ícone) · s escudo · r raio.")
+    print("# LG_RGB: a cor REAL de cada pixel do render (índice y*LG_W+x) — é ela que dá")
+    print("# o volume do ícone; o runtime só monta os escapes uma vez, em lg_init.")
     print(f"LG_W={W}")
     print(f"LG_H={H}")
     print(f"LG_CAMINHO={len(tr)}")
     print(f"LG_Q_MONTA={q_monta}")
+    print("LG_RGB=(" + " ".join(f'"{r};{g};{b}"' for r, g, b in rgb) + ")")
     print("LG_MASK=(")
     for l in mask:
         print(f"'{l}'")

@@ -329,7 +329,7 @@ W = int(re.search(r"^LG_W=(\d+)$", src, re.M)[1])
 H = int(re.search(r"^LG_H=(\d+)$", src, re.M)[1])
 bloco = src[src.index("LG_MASK=("):]
 bloco = bloco[:bloco.index("\n)\n")]
-mask = re.findall(r"^'([.sr]+)'$", bloco, re.M)
+mask = re.findall(r"^'([.srb]+)'$", bloco, re.M)   # b = auréola do fundo do ícone
 assert len(mask) == H and all(len(l) == W for l in mask), "LG_MASK não é LG_W x LG_H"
 assert set(mask[0]) == {"."} and set(mask[-1]) == {"."}, "borda horizontal da máscara não é vazia"
 assert all(l[0] == "." and l[-1] == "." for l in mask), "borda vertical da máscara não é vazia"

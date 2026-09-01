@@ -57,31 +57,39 @@ repassa a senha.
 ## Abertura — o escudo do app
 
 Molde: `lib/haos-ui.sh` do haos-install — mesma largura (34 colunas), mesmo ritmo (0,03 s por
-quadro) e mesma gramática, com a identidade daqui: lá a casa é **azul** com o circuito
-**branco**; aqui o escudo é **verde** com o raio **branco**. A altura é 40 px (20 linhas de
-meio-bloco), não os 34 da casa: o escudo é mais alto que largo, e no canvas quadrado do molde
-ele sairia com 26 px de altura em vez de 32 — **19% menor**, sem necessidade. A duração dos três
-atos (`LG_Q_MONTA` · `LG_Q_TRACO` · `LG_Q_BATE`, hoje 25 · 34 · 20) também não é a da casa:
+quadro) e mesma gramática, com a identidade daqui: lá a casa é **azul** com o circuito **branco**;
+aqui o escudo é **claro** com o raio vazado no **verde**, exatamente como no AppIcon — não a
+inversão dele. A altura é 40 px (20 linhas de meio-bloco), não os 34 da casa: o escudo é mais alto
+que largo, e no canvas quadrado do molde ele sairia bem menor, sem necessidade. A duração dos três
+atos (`LG_Q_MONTA` · `LG_Q_TRACO` · `LG_Q_BATE`, hoje 26 · 34 · 20) também não é a da casa:
 `LG_Q_MONTA` é derivado pelo gerador do maior atraso de partícula e muda com a altura.
 
-`tools/gera-logo.py` roda o mesmo render do AppIcon (`tools/app-icon-render.swift`,
-compartilhado com `tools/make-app-icon.sh`), mede a caixa do **escudo**, recorta só ele e o cola
-centrado num canvas 34×40 com **3 px de margem** — a margem não é enfeite: o halo e o traço só
-existem em volta do que está dentro do canvas, e onde o desenho encosta na borda eles somem. A
-largura sai da razão real do símbolo medida na sonda (0,825): os 34 px de altura que o `sips`
-devolve dão 28 de largura, e sobram 3 px de cada lado na colagem. Na máscara publicada o desenho
-aparece com **27×32** e folga 4/4/4/3: o anti-aliasing da borda vira `.` e come 1 px em cima e 1
-embaixo (medido em ALTURA 34/38/40 × MARGEM 1..4 — sempre 1). O fragmento embutido no instalador
-traz só a máscara (`.` fora · `s` escudo · `r` raio) e as trajetórias; **as cores vivem no
-runtime**, como no molde: gradiente vertical calculado por linha (volume, não sprite), do glow do
-ícone `38,230,178` no topo ao verde do fundo
-`26,166,140` na base, e o raio no branco do detalhe (`236,242,248`).
+`tools/gera-logo.py` roda o mesmo render do AppIcon (`tools/app-icon-render.swift`, compartilhado
+com `tools/make-app-icon.sh`), mede a caixa do **escudo**, recorta ele e a auréola em volta, e
+cola o conjunto centrado num canvas 34×40 com **2 px de margem** — a margem não é enfeite: o halo
+e o traço só existem em volta do que está dentro do canvas, e onde o desenho encosta na borda eles
+somem. A largura sai da razão real do símbolo medida na sonda (0,825). A **auréola** é a novidade:
+2 px do fundo do ícone recortados junto com o escudo, seguindo a forma dele. Não é enfeite — é o
+contraste dela que dá volume; sem ela o escudo claro fica chapado contra o preto do terminal. Como
+ela é desenho e não vazio, a distância do escudo à borda subiu de 3 para 4 px (2 de auréola + 2 de
+vazio), e o vazio que sobra basta para o halo (1 px) e o traço. Medido na máscara publicada:
+canvas 34×40, desenho 30×35, escudo 26×31, vazio 2/3/2/2. O fragmento embutido no instalador traz
+a máscara (`.` vazio · `b` auréola · `s` escudo · `r` raio), as trajetórias e **`LG_RGB`, a cor
+real de cada pixel do render** (1 360 entradas, 15,1 KiB); o runtime só monta os escapes uma vez,
+em `lg_init`. Esta parte **diverge do molde**: lá o gradiente é calculado por LINHA, o que basta
+para a casa chapada do haos; aqui a aproximação por linha borra o raio e engrossa a auréola num
+verde chapado (medido: erro médio de 18,6 por canal, máximo de 155). A cor por pixel custa 15 KiB
+no script; o custo em tempo não foi isolado (a medição do gradiente por linha foi feita com a
+máquina sob carga e não é comparável), e o total medido está bem dentro do teto de 8 s. O
+**pisca** da batida acompanha: o raio é verde e pisca em branco `236,242,248` — o inverso do que
+estava no ar, porque o raio deixou de ser o elemento claro.
 
-Quatro atos: cada pixel do escudo voa de fora da tela e assenta, de baixo para cima
-(constelação); a caneta branca contorna o escudo e se retrai por posição de arco; o escudo
-**bate como um coração** — tum-tum, pausa — e a cada batida **o raio pisca**, voltando ao branco
-entre elas; e assenta com o raio branco parado. Medido num pty de 80×40 (2026-09-01, 7
-execuções): mediana **5,53 s**, faixa 5,09–6,36 — 721 partículas em 25 quadros de constelação.
+Quatro atos: cada pixel do desenho voa de fora da tela e assenta, de baixo para cima
+(constelação); a caneta branca contorna a silhueta — que com auréola é a borda dela, a que se vê —
+e se retrai por posição de arco; o escudo **bate como um coração** — tum-tum, pausa — e a cada
+batida **o raio pisca em branco**, voltando ao verde entre elas; e assenta com o raio verde
+parado. Medido num pty de 80×40 com a máquina em repouso (2026-09-01, 7 execuções): mediana
+**5,51 s**, faixa 5,47–5,54 — 823 partículas em 26 quadros de constelação.
 Abaixo de `LG_LINHAS + 1` linhas de tela a animação não roda: o laço sobe `LG_LINHAS` a cada
 quadro e, numa tela mais baixa, o salto é grampeado no topo e os quadros escorregam. Medido:
 21 linhas anima, 20 cai para o quadro único.
@@ -89,11 +97,12 @@ quadro e, numa tela mais baixa, o salto é grampeado no topo e os quadros escorr
 Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro parado; sem cor/UTF-8
 = só o título. Para ver sem instalar nada: **`./tools/ui-demo.sh`** (`--no-anim` para um quadro
 estático, `--logo` só a abertura, `--quadro N` um quadro isolado). Para escolher entre desenhos,
-**`--comparar [ref]`** roda a abertura de hoje, espera um Enter e roda a do commit indicado
+**`--comparar [ref]`** roda a abertura do commit indicado, espera um Enter e roda a de hoje —
+nesta ordem, para o desenho novo ser o que fica parado na tela no fim
 (padrão: `ed44a8e`, o ícone inteiro em 40×40 com cor por pixel; `d5a68a3` é o escudo em 34×40,
 também com cor por pixel). Cada uma roda num processo à parte, e o motivo é o inverso do que
 parece: o perigo não são as variáveis que a versão antiga tem a mais, e sim `LG_MIN_LINHAS`,
-`LG_FGA` e `LG_BGA`, que existem só na de hoje e sobreviveriam a um `source` da antiga. Entre as
+`LG_FGP` e `LG_BGP`, que existem só na de hoje e sobreviveriam a um `source` da antiga. Entre as
 duas o script **não limpa a tela**: o `clear` do macOS apaga o buffer de rolagem, e a primeira
 sumiria antes da segunda aparecer.
 
