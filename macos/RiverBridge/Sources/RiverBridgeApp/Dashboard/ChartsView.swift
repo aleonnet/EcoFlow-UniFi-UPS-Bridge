@@ -244,15 +244,16 @@ struct ChartsView: View {
                     chip(L10n.t("Uso", "Load"), store.loadText)
                     chip(L10n.t("Saída", "Output"), store.outputVoltageText)
                 }
-                // Both capsules side by side on their own line, scrolling
-                // when the window is narrower than they are (owner kept THIS
-                // version over the stacked one, 2026-08-31).
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        picker
-                        scopePicker
-                    }
+                // Side by side, CENTERED, and sized to FIT the min width
+                // (owner: "7 d" clipped + gray blotch — the horizontal
+                // ScrollView here painted backdrop haze over its rect, the
+                // same class as the edge-seam fix; killed in favor of
+                // compact segments that actually fit).
+                HStack(spacing: 6) {
+                    picker
+                    scopePicker
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         } else {
             // .center: the right cluster (chips + picker) aligns vertically
@@ -291,11 +292,12 @@ struct ChartsView: View {
                 Button {
                     scope = s
                 } label: {
-                    Text(s.rawValue)
+                    // Compact: "7 d" -> "7d" so all four fit at 414 pt.
+                    Text(narrow ? s.rawValue.replacingOccurrences(of: " ", with: "") : s.rawValue)
                         .fixedSize()
-                        .font(.callout.weight(scope == s ? .semibold : .regular))
+                        .font((narrow ? Font.caption : .callout).weight(scope == s ? .semibold : .regular))
                         .foregroundStyle(scope == s ? .primary : .secondary)
-                        .padding(.horizontal, 9)
+                        .padding(.horizontal, narrow ? 7 : 9)
                         .padding(.vertical, 4)
                         .contentShape(Capsule())
                 }
@@ -319,8 +321,8 @@ struct ChartsView: View {
                 } label: {
                     Text(m.label)
                         .fixedSize()   // never hyphenate ("Potên-cia" no telefone)
-                        .font(.callout.weight(metric == m ? .semibold : .regular))
-                        .padding(.horizontal, 10)
+                        .font((narrow ? Font.caption : .callout).weight(metric == m ? .semibold : .regular))
+                        .padding(.horizontal, narrow ? 7 : 10)
                         .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
