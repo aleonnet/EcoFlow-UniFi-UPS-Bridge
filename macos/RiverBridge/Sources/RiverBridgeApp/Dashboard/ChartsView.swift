@@ -18,9 +18,9 @@ struct ChartsView: View {
     // scopes reset/anchor the window; pinch compresses/expands X (trackpad
     // and touch are the same gesture); double-click zooms out ×2 (Grafana);
     // panning is the native horizontal chart scroll.
-    @State private var scope: ChartScope = .h1
-    @State private var visibleSeconds: Double = ChartScope.h1.seconds
-    @State private var scrollDate = Date.now.addingTimeInterval(-ChartScope.h1.seconds)
+    @State private var scope: ChartScope = ChartsView.initialScope()
+    @State private var visibleSeconds: Double = ChartsView.initialScope().seconds
+    @State private var scrollDate = Date.now.addingTimeInterval(-ChartsView.initialScope().seconds)
     @State private var magnifyBase: Double?
 
     enum ChartScope: String, CaseIterable, Identifiable {
@@ -34,7 +34,20 @@ struct ChartsView: View {
             case .d7: 7 * 24 * 3600
             }
         }
+        var eyebrowSuffix: String {
+            switch self {
+            case .h1: "última hora"
+            case .h6: "últimas 6 h"
+            case .h24: "últimas 24 h"
+            case .d7: "últimos 7 dias"
+            }
+        }
     }
+
+    /// The X domain is the SCOPE anchored at now — never the data extent.
+    /// Refreshed by load(); keeps the viewport from drifting into the future
+    /// (owner's print: bars ending mid-plot with an empty right side).
+    @State private var chartNow = Date.now
 
     /// The REAL compression: zooming re-aggregates. Bucket keeps ~360 bars
     /// in the visible window (1 h→10 s … 7 d→28 min), never stretched pixels.
@@ -53,9 +66,14 @@ struct ChartsView: View {
         var apiName: String { self == .charge ? "charge" : "power_w" }
     }
 
-    /// Dev seam (like --secao): open on the events chart for screenshot runs.
+    /// Dev seams (like --secao): open on the events chart / a scope for
+    /// screenshot runs.
     static func initialMetric() -> Metric {
         ProcessInfo.processInfo.arguments.contains("--grafico-eventos") ? .eventos : .powerW
+    }
+
+    static func initialScope() -> ChartScope {
+        ProcessInfo.processInfo.arguments.contains("--escopo-6h") ? .h6 : .h1
     }
 
     private var accent: Color {
@@ -83,7 +101,7 @@ struct ChartsView: View {
     }
 
     private var eyebrowText: String {
-        metric == .eventos ? "Eventos — última hora" : "Consumo — última hora"
+        (metric == .eventos ? "Eventos — " : "Consumo — ") + scope.eyebrowSuffix
     }
 
     private var isEmpty: Bool {
@@ -119,12 +137,22 @@ struct ChartsView: View {
             }
         }
         .onChange(of: scope) {
+            chartNow = .now
             visibleSeconds = scope.seconds
-            scrollDate = Date.now.addingTimeInterval(-scope.seconds)
+            scrollDate = chartNow.addingTimeInterval(-scope.seconds)
         }
     }
 
     // MARK: - Time-scale mechanics (pinch = same gesture on trackpad/touch)
+
+    /// Every viewport move lands inside [now − scope, now]: the chart can
+    /// NEVER show the future (class fix for the owner's hole-on-the-right).
+    private func clampedScroll(_ proposedStart: TimeInterval, visible: Double) -> Date {
+        let end = chartNow.timeIntervalSince1970
+        let earliest = end - scope.seconds
+        let latest = end - visible
+        return Date(timeIntervalSince1970: min(max(proposedStart, earliest), latest))
+    }
 
     private var magnify: some Gesture {
         MagnifyGesture()
@@ -137,7 +165,7 @@ struct ChartsView: View {
                 let center = scrollDate.timeIntervalSince1970 + visibleSeconds / 2
                 let newVisible = min(max(base / value.magnification, scope.seconds / 8), scope.seconds)
                 visibleSeconds = newVisible
-                scrollDate = Date(timeIntervalSince1970: center - newVisible / 2)
+                scrollDate = clampedScroll(center - newVisible / 2, visible: newVisible)
             }
             .onEnded { _ in magnifyBase = nil }
     }
@@ -146,7 +174,7 @@ struct ChartsView: View {
     private func zoomOut() {
         let center = scrollDate.timeIntervalSince1970 + visibleSeconds / 2
         visibleSeconds = min(visibleSeconds * 2, scope.seconds)
-        scrollDate = Date(timeIntervalSince1970: center - visibleSeconds / 2)
+        scrollDate = clampedScroll(center - visibleSeconds / 2, visible: visibleSeconds)
     }
 
     /// 96 -> 100, 43 -> 50: the axis top lands on a readable number.
@@ -329,6 +357,7 @@ struct ChartsView: View {
             )
             .foregroundStyle(by: .value("Tipo", shortLabel(row.type)))
         }
+        .chartXScale(domain: chartNow.addingTimeInterval(-scope.seconds)...chartNow)
         .chartScrollableAxes(.horizontal)
         .chartXVisibleDomain(length: visibleSeconds)
         .chartScrollPosition(x: $scrollDate)
@@ -442,6 +471,7 @@ struct ChartsView: View {
                 }
             }
         }
+        .chartXScale(domain: chartNow.addingTimeInterval(-scope.seconds)...chartNow)
         .chartScrollableAxes(.horizontal)
         .chartXVisibleDomain(length: visibleSeconds)
         .chartScrollPosition(x: $scrollDate)
@@ -478,6 +508,7 @@ struct ChartsView: View {
 
     private func load() async {
         guard let endpoint = ApiEndpoint.discover() else { return }
+        chartNow = .now
         let client = APIClient(endpoint: endpoint)
         let from = Int(Date().addingTimeInterval(-scope.seconds).timeIntervalSince1970)
         if metric == .eventos {
