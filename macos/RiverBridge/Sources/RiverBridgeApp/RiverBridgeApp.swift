@@ -28,7 +28,9 @@ struct RiverBridgeApp: App {
                 // Translucent window (owner 2026-08-31): the desktop reads
                 // through the material, so the control glass floats over a
                 // living ground instead of a poster.
-                .containerBackground(.ultraThinMaterial, for: .window)
+                .containerBackground(for: .window) {
+                    BehindWindowBlur().ignoresSafeArea()
+                }
                 .task {
                     store.start()
                     applyAppearance()
@@ -39,6 +41,35 @@ struct RiverBridgeApp: App {
         .windowStyle(.hiddenTitleBar)
         // A power panel always opens on Energia — never on a restored tab.
         .restorationBehavior(.disabled)
+    }
+
+    /// True behind-window translucency. SwiftUI's containerBackground with a
+    /// material KEPT THE NSWINDOW OPAQUE — measured with the red-window
+    /// probe: leak 0 (owner: "o app ainda não tem transparência"). The AppKit
+    /// path that actually works: NSVisualEffectView blending .behindWindow on
+    /// a non-opaque, clear-background window.
+    private struct BehindWindowBlur: NSViewRepresentable {
+        private func makeTransparent(_ view: NSVisualEffectView) {
+            DispatchQueue.main.async {
+                if let win = view.window {
+                    win.isOpaque = false
+                    win.backgroundColor = .clear
+                }
+            }
+        }
+
+        func makeNSView(context: Context) -> NSVisualEffectView {
+            let view = NSVisualEffectView()
+            view.material = .underWindowBackground
+            view.blendingMode = .behindWindow
+            view.state = .active
+            makeTransparent(view)
+            return view
+        }
+
+        func updateNSView(_ view: NSVisualEffectView, context: Context) {
+            makeTransparent(view)
+        }
     }
 
     /// ONE theme mechanism, the AppKit one: preferredColorScheme(nil) does
