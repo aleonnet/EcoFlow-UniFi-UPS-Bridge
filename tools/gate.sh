@@ -379,6 +379,41 @@ else
 fi
 rm -f "$FRAG_OUT" "$FRAG_NO_SCRIPT"
 
+# S16 — a abertura num terminal de 256 CORES (sem COLORTERM), que é o Terminal.app
+# de fábrica. S14 sempre roda com COLORTERM=truecolor e por isso nunca tocou o ramo
+# de 256 cores de lg_init — onde um `printf -v LG_FGA[y]` (recusado pelo bash 3.2 do
+# macOS com "not a valid identifier") deixava o gradiente inteiro vazio: o escudo
+# saía SEM COR NENHUMA e com uma linha de erro na tela do usuário.
+if "$PY" - "$ONE" <<'EOF'
+import os, pty, sys, fcntl, termios, struct
+script = sys.argv[1]
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ.clear()
+    os.environ.update({"TERM": "xterm-256color", "LC_ALL": "en_US.UTF-8", "LANG": "en_US.UTF-8",
+                       "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": "/tmp", "UI_NO_ANIM": "1"})
+    os.execv("/bin/bash", ["/bin/bash", script, "--demo-frame", "-1"])   # bash 3.2 de propósito
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 80, 0, 0))
+out = b""
+while True:
+    try:
+        chunk = os.read(fd, 65536)
+    except OSError:
+        break
+    if not chunk:
+        break
+    out += chunk
+os.waitpid(pid, 0)
+texto = out.decode("utf-8", "replace")
+assert "not a valid identifier" not in texto, "bash 3.2 recusou um alvo de printf -v"
+assert "\x1b[38;5;" in texto, "nenhuma cor de 256 no quadro: o gradiente saiu vazio"
+EOF
+then
+    ok "S16 abertura em 256 cores (bash 3.2, sem COLORTERM): com cor e sem erro"
+else
+    erro "S16 abertura em 256 cores: saiu sem cor ou com erro do bash 3.2"
+fi
+
 if [ "$FALHAS" -eq 0 ]; then
     printf 'GATE: VERDE\n'
     exit 0

@@ -389,7 +389,7 @@ LG_LINHAS=$(( LG_H / 2 )); LG_MIN_COLS=$(( LG_W + 2 ))
 LG_MIN_LINHAS=$(( LG_LINHAS + 1 ))
 lg_init() {
   [ -n "${LG_PRONTO:-}" ] && return 0
-  local y t r g b e
+  local y t r g b e e2
   # Gradiente vertical do escudo: um escape de frente e um de fundo POR LINHA,
   # pré-computados uma vez (molde: ha_logo_init).
   LG_FGA=(); LG_BGA=()
@@ -403,7 +403,11 @@ lg_init() {
       printf -v e '\033[48;2;%d;%d;%dm' "$r" "$g" "$b"; LG_BGA[y]="$e"
     else
       e=$(( 16 + 36*(r*5/255) + 6*(g*5/255) + (b*5/255) ))
-      printf -v LG_FGA[y] '\033[38;5;%dm' "$e"; printf -v LG_BGA[y] '\033[48;5;%dm' "$e"
+      # `printf -v nome[i]` NÃO existe no bash 3.2 (o /bin/bash do macOS): ele
+      # recusa o alvo com "not a valid identifier" e a linha inteira do gradiente
+      # fica vazia. Como o ramo de cima, escreve numa escalar e atribui depois.
+      printf -v e2 '\033[38;5;%dm' "$e"; LG_FGA[y]="$e2"
+      printf -v e2 '\033[48;5;%dm' "$e"; LG_BGA[y]="$e2"
     fi
   done
   LG_FG_BRANCO="$(rgb 236 242 248)"; LG_BG_BRANCO="$(rgbbg 236 242 248)"   # raio

@@ -16,11 +16,17 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
   gradiente vertical calculado por linha no runtime (glow `38,230,178` no topo, fundo
   `26,166,140` na base) e o raio piscando a cada batida do coração, assentando branco.
   Mediana de 5,53 s em 7 execuções num pty de 80×40 (faixa 5,09–6,36). Novo `tools/ui-demo.sh`
-  mostra a camada visual sem instalar nada.
+  mostra a camada visual sem instalar nada, e `--comparar [ref]` põe a abertura de hoje e a de
+  um commit anterior em sequência, separadas por um Enter, para escolher olhando as duas.
 - A abertura passa a exigir tela alta o bastante: o laço sobe `LG_LINHAS` linhas por quadro e,
   numa tela mais baixa, o salto é grampeado no topo e os quadros escorregam. Abaixo de
   `LG_LINHAS + 1` cai para o quadro único, como já fazia com terminal estreito. Medido: 21
   linhas anima, 20 não; antes, uma tela de 15 linhas fazia 75 saltos de cursor às cegas.
+- **Conserto de produção:** num terminal de 256 cores — o Terminal.app de fábrica, que não
+  define `COLORTERM` — a abertura saía **sem cor nenhuma** e imprimia `printf: 'LG_FGA[y]': not
+  a valid identifier`. O `/bin/bash` do macOS é 3.2 e não aceita alvo indexado em `printf -v`;
+  o ramo de 256 cores era o único que usava essa forma. Nova cena S16 roda a abertura nesse
+  exato cenário (bash 3.2, sem `COLORTERM`) e exige cor e stderr limpo.
 - Cercas: S14 exige as bordas da máscara vazias (o caso extremo do desenho colado na borda) e
   confere o render contra a máscara; S15 exige que o bloco gerado dentro do instalador seja
   idêntico à saída do gerador — é ela que garante a margem publicada. E `conferir()`, no

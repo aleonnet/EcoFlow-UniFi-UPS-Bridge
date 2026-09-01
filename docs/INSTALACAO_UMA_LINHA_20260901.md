@@ -71,9 +71,10 @@ existem em volta do que está dentro do canvas, e onde o desenho encosta na bord
 largura sai da razão real do símbolo medida na sonda (0,825): os 34 px de altura que o `sips`
 devolve dão 28 de largura, e sobram 3 px de cada lado na colagem. Na máscara publicada o desenho
 aparece com **27×32** e folga 4/4/4/3: o anti-aliasing da borda vira `.` e come 1 px em cima e 1
-embaixo (medido em ALTURA 34/38/40 × MARGEM 1..4 — sempre 1). O fragmento embutido no instalador traz só a máscara (`.` fora · `s` escudo · `r` raio) e
-as trajetórias; **as cores vivem no runtime**, como no molde: gradiente vertical calculado por
-linha (volume, não sprite), do glow do ícone `38,230,178` no topo ao verde do fundo
+embaixo (medido em ALTURA 34/38/40 × MARGEM 1..4 — sempre 1). O fragmento embutido no instalador
+traz só a máscara (`.` fora · `s` escudo · `r` raio) e as trajetórias; **as cores vivem no
+runtime**, como no molde: gradiente vertical calculado por linha (volume, não sprite), do glow do
+ícone `38,230,178` no topo ao verde do fundo
 `26,166,140` na base, e o raio no branco do detalhe (`236,242,248`).
 
 Quatro atos: cada pixel do escudo voa de fora da tela e assenta, de baixo para cima
@@ -87,13 +88,26 @@ quadro e, numa tela mais baixa, o salto é grampeado no topo e os quadros escorr
 
 Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro parado; sem cor/UTF-8
 = só o título. Para ver sem instalar nada: **`./tools/ui-demo.sh`** (`--no-anim` para um quadro
-estático, `--logo` só a abertura, `--quadro N` um quadro isolado). No gate: **S14** exige as
-bordas da máscara vazias (o caso extremo: desenho colado na borda) e confere que o render respeita a
-máscara, além do snapshot; **S15** exige que o bloco `GERADO` no instalador seja byte a byte a
-saída do gerador — é ela, e não a S14, que garante a margem publicada: um bloco gerado com outra
-margem reprova. No gerador, `conferir()` exige que a folga entregue seja ao menos a margem
-pedida nos quatro lados. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre o
-marcador `GERADO` e a linha `LG_HY=(` do instalador (`--medir` imprime as dimensões e o custo do primeiro ato).
+estático, `--logo` só a abertura, `--quadro N` um quadro isolado). Para escolher entre desenhos,
+**`--comparar [ref]`** roda a abertura de hoje, espera um Enter e roda a do commit indicado
+(padrão: `ed44a8e`, o ícone inteiro em 40×40 com cor por pixel; `d5a68a3` é o escudo em 34×40,
+também com cor por pixel). Cada uma roda num processo à parte, e o motivo é o inverso do que
+parece: o perigo não são as variáveis que a versão antiga tem a mais, e sim `LG_MIN_LINHAS`,
+`LG_FGA` e `LG_BGA`, que existem só na de hoje e sobreviveriam a um `source` da antiga. Entre as
+duas o script **não limpa a tela**: o `clear` do macOS apaga o buffer de rolagem, e a primeira
+sumiria antes da segunda aparecer.
+
+No gate: **S14** exige as bordas da máscara vazias (o caso extremo: desenho colado na borda) e
+confere que o render respeita a máscara, além do snapshot; **S15** exige que o bloco `GERADO` no
+instalador seja byte a byte a saída do gerador — é ela, e não a S14, que garante a margem
+publicada: um bloco gerado com outra margem reprova. No gerador, `conferir()` exige que a folga
+entregue seja ao menos a margem pedida nos quatro lados. **S16** roda a abertura num terminal de
+**256 cores** (sem `COLORTERM`, que é o Terminal.app de fábrica) e com o `/bin/bash` 3.2 do
+macOS: S14 sempre pediu truecolor e por isso nunca tocava esse ramo, onde um `printf -v` com
+alvo indexado — que o bash 3.2 recusa — deixava o gradiente inteiro vazio e imprimia erro na
+tela do usuário. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre o marcador
+`GERADO` e a linha `LG_HY=(` do instalador (`--medir` imprime as dimensões e o custo do
+primeiro ato).
 
 ## Fecho — o relatório do molde da casa
 
