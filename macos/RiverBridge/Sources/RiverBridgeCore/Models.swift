@@ -50,9 +50,36 @@ public struct HealthChain: Codable, Equatable, Sendable {
     public var nut: String?
     public var bridge: String?
     public var unifi: String?
+    /// Fase 3'-EXP — closed enum from the daemon's protection policy
+    /// (docs/API_LOCAL_20260831.md). nil on daemons that predate the phase.
+    public var udr7: String?
+    public var udr7Detail: Udr7Detail?
     public var ha: String?
     public var lastError: String?
     public var hasSnapshot: Bool?
+}
+
+/// Detail of the UDR7 protection link. Every field optional: the daemon publishes
+/// null until the first tick, and older daemons publish nothing at all.
+public struct Udr7Detail: Codable, Equatable, Sendable {
+    public var state: String?
+    public var dryRun: Bool?
+    public var enabled: Bool?
+    public var source: String?
+    public var sourceDetail: String?
+    public var missingKey: String?
+    public var cutoff: Int?
+    public var threshold: Int?
+    public var chargeLow: Double?
+    public var marginEstimateS: Int?
+    public var warnings: [String]?
+    public var sshHost: String?
+    public var sshBinary: String?
+    public var lastEvent: String?
+    public var lastEventAt: String?
+    public var outage: Bool?
+    public var attempts: Int?
+    public var sentPendingRestore: Bool?
 }
 
 public struct HistoryRow: Codable, Equatable, Sendable {
@@ -139,6 +166,25 @@ public enum ConfigValue: Codable, Equatable, Sendable {
     public var intValue: Int? {
         if case .int(let i) = self { return i }
         return nil
+    }
+
+    /// String view for text fields (ints/bools render as their text form).
+    public var stringValue: String {
+        switch self {
+        case .string(let s): s
+        case .int(let i): String(i)
+        case .bool(let b): b ? "1" : "0"
+        }
+    }
+
+    /// Bool view: JSON true/false, or the .env 1/0 convention.
+    public var boolValue: Bool? {
+        switch self {
+        case .bool(let b): b
+        case .int(let i): i != 0
+        case .string(let s): ["1", "true", "TRUE", "yes"].contains(s) ? true
+            : (["0", "false", "FALSE", "no"].contains(s) ? false : nil)
+        }
     }
 }
 

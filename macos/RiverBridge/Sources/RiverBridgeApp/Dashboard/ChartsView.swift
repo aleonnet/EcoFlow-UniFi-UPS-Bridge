@@ -365,6 +365,17 @@ struct ChartsView: View {
         case "LOW_BATTERY": L10n.t("Bateria baixa", "Low battery")
         case "COMM_LOST": "Comm down"
         case "COMM_RESTORED": "Comm up"
+        // Fase 3'-EXP — distinct short labels: the color scale's domain is the label.
+        case "UDR7_SHUTDOWN_DRYRUN": L10n.t("UDR7 ensaio", "UDR7 rehearsal")
+        case "UDR7_SHUTDOWN_SENT": L10n.t("UDR7 enviado", "UDR7 sent")
+        case "UDR7_SHUTDOWN_FAILED": L10n.t("UDR7 falhou", "UDR7 failed")
+        case "UDR7_SHUTDOWN_BLOCKED": L10n.t("UDR7 bloqueado", "UDR7 blocked")
+        case "UDR7_PROTECTION_REARMED": L10n.t("UDR7 rearmado", "UDR7 re-armed")
+        case "UDR7_PROTECTION_BLIND": L10n.t("UDR7 às cegas", "UDR7 blind")
+        case "UDR7_ARMED": L10n.t("UDR7 armado", "UDR7 armed")
+        case "UDR7_DISARMED": L10n.t("UDR7 desarmado", "UDR7 disarmed")
+        case "UDR7_WOL_SENT": "UDR7 WoL"
+        case "UDR7_WOL_DRYRUN": L10n.t("UDR7 WoL ensaio", "UDR7 WoL rehearsal")
         default: type
         }
     }
@@ -379,14 +390,22 @@ struct ChartsView: View {
     }
 
     private static let eventTypes = ["POWER_LOSS", "POWER_RESTORED", "LOW_BATTERY", "COMM_LOST", "COMM_RESTORED"]
+        + EventChip.protectionTypes
 
+    /// Protection events share one family (purple, with red/orange for the
+    /// outcomes that matter) instead of falling into the teal default.
     private func legendColor(_ type: String) -> Color {
         switch type {
         case "POWER_LOSS": .orange
         case "POWER_RESTORED": .green
         case "LOW_BATTERY": .yellow
         case "COMM_LOST": .red
-        default: .teal
+        case "COMM_RESTORED": .teal
+        case "UDR7_SHUTDOWN_SENT", "UDR7_SHUTDOWN_FAILED": .red
+        case "UDR7_SHUTDOWN_BLOCKED", "UDR7_PROTECTION_BLIND": .orange
+        case "UDR7_ARMED", "UDR7_DISARMED": .indigo
+        case "UDR7_WOL_SENT", "UDR7_WOL_DRYRUN": .mint
+        default: .purple
         }
     }
 

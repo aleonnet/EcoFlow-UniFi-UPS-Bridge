@@ -7,7 +7,14 @@ import SwiftUI
 /// Type filter chips: each chip covers the event types a person thinks of
 /// as one subject (Comunicação = lost + restored).
 enum EventChip: String, CaseIterable, Identifiable {
-    case queda, restaurada, bateria, comunicacao
+    case queda, restaurada, bateria, comunicacao, protecao
+
+    /// Fase 3'-EXP — the 10 protection events (protect.py PROTECTION_EVENTS).
+    static let protectionTypes = [
+        "UDR7_SHUTDOWN_DRYRUN", "UDR7_SHUTDOWN_SENT", "UDR7_SHUTDOWN_FAILED",
+        "UDR7_SHUTDOWN_BLOCKED", "UDR7_PROTECTION_REARMED", "UDR7_PROTECTION_BLIND",
+        "UDR7_ARMED", "UDR7_DISARMED", "UDR7_WOL_SENT", "UDR7_WOL_DRYRUN",
+    ]
 
     var id: String { rawValue }
     var label: String {
@@ -16,6 +23,7 @@ enum EventChip: String, CaseIterable, Identifiable {
         case .restaurada: L10n.t("Restaurada", "Restored")
         case .bateria: L10n.t("Bateria baixa", "Low battery")
         case .comunicacao: L10n.t("Comunicação", "Comm")
+        case .protecao: "UDR7"
         }
     }
     var symbol: String {
@@ -24,6 +32,7 @@ enum EventChip: String, CaseIterable, Identifiable {
         case .restaurada: "bolt.badge.checkmark.fill"
         case .bateria: "battery.25percent"
         case .comunicacao: "antenna.radiowaves.left.and.right"
+        case .protecao: "shield.lefthalf.filled"
         }
     }
     var color: Color {
@@ -32,6 +41,7 @@ enum EventChip: String, CaseIterable, Identifiable {
         case .bateria: .yellow   // matches the chart legend (owner 2026-08-31)
         case .restaurada: .green
         case .comunicacao: .red
+        case .protecao: .purple  // protection family (chart legend uses the same hue)
         }
     }
     var types: [String] {
@@ -40,6 +50,7 @@ enum EventChip: String, CaseIterable, Identifiable {
         case .restaurada: ["POWER_RESTORED"]
         case .bateria: ["LOW_BATTERY"]
         case .comunicacao: ["COMM_LOST", "COMM_RESTORED"]
+        case .protecao: Self.protectionTypes
         }
     }
 }
@@ -159,6 +170,16 @@ struct EventsTimeline: View {
         case "LOW_BATTERY": return L10n.t("Bateria baixa", "Low battery")
         case "COMM_LOST": return L10n.t("Comunicação perdida com o RIVER", "Communication with the RIVER lost")
         case "COMM_RESTORED": return L10n.t("Comunicação restabelecida", "Communication restored")
+        case "UDR7_SHUTDOWN_DRYRUN": return L10n.t("UDR7 — ensaio: desligaria agora", "UDR7 — rehearsal: would shut down now")
+        case "UDR7_SHUTDOWN_SENT": return L10n.t("UDR7 — desligamento enviado", "UDR7 — shutdown sent")
+        case "UDR7_SHUTDOWN_FAILED": return L10n.t("UDR7 — desligamento falhou", "UDR7 — shutdown failed")
+        case "UDR7_SHUTDOWN_BLOCKED": return L10n.t("UDR7 — desligamento bloqueado por cerca", "UDR7 — shutdown blocked by a fence")
+        case "UDR7_PROTECTION_REARMED": return L10n.t("UDR7 — proteção rearmada (energia voltou)", "UDR7 — protection re-armed (power back)")
+        case "UDR7_PROTECTION_BLIND": return L10n.t("UDR7 — sem telemetria durante a queda", "UDR7 — no telemetry during the outage")
+        case "UDR7_ARMED": return L10n.t("UDR7 — proteção armada", "UDR7 — protection armed")
+        case "UDR7_DISARMED": return L10n.t("UDR7 — proteção desarmada", "UDR7 — protection disarmed")
+        case "UDR7_WOL_SENT": return L10n.t("UDR7 — pacote de religamento enviado", "UDR7 — wake packet sent")
+        case "UDR7_WOL_DRYRUN": return L10n.t("UDR7 — ensaio: religaria agora", "UDR7 — rehearsal: would wake now")
         default: return event
         }
     }
@@ -170,6 +191,13 @@ struct EventsTimeline: View {
         case "LOW_BATTERY": return "battery.25percent"
         case "COMM_LOST": return "antenna.radiowaves.left.and.right.slash"
         case "COMM_RESTORED": return "antenna.radiowaves.left.and.right"
+        case "UDR7_SHUTDOWN_SENT": return "power.circle.fill"
+        case "UDR7_SHUTDOWN_FAILED": return "exclamationmark.shield.fill"
+        case "UDR7_SHUTDOWN_BLOCKED": return "hand.raised.fill"
+        case "UDR7_PROTECTION_BLIND": return "eye.slash.fill"
+        case "UDR7_WOL_SENT", "UDR7_WOL_DRYRUN": return "wake"
+        case "UDR7_SHUTDOWN_DRYRUN", "UDR7_PROTECTION_REARMED", "UDR7_ARMED", "UDR7_DISARMED":
+            return "shield.lefthalf.filled"
         default: return "circle.fill"
         }
     }
@@ -180,7 +208,11 @@ struct EventsTimeline: View {
         case "LOW_BATTERY": return .yellow   // matches the chart legend
         case "COMM_LOST": return .red
         case "POWER_RESTORED", "COMM_RESTORED": return .green
-        default: return .secondary
+        case "UDR7_SHUTDOWN_SENT", "UDR7_SHUTDOWN_FAILED": return .red
+        case "UDR7_SHUTDOWN_BLOCKED", "UDR7_PROTECTION_BLIND": return .orange
+        default:
+            if EventChip.protectionTypes.contains(event) { return .purple }
+            return .secondary
         }
     }
 }

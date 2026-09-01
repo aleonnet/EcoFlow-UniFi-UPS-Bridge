@@ -38,3 +38,38 @@ private func fixtureURL(_ name: String) -> URL {
     #expect(state.health?.communicationOk == false)
     #expect(state.timestamp == nil)
 }
+
+
+@Test func decodeHealthWithUdr7Detail() throws {
+    let data = try Data(contentsOf: fixtureURL("health_udr7"))
+    let chain = try JSONCoding.decoder().decode(HealthChain.self, from: data)
+    #expect(chain.unifi == "sem_caminho_nativo_documentado")
+    #expect(chain.udr7 == "fonte_nao_real")
+    let d = try #require(chain.udr7Detail)
+    #expect(d.dryRun == true)
+    #expect(d.source == "sintetica")
+    #expect(d.sourceDetail == "telemetria_sintetica")
+    #expect(d.warnings == ["lock_open"])
+    #expect(d.sshBinary == "/usr/bin/ssh")
+    #expect(d.marginEstimateS == nil)
+    #expect(d.lastEvent == "UDR7_SHUTDOWN_DRYRUN")
+}
+
+@Test func decodeLegacyHealthWithoutUdr7StaysNil() throws {
+    // Daemons before the phase: no udr7 keys at all -> nil, never a fabricated state.
+    let data = try Data(contentsOf: fixtureURL("health_legacy"))
+    let chain = try JSONCoding.decoder().decode(HealthChain.self, from: data)
+    #expect(chain.udr7 == nil)
+    #expect(chain.udr7Detail == nil)
+    #expect(chain.unifi == "pendente_fase_3")
+}
+
+@Test func configValueAccessors() {
+    #expect(ConfigValue.int(22).stringValue == "22")
+    #expect(ConfigValue.bool(true).stringValue == "1")
+    #expect(ConfigValue.string("192.0.2.1").stringValue == "192.0.2.1")
+    #expect(ConfigValue.bool(false).boolValue == false)
+    #expect(ConfigValue.int(1).boolValue == true)
+    #expect(ConfigValue.string("0").boolValue == false)
+    #expect(ConfigValue.string("talvez").boolValue == nil)
+}
