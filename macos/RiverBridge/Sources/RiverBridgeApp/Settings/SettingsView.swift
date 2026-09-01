@@ -59,6 +59,42 @@ struct SettingsView: View {
                 // HIG: steppers are for SMALL ranges; for a large range with a
                 // handful of sensible values, a picker fits mouse AND finger
                 // (developer.apple.com/design/human-interface-guidelines/steppers).
+                group(L10n.t("Aparência e idioma", "Appearance & language")) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "circle.lefthalf.filled")
+                            .frame(width: 26)
+                            .foregroundStyle(.secondary)
+                        Text(L10n.t("Tema", "Theme"))
+                            .font(.system(.body, design: .rounded))
+                            .fixedSize()
+                        Spacer()
+                        Picker("", selection: Bindable(prefs).themeMode) {
+                            Text(L10n.t("Automático", "Auto")).tag(AppPrefs.ThemeMode.auto)
+                            Text(L10n.t("Claro", "Light")).tag(AppPrefs.ThemeMode.light)
+                            Text(L10n.t("Escuro", "Dark")).tag(AppPrefs.ThemeMode.dark)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    divider
+                    HStack(spacing: 10) {
+                        Image(systemName: "globe")
+                            .frame(width: 26)
+                            .foregroundStyle(.secondary)
+                        Text(L10n.t("Idioma", "Language"))
+                            .font(.system(.body, design: .rounded))
+                            .fixedSize()
+                        Spacer()
+                        Picker("", selection: Bindable(prefs).language) {
+                            Text(L10n.t("Sistema", "System")).tag(AppPrefs.Language.system)
+                            Text("Português (BR)").tag(AppPrefs.Language.ptBR)
+                            Text("English (US)").tag(AppPrefs.Language.enUS)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
+
                 group(L10n.t("Alarmes", "Alarms")) {
                     presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
                               value: $powerLossDelay, presets: [0, 3, 6, 10, 30, 60])
@@ -206,42 +242,6 @@ struct SettingsView: View {
                             .buttonStyle(.glassProminent)
                             .tint(accent)
                             .disabled(protectionChanges().isEmpty)
-                    }
-                }
-
-                group(L10n.t("Aparência e idioma", "Appearance & language")) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "circle.lefthalf.filled")
-                            .frame(width: 26)
-                            .foregroundStyle(.secondary)
-                        Text(L10n.t("Tema", "Theme"))
-                            .font(.system(.body, design: .rounded))
-                            .fixedSize()
-                        Spacer()
-                        Picker("", selection: Bindable(prefs).themeMode) {
-                            Text(L10n.t("Automático", "Auto")).tag(AppPrefs.ThemeMode.auto)
-                            Text(L10n.t("Claro", "Light")).tag(AppPrefs.ThemeMode.light)
-                            Text(L10n.t("Escuro", "Dark")).tag(AppPrefs.ThemeMode.dark)
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    divider
-                    HStack(spacing: 10) {
-                        Image(systemName: "globe")
-                            .frame(width: 26)
-                            .foregroundStyle(.secondary)
-                        Text(L10n.t("Idioma", "Language"))
-                            .font(.system(.body, design: .rounded))
-                            .fixedSize()
-                        Spacer()
-                        Picker("", selection: Bindable(prefs).language) {
-                            Text(L10n.t("Sistema", "System")).tag(AppPrefs.Language.system)
-                            Text("Português (BR)").tag(AppPrefs.Language.ptBR)
-                            Text("English (US)").tag(AppPrefs.Language.enUS)
-                        }
-                        .labelsHidden()
-                        .fixedSize()
                     }
                 }
 
