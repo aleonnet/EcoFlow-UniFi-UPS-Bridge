@@ -71,8 +71,9 @@ struct HealthView: View {
             }
             .frame(maxWidth: 900)
             .frame(maxWidth: .infinity)
-            // Inner breathing room so the hover glow fits INSIDE the clip.
-            .padding(.horizontal, 10)
+            // Full-bleed scroll + padded content (gradient-seam class fix);
+            // 24 also keeps the hover glow inside the clip.
+            .padding(.horizontal, 24)
             .padding(.bottom, 14)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geo in

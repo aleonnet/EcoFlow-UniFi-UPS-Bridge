@@ -67,7 +67,10 @@ struct DashboardWindow: View {
                 }
                 .transition(.opacity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, 24)
+                // Horizontal inset lives INSIDE each section's scroll content:
+                // an inset ScrollView paints its backdrop haze as a full-height
+                // column and breaks the ground gradient at both edges (owner's
+                // print, light theme). Full-bleed scroll, padded content.
                 .padding(.bottom, 16)
             }
         }
@@ -212,6 +215,7 @@ struct EnergiaSection: View {
                         }
                 }
             }
+            .padding(.horizontal, 24)
             .padding(.bottom, 8)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geo in

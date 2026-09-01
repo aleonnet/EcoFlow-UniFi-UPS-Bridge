@@ -160,6 +160,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
             .padding(.top, 6)
         }
         .task { await loadCurrent() }
