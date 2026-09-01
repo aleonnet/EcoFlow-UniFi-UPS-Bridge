@@ -154,7 +154,9 @@ struct EnergiaSection: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var headerMinY: CGFloat = 1000
     @State private var eventChips: Set<EventChip> = []
-    @State private var eventPeriod: EventPeriod = .tudo
+    // Dev seam (screenshot runs): --periodo-datas opens with Datas active.
+    @State private var eventPeriod: EventPeriod =
+        ProcessInfo.processInfo.arguments.contains("--periodo-datas") ? .personalizado : .tudo
     @State private var customFrom = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
     @State private var customTo = Date.now
 

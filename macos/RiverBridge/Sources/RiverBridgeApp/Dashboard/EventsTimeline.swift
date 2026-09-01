@@ -28,7 +28,8 @@ enum EventChip: String, CaseIterable, Identifiable {
     }
     var color: Color {
         switch self {
-        case .queda, .bateria: .orange
+        case .queda: .orange
+        case .bateria: .yellow   // matches the chart legend (owner 2026-08-31)
         case .restaurada: .green
         case .comunicacao: .red
         }
@@ -175,7 +176,8 @@ struct EventsTimeline: View {
 
     static func color(for event: String) -> Color {
         switch event {
-        case "POWER_LOSS", "LOW_BATTERY": return .orange
+        case "POWER_LOSS": return .orange
+        case "LOW_BATTERY": return .yellow   // matches the chart legend
         case "COMM_LOST": return .red
         case "POWER_RESTORED", "COMM_RESTORED": return .green
         default: return .secondary
@@ -313,29 +315,51 @@ struct EventsFilterBar: View {
             HStack(spacing: 10) {
                 Text("Eventos").eyebrow()
                 Spacer(minLength: 8)
-                // Segmented buttons, not a menu (owner 2026-08-31): the
-                // recommended control for a handful of mutually exclusive
-                // scopes — same anatomy as the Potência|Bateria picker.
+                // Segmented buttons, not a menu (owner 2026-08-31). With
+                // Datas active the De/Até pickers TAKE THE SEGMENTS' PLACE
+                // inside the same capsule (owner: no extra row, no leftover
+                // Tudo); the ✕ returns to Tudo.
                 HStack(spacing: 2) {
-                    ForEach(EventPeriod.allCases) { p in
+                    if period == .personalizado {
+                        HStack(spacing: 8) {
+                            DatePicker("De", selection: $customFrom, displayedComponents: .date)
+                            DatePicker("Até", selection: $customTo, displayedComponents: .date)
+                        }
+                        .datePickerStyle(.compact)
+                        .font(.callout)
+                        .padding(.horizontal, 6)
                         Button {
-                            period = p
+                            period = .tudo
                         } label: {
-                            Text(p.short)
-                                .fixedSize()
-                                .font(.callout.weight(period == p ? .semibold : .regular))
-                                .foregroundStyle(period == p ? .primary : .secondary)
-                                .padding(.horizontal, 9)
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
                                 .padding(.vertical, 4)
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .background {
-                            if period == p {
-                                Capsule().fill(.primary.opacity(0.14))
+                        .help("Fechar o recorte por datas")
+                    } else {
+                        ForEach(EventPeriod.allCases) { p in
+                            Button {
+                                period = p
+                            } label: {
+                                Text(p.short)
+                                    .fixedSize()
+                                    .font(.callout.weight(period == p ? .semibold : .regular))
+                                    .foregroundStyle(period == p ? .primary : .secondary)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
+                                    .contentShape(Capsule())
                             }
+                            .buttonStyle(.plain)
+                            .background {
+                                if period == p {
+                                    Capsule().fill(.primary.opacity(0.14))
+                                }
+                            }
+                            .help(p.rawValue)
                         }
-                        .help(p.rawValue)
                     }
                 }
                 .padding(2)
@@ -351,15 +375,6 @@ struct EventsFilterBar: View {
                 }
             }
 
-            if period == .personalizado {
-                HStack(spacing: 12) {
-                    DatePicker("De", selection: $customFrom, displayedComponents: .date)
-                    DatePicker("Até", selection: $customTo, displayedComponents: .date)
-                    Spacer(minLength: 0)
-                }
-                .datePickerStyle(.compact)
-                .font(.callout)
-            }
         }
         .animation(.snappy(duration: 0.2), value: period)
     }
