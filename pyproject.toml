@@ -14,6 +14,9 @@ dev = ["pytest>=8", "pytest-aiohttp>=1.0"]
 testpaths = ["tests"]
 addopts = "-q"
 asyncio_mode = "auto"
+markers = [
+    "spawn_ok: the test may run one local process (ssh -G) that never connects; module seams stay blocked",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
