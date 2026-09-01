@@ -14,6 +14,31 @@ struct ChartsView: View {
     @State private var eventRows: [EventLogRow] = []
     @State private var scrubTS: Int?
     @State private var narrow = false
+    // Time-scale state (owner-approved SOTA blend, 2026-08-31): segmented
+    // scopes reset/anchor the window; pinch compresses/expands X (trackpad
+    // and touch are the same gesture); double-click zooms out ×2 (Grafana);
+    // panning is the native horizontal chart scroll.
+    @State private var scope: ChartScope = .h1
+    @State private var visibleSeconds: Double = ChartScope.h1.seconds
+    @State private var scrollDate = Date.now.addingTimeInterval(-ChartScope.h1.seconds)
+    @State private var magnifyBase: Double?
+
+    enum ChartScope: String, CaseIterable, Identifiable {
+        case h1 = "1 h", h6 = "6 h", h24 = "24 h", d7 = "7 d"
+        var id: String { rawValue }
+        var seconds: Double {
+            switch self {
+            case .h1: 3600
+            case .h6: 6 * 3600
+            case .h24: 24 * 3600
+            case .d7: 7 * 24 * 3600
+            }
+        }
+    }
+
+    /// The REAL compression: zooming re-aggregates. Bucket keeps ~360 bars
+    /// in the visible window (1 h→10 s … 7 d→28 min), never stretched pixels.
+    private var fetchBucket: Int { max(Int(visibleSeconds / 360), 1) }
 
     enum Metric: String, CaseIterable, Identifiable {
         case powerW, charge, eventos
@@ -86,13 +111,74 @@ struct ChartsView: View {
         } action: { width in
             narrow = width < 620
         }
-        .task(id: metric) { await load() }
+        .task(id: "\(metric.rawValue)|\(scope.rawValue)|\(fetchBucket)") { await load() }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 await load()
             }
         }
+        .onChange(of: scope) {
+            visibleSeconds = scope.seconds
+            scrollDate = Date.now.addingTimeInterval(-scope.seconds)
+        }
+    }
+
+    // MARK: - Time-scale mechanics (pinch = same gesture on trackpad/touch)
+
+    private var magnify: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let base = magnifyBase ?? visibleSeconds
+                if magnifyBase == nil { magnifyBase = visibleSeconds }
+                // Anchor the CENTER of the window while the domain changes —
+                // avoids the documented scroll-position jump when
+                // chartXVisibleDomain moves under a scrolled chart.
+                let center = scrollDate.timeIntervalSince1970 + visibleSeconds / 2
+                let newVisible = min(max(base / value.magnification, scope.seconds / 8), scope.seconds)
+                visibleSeconds = newVisible
+                scrollDate = Date(timeIntervalSince1970: center - newVisible / 2)
+            }
+            .onEnded { _ in magnifyBase = nil }
+    }
+
+    /// Grafana convention: double-click doubles the visible window.
+    private func zoomOut() {
+        let center = scrollDate.timeIntervalSince1970 + visibleSeconds / 2
+        visibleSeconds = min(visibleSeconds * 2, scope.seconds)
+        scrollDate = Date(timeIntervalSince1970: center - visibleSeconds / 2)
+    }
+
+    /// 96 -> 100, 43 -> 50: the axis top lands on a readable number.
+    private func niceCeil(_ value: Double) -> Double {
+        guard value > 0 else { return 1 }
+        let magnitude = pow(10, floor(log10(value)))
+        for m in [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]
+        where value <= m * magnitude {
+            return m * magnitude
+        }
+        return 10 * magnitude
+    }
+
+    private var eventsBucket: Int { max(Int(visibleSeconds / 30), 30) }
+
+    /// Y follows the VISIBLE data (Grafana behavior): values accumulating in
+    /// the current window raise the axis; leaving them behind lowers it.
+    private var visibleYMax: Double {
+        let fromT = scrollDate.timeIntervalSince1970 - 1
+        let toT = fromT + visibleSeconds + 2
+        if metric == .eventos {
+            let bucket = eventsBucket
+            var counts: [Int: Int] = [:]
+            for row in eventRows where Double(row.ts) >= fromT && Double(row.ts) <= toT {
+                counts[row.ts / bucket * bucket, default: 0] += 1
+            }
+            return niceCeil(Double(counts.values.max() ?? 1))
+        }
+        let maxValue = rows.lazy
+            .filter { Double($0.ts) >= fromT && Double($0.ts) <= toT }
+            .compactMap(\.avg).max() ?? 0
+        return niceCeil(max(maxValue * 1.1, 1))
     }
 
     @ViewBuilder
@@ -123,6 +209,10 @@ struct ChartsView: View {
                     Spacer(minLength: 0)
                     picker
                 }
+                HStack {
+                    scopePicker
+                    Spacer(minLength: 0)
+                }
             }
         } else {
             // .center: the right cluster (chips + picker) aligns vertically
@@ -148,8 +238,37 @@ struct ChartsView: View {
                 chip("Uso", store.loadText)
                 chip("Saída", store.outputVoltageText)
                 picker
+                scopePicker
             }
         }
+    }
+
+    /// Time-scope segments (Stocks/Health anchor): also the natural zoom
+    /// reset — picking a scope re-frames window, bucket and scroll.
+    private var scopePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(ChartScope.allCases) { s in
+                Button {
+                    scope = s
+                } label: {
+                    Text(s.rawValue)
+                        .fixedSize()
+                        .font(.callout.weight(scope == s ? .semibold : .regular))
+                        .foregroundStyle(scope == s ? .primary : .secondary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .background {
+                    if scope == s {
+                        Capsule().fill(.primary.opacity(0.14))
+                    }
+                }
+            }
+        }
+        .padding(2)
+        .glassEffect(.regular, in: Capsule())
     }
 
     private var picker: some View {
@@ -204,12 +323,18 @@ struct ChartsView: View {
     private var eventsChart: some View {
         Chart(eventRows) { row in
             BarMark(
-                x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts / 120 * 120))),
+                x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts / eventsBucket * eventsBucket))),
                 y: .value("Eventos", 1),
                 width: .fixed(7)
             )
             .foregroundStyle(by: .value("Tipo", shortLabel(row.type)))
         }
+        .chartScrollableAxes(.horizontal)
+        .chartXVisibleDomain(length: visibleSeconds)
+        .chartScrollPosition(x: $scrollDate)
+        .chartYScale(domain: 0...visibleYMax)
+        .simultaneousGesture(magnify)
+        .onTapGesture(count: 2) { zoomOut() }
         .chartForegroundStyleScale([
             "Queda": Color.orange,
             "Restaurada": Color.green,
@@ -317,24 +442,31 @@ struct ChartsView: View {
                 }
             }
         }
+        .chartScrollableAxes(.horizontal)
+        .chartXVisibleDomain(length: visibleSeconds)
+        .chartScrollPosition(x: $scrollDate)
+        .chartYScale(domain: 0...visibleYMax)
+        .simultaneousGesture(magnify)
+        .onTapGesture(count: 2) { zoomOut() }
         .frame(height: 150)
         .padding(.trailing, 26)   // room for trailing labels — nothing clips
+        // Scrub moved from drag to CONTINUOUS HOVER: drag now belongs to the
+        // native pan (scrollable axes) — one gesture, one meaning.
         .chartOverlay { proxy in
-            GeometryReader { _ in
-                Rectangle().fill(.clear).contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { drag in
-                                if let date: Date = proxy.value(atX: drag.location.x) {
-                                    scrubTS = rows.min(by: {
-                                        abs(Double($0.ts) - date.timeIntervalSince1970)
-                                            < abs(Double($1.ts) - date.timeIntervalSince1970)
-                                    })?.ts
-                                }
-                            }
-                            .onEnded { _ in scrubTS = nil }
-                    )
-            }
+            Rectangle().fill(.clear).contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let point):
+                        if let date: Date = proxy.value(atX: point.x) {
+                            scrubTS = rows.min(by: {
+                                abs(Double($0.ts) - date.timeIntervalSince1970)
+                                    < abs(Double($1.ts) - date.timeIntervalSince1970)
+                            })?.ts
+                        }
+                    case .ended:
+                        scrubTS = nil
+                    }
+                }
         }
     }
 
@@ -347,13 +479,13 @@ struct ChartsView: View {
     private func load() async {
         guard let endpoint = ApiEndpoint.discover() else { return }
         let client = APIClient(endpoint: endpoint)
-        let from = Int(Date().addingTimeInterval(-3600).timeIntervalSince1970)
+        let from = Int(Date().addingTimeInterval(-scope.seconds).timeIntervalSince1970)
         if metric == .eventos {
             if let result = try? await client.eventsLog(from: from, limit: 1000) {
                 eventRows = result
             }
         } else if let response = try? await client.history(
-            metric: metric.apiName, bucketSeconds: 10, from: from
+            metric: metric.apiName, bucketSeconds: fetchBucket, from: from
         ) {
             rows = response.rows
         }
