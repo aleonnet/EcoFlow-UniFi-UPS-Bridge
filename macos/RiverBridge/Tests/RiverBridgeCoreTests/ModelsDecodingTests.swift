@@ -53,6 +53,8 @@ private func fixtureURL(_ name: String) -> URL {
     #expect(d.sshBinary == "/usr/bin/ssh")
     #expect(d.marginEstimateS == nil)
     #expect(d.lastEvent == "UDR7_SHUTDOWN_DRYRUN")
+    // O nome do dispositivo (P1): a fixture traz o padrão do daemon.
+    #expect(d.name == "UDR7")
 }
 
 @Test func decodeLegacyHealthWithoutUdr7StaysNil() throws {

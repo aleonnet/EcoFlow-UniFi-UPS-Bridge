@@ -57,8 +57,12 @@ public final class AppPrefs {
         return ThemeMode(rawValue: persisted ?? "") ?? .auto
     }
 
-    private static func seamValue(_ flag: String) -> String? {
-        let args = ProcessInfo.processInfo.arguments
+    /// Único mecanismo de seam do app: recebe os argumentos para o teste poder
+    /// injetá-los (AppPrefs é @MainActor e lia ProcessInfo sozinha). `public`
+    /// porque `--seam-largura` e `--seam-nome-plugin` a usam de fora do módulo.
+    nonisolated public static func seamValue(
+        _ flag: String, in args: [String] = ProcessInfo.processInfo.arguments
+    ) -> String? {
         guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
         return args[index + 1]
     }

@@ -54,6 +54,10 @@ public struct HealthChain: Codable, Equatable, Sendable {
     /// (docs/API_LOCAL_20260831.md). nil on daemons that predate the phase.
     public var udr7: String?
     public var udr7Detail: Udr7Detail?
+    /// Every protected device, from the daemon's plugin registry (P6). `udr7` and
+    /// `udr7Detail` above stay as an alias of the entry with id "udr7".
+    /// Optional: daemons that predate the plugin phase publish nothing here.
+    public var plugins: [HealthPlugin]?
     public var ha: String?
     public var lastError: String?
     public var hasSnapshot: Bool?
@@ -80,6 +84,9 @@ public struct Udr7Detail: Codable, Equatable, Sendable {
     public var outage: Bool?
     public var attempts: Int?
     public var sentPendingRestore: Bool?
+    /// The name the user gave the device (`UDR7_NAME`). The daemon already puts
+    /// its default here when the key is blank.
+    public var name: String?
 }
 
 public struct HistoryRow: Codable, Equatable, Sendable {
