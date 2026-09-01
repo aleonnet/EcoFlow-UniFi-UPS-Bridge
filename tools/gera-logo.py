@@ -18,7 +18,6 @@ Classes por pixel (LG_MASK):
     s  escudo (branco)      r  raio (o vazado do escudo, brilha no batimento)
 
 Saem também, em vetores paralelos (índice = y*LG_W + x quando é por pixel):
-    LG_RGB              "r;g;b" de cada pixel (fora = "0;0;0")
     LG_TX/LG_TY         contorno do escudo, ordenado por posição de ARCO
                         (índice = posição: o traço desenha e retrai por arco)
     LG_AX/LG_AY/LG_AOX/LG_AOY/LG_ADL  partículas da constelação: destino,
@@ -36,12 +35,21 @@ Saem também, em vetores paralelos (índice = y*LG_W + x quando é por pixel):
 import math, os, struct, subprocess, sys, tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ALTURA = int(os.environ.get("ALTURA", "40"))
-MARGEM = int(os.environ.get("MARGEM", "2"))
+ALTURA = int(os.environ.get("ALTURA", "34"))   # medidas do molde: lib/haos-ui.sh (HA_H=34)
+LARGURA = int(os.environ.get("LARGURA", "34"))  # canvas quadrado, escudo centrado (HA_W=34)
+MARGEM = int(os.environ.get("MARGEM", "4"))   # a casa do haos tem 4-5 px de folga
 A_DUR = 8                    # quadros de voo de cada partícula
 SONDA = 256                  # resolução da sonda onde o bbox do escudo é medido
 BRANCO = 150                 # min(r,g,b) a partir do qual o pixel é escudo
 OPACO = 96                   # alpha a partir do qual o pixel conta
+
+# Paleta — espelho do molde (lib/haos-ui.sh usa casa AZUL + circuito BRANCO; aqui é
+# escudo VERDE + raio BRANCO). Os verdes saem do próprio ícone, tools/app-icon-render.swift:
+#   :27 glow  NSColor(0.15, 0.90, 0.70) -> (38, 230, 178)   topo do gradiente
+#   :21 fundo NSColor(0.10, 0.65, 0.55) -> (26, 166, 140)   base do gradiente
+VERDE_TOPO = (38, 230, 178)
+VERDE_BASE = (26, 166, 140)
+BRANCO_RGB = (236, 242, 248)   # o mesmo branco do detalhe no molde (HA_FG_BRANCO)
 
 
 def _bbox_do_escudo(dados):
@@ -84,12 +92,14 @@ def renderizar_bmp(altura: int, margem: int) -> tuple[bytes, int, int, int]:
 
     escudo_h = altura - 2 * margem
     escudo_w = max(1, round(escudo_h * cw / ch))
+    assert escudo_w + 2 * margem <= LARGURA, (
+        f"escudo {escudo_w}px + margens não cabe em LARGURA={LARGURA}")
     subprocess.run(["sips", "--cropOffset", str(cy), str(cx), "-c", str(ch), str(cw), master],
                    check=True, stdout=subprocess.DEVNULL)
     bmp = os.path.join(work, "escudo.bmp")
     subprocess.run(["sips", "-z", str(escudo_h), str(escudo_w), "-s", "format", "bmp",
                     master, "--out", bmp], check=True, stdout=subprocess.DEVNULL)
-    return open(bmp, "rb").read(), escudo_w + 2 * margem, altura, margem
+    return open(bmp, "rb").read(), LARGURA, altura, margem
 
 
 def ler_bmp(dados):
@@ -118,15 +128,16 @@ def ler_bmp(dados):
 
 
 def com_margem(img, largura, altura, margem):
-    """Cola o escudo reduzido num canvas transparente de largura×altura."""
-    assert len(img[0]) == largura - 2 * margem and len(img) == altura - 2 * margem, (
-        f"o sips devolveu {len(img[0])}×{len(img)}, esperado "
-        f"{largura - 2 * margem}×{altura - 2 * margem}")
+    """Cola o escudo reduzido, CENTRADO, num canvas transparente de largura×altura."""
+    assert len(img) == altura - 2 * margem, (
+        f"o sips devolveu altura {len(img)}, esperado {altura - 2 * margem}")
+    assert len(img[0]) + 2 * margem <= largura, "o escudo não cabe no canvas"
     vazio = (0, 0, 0, 0)
     canvas = [[vazio] * largura for _ in range(altura)]
+    dx = (largura - len(img[0])) // 2            # escudo centrado na horizontal
     for y, linha in enumerate(img):
         for x, px in enumerate(linha):
-            cy, cx = y + margem, x + margem
+            cy, cx = y + margem, x + dx
             if 0 <= cy < altura and 0 <= cx < largura:
                 canvas[cy][cx] = px
     return canvas
@@ -267,20 +278,23 @@ def main():
               f"produto (orçamento do ato 1) {q_monta * len(pa)}")
         return
     if "--preview" in sys.argv:
+        def cor(c, y):                      # as MESMAS cores do runtime
+            if c == "r":
+                return BRANCO_RGB
+            t = y * 100 // (H - 1)
+            return tuple(VERDE_TOPO[i] + (VERDE_BASE[i] - VERDE_TOPO[i]) * t // 100 for i in range(3))
         for y in range(0, H, 2):
             linha = ""
             for x in range(W):
-                i1, i2 = y * W + x, (y + 1) * W + x
                 c1, c2 = mask[y][x], mask[y + 1][x]
                 if c1 == "." and c2 == ".":
                     linha += " "; continue
-                fg = "\033[38;2;%d;%d;%dm" % rgb[i1 if c1 != "." else i2]
                 if c1 == ".":
-                    linha += "\033[0m" + fg + "▄"
+                    linha += "\033[0m\033[38;2;%d;%d;%dm▄" % cor(c2, y + 1)
                 elif c2 == ".":
-                    linha += "\033[0m" + fg + "▀"
+                    linha += "\033[0m\033[38;2;%d;%d;%dm▀" % cor(c1, y)
                 else:
-                    linha += fg + "\033[48;2;%d;%d;%dm" % rgb[i2] + "▀"
+                    linha += ("\033[38;2;%d;%d;%dm" % cor(c1, y)) + ("\033[48;2;%d;%d;%dm" % cor(c2, y + 1)) + "▀"
             print(linha + "\033[0m")
         print("\n" + "\n".join(mask))
         return
@@ -288,7 +302,8 @@ def main():
     print("# ── GERADO por tools/gera-logo.py — NÃO editar à mão ──────────────────────")
     print(f"# Escudo do ícone real (tools/app-icon-render.swift) em {W}×{H} pixels,")
     print(f"# com {margem} px de margem vazia para o halo e o traço não serem cortados.")
-    print("# LG_MASK: . fora · s escudo · r raio. LG_RGB por pixel (y*LG_W+x).")
+    print("# LG_MASK: . fora · s escudo (gradiente verde) · r raio (branco).")
+    print("# As cores vivem no runtime, por LINHA — molde de lib/haos-ui.sh (ha_logo_init).")
     print(f"LG_W={W}")
     print(f"LG_H={H}")
     print(f"LG_CAMINHO={len(tr)}")
@@ -297,7 +312,6 @@ def main():
     for l in mask:
         print(f"'{l}'")
     print(")")
-    print(vetor("LG_RGB", ['"%d;%d;%d"' % c for c in rgb]))
     print(vetor("LG_TX", [p[0] for p in tr])); print(vetor("LG_TY", [p[1] for p in tr]))
     print(vetor("LG_AX", [p[0] for p in pa])); print(vetor("LG_AY", [p[1] for p in pa]))
     print(vetor("LG_AOX", [p[2] for p in pa])); print(vetor("LG_AOY", [p[3] for p in pa]))

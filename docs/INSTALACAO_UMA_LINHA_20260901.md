@@ -56,23 +56,31 @@ repassa a senha.
 
 ## Abertura — o escudo do app
 
+Molde: `lib/haos-ui.sh` do haos-install — **mesmas medidas** (canvas 34×34, 20 linhas de
+meio-bloco; 22 · 34 · 20 quadros a 0,03 s) e mesma gramática, com a identidade daqui: lá a casa
+é **azul** com o circuito **branco**; aqui o escudo é **verde** com o raio **branco**.
+
 `tools/gera-logo.py` roda o mesmo render do AppIcon (`tools/app-icon-render.swift`,
-compartilhado com `tools/make-app-icon.sh`), mede a caixa do **escudo** (não do quadrado
-arredondado), recorta só ele, reduz com o `sips` e o cola num canvas de 34×40 pixels com
-**2 px de margem vazia** — a margem não é enfeite: o halo e o traço só existem em volta do que
-está dentro do canvas, e sem ela sumiam onde o desenho encostava na borda (era o "cortando ao
-redor"). O instalador recebe um bitmap com a cor de cada pixel (meio-bloco: 20 linhas — o
-maior que cabe com o título num terminal de 24 linhas). Quatro atos, como a abertura do
-`haos-install.sh`: cada pixel do escudo voa de fora da tela e assenta, de baixo para cima
-(constelação); a caneta branca contorna o escudo e se retrai; o escudo **bate como um
-coração** — tum-tum, pausa, tum-tum — clareando, acendendo o raio e soltando um halo **verde**
-no pico; e assenta. Toda a paleta vem do próprio ícone: o raio mostra o gradiente verde do
-render, a partícula deriva do glow (`38,230,178`) e o halo é o verde do fundo (`26,166,140`).
-Medido num pty (2026-09-01): **5,67 s**, 823 partículas em 26 quadros de constelação.
+compartilhado com `tools/make-app-icon.sh`), mede a caixa do **escudo**, recorta só ele e o cola
+centrado num canvas 34×34 com **4 px de margem** — a margem não é enfeite: o halo e o traço só
+existem em volta do que está dentro do canvas, e sem ela sumiam onde o desenho encostava na
+borda. O fragmento embutido no instalador traz só a máscara (`.` fora · `s` escudo · `r` raio) e
+as trajetórias; **as cores vivem no runtime**, como no molde: gradiente vertical calculado por
+linha (volume, não sprite), do glow do ícone `38,230,178` no topo ao verde do fundo
+`26,166,140` na base, e o raio no branco do detalhe (`236,242,248`).
+
+Quatro atos: cada pixel do escudo voa de fora da tela e assenta, de baixo para cima
+(constelação); a caneta branca contorna o escudo e se retrai por posição de arco; o escudo
+**bate como um coração** — tum-tum, pausa — e a cada batida **o raio pisca**, voltando ao branco
+entre elas; e assenta com o raio branco parado. Medido num pty (2026-09-01): **4,10 s**, 402
+partículas em 21 quadros de constelação.
+
 Degrada em três eixos (TTY · NO_COLOR · UTF-8): sem animação = um quadro parado; sem cor/UTF-8
-= só o título. `--demo` mostra só a abertura; `--demo-frame N` um quadro. No gate: **S14** exige as bordas da máscara vazias (é o que pega o
-logo encostado) e confere que o render respeita a máscara, além do snapshot; **S15** exige que
-o bloco `GERADO` no instalador seja byte a byte a saída do gerador. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre os marcadores
+= só o título. Para ver sem instalar nada: **`./tools/ui-demo.sh`** (`--no-anim` para um quadro
+estático, `--logo` só a abertura, `--quadro N` um quadro isolado). No gate: **S14** exige as
+bordas da máscara vazias (é o que pega o desenho encostado) e confere que o render respeita a
+máscara, além do snapshot; **S15** exige que o bloco `GERADO` no instalador seja byte a byte a
+saída do gerador. Mudou o ícone? `./tools/gera-logo.py > /tmp/frag` e cole entre os marcadores
 `GERADO` do instalador (`--medir` imprime as dimensões e o custo do primeiro ato).
 
 ## Fecho — o relatório do molde da casa

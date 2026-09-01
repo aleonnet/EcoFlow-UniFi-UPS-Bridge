@@ -8,11 +8,15 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 
 ### Instalação
 - A abertura passa a mostrar **só o escudo** do ícone (antes era o quadrado arredondado
-  inteiro, que encostava nas bordas e cortava o halo e o traço) com **2 px de margem**, e toda
-  a paleta vem do ícone — raio no gradiente verde, partícula derivada do glow, halo verde no
-  lugar do ciano. 34×40 pixels, 5,67 s medidos num pty. O gate ganhou duas cercas: S14 exige as
-  bordas da máscara vazias (o que pega o logo encostado) e confere o render contra ela;
-  S15 exige que o bloco gerado dentro do instalador seja idêntico à saída do gerador.
+  inteiro, que encostava nas bordas e cortava o halo e o traço), nas medidas do molde
+  `lib/haos-ui.sh`: canvas 34×34 com 4 px de margem, 22 · 34 · 20 quadros. A paleta espelha o
+  molde — lá casa azul com circuito branco, aqui **escudo verde com raio branco**, com o
+  gradiente vertical calculado por linha no runtime (glow `38,230,178` no topo, fundo
+  `26,166,140` na base) e o raio piscando a cada batida do coração, assentando branco.
+  4,10 s medidos num pty. Novo `tools/ui-demo.sh` mostra a camada visual sem instalar nada.
+  O gate ganhou duas cercas: S14 exige as bordas da máscara vazias (o que pega o desenho
+  encostado) e confere o render contra ela; S15 exige que o bloco gerado dentro do instalador
+  seja idêntico à saída do gerador.
 
 ## [0.1.0] — 2026-09-01
 
