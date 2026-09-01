@@ -194,10 +194,10 @@ ao armar (spec §15, exceção 6).
   UMA linha, senha uma vez (instalador da casa — docs/INSTALACAO_UMA_LINHA_20260901.md):
   ```bash
   ssh macmini.home.arpa
-  ~/river-bridge-deploy/river-bridge-install.sh --src ~/river-bridge-deploy   # serviço + app + kickstart
+  curl -fsSL https://raw.githubusercontent.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/main/river-bridge-install.sh | bash -s --
   ~/river-bridge-deploy/pos-install-fase3exp.sh      # liga a proteção EM ENSAIO (PUT)
   ```
-  (a forma remota `curl … | bash` só funciona quando o repositório estiver público — hoje é privado.)
+  (repo público desde 2026-09-01; sem rede, `~/river-bridge-deploy/river-bridge-install.sh --src ~/river-bridge-deploy` faz o mesmo.)
   Depois: `DRYRUN ↔ REARMED` a cada ciclo do `apagao`, Saúde `udr7 = fonte_nao_real`,
   `dry_run = true`, `unifi = sem_caminho_nativo_documentado`. Nada armado: `PROTECT_DRY_RUN=1`,
   `UDR7_ARM_ALLOWED=0`.

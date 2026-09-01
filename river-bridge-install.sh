@@ -102,6 +102,7 @@ MSG_DB=(
 "fonte_extraida|código em %s|code at %s"
 "fonte_sem_install|o tarball não trouxe scripts/install.sh — árvore inesperada|the tarball has no scripts/install.sh — unexpected tree"
 "servico_dry|(dry-run) plano do instalador do serviço:|(dry-run) service installer plan:"
+"servico_dry_remoto|scripts/install.sh --dry-run (após baixar o código-fonte)|scripts/install.sh --dry-run (after downloading the source)"
 "servico_rodando|sudo scripts/install.sh --consent-homebrew (brew nut + python, código, venv, config, LaunchDaemon)|sudo scripts/install.sh --consent-homebrew (brew nut + python, code, venv, config, LaunchDaemon)"
 "servico_ok|serviço instalado/atualizado|service installed/updated"
 "servico_ja|serviço já estava atual|service already up to date"
@@ -561,7 +562,7 @@ fase_servico() {
     ui_info "$(msg servico_dry)"
     if [ -n "$SRC_DIR" ]; then
       ( cd "$SRC_DIR" && "./scripts/install.sh" --dry-run 2>&1 ) | sed "s/^/$(printf '%s' "$UI_GUT")  /" || true
-    else ui_linha "  scripts/install.sh --dry-run ($(msg fonte_dry "$RUB_SRC_URL" "$CACHE_DIR/src.tar.gz" "$CACHE_DIR"))"; fi
+    else ui_linha "  $(msg servico_dry_remoto)"; fi
     return 0
   fi
   garantir_sudo

@@ -5,18 +5,18 @@ Um arquivo, um comando, a senha uma vez. Padrão da casa (haos-install.sh / ont-
 degradável, prompts lidos de `/dev/tty` (funciona pelo cano), trabalho privilegiado
 concentrado numa única chamada `sudo scripts/install.sh` logo após primar o `sudo`.
 
-## Remoto (quando o repositório estiver PÚBLICO)
+## Remoto (repositório PÚBLICO desde 2026-09-01 — `gh repo edit --visibility public`, ordem do dono)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/main/river-bridge-install.sh | bash -s --
 ```
 
-**Medido em 2026-09-01 (`gh repo view`): o repositório está PRIVADO.** `raw.githubusercontent.com`
-e o tarball `archive/refs/heads/main.tar.gz` respondem 404 sem token — o comando acima só
-funciona depois de o dono publicar o repo (ou apontar `RUB_SRC_URL` para um tarball acessível).
-Até lá, use a forma local.
+Verificado em 2026-09-01 após a publicação: o script pelo `raw` responde e roda em `--dry-run`;
+o tarball `archive/refs/heads/main.tar.gz` baixa, extrai (`--strip-components=1`) e instala o
+serviço num prefixo de teste (stubs de brew/launchctl, exit 0). Flags úteis: `--dry-run`
+(só o plano), `--no-app` (só o serviço), `--install-deps` (instala o Homebrew se faltar).
 
-## Local (árvore já na máquina — é o caso do Mac mini hoje)
+## Local (árvore já na máquina — bancada, ou sem rede)
 
 ```bash
 ~/river-bridge-deploy/river-bridge-install.sh --src ~/river-bridge-deploy
