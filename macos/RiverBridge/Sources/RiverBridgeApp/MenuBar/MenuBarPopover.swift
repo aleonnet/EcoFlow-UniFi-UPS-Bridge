@@ -29,9 +29,9 @@ struct MenuBarPopover: View {
             .padding(.top, 4)
 
             Group {
-                Text("Fonte: \(store.stateLabel)")
+                Text(L10n.t("Fonte: ", "Source: ") + store.stateLabel)
                 if store.phase == .live {
-                    Text("Autonomia: \(store.runtimeText)")
+                    Text(L10n.t("Autonomia: ", "Runtime: ") + store.runtimeText)
                 }
                 if case .serviceDown(let reason) = store.phase {
                     Text(reason)
@@ -43,27 +43,27 @@ struct MenuBarPopover: View {
 
             divider
 
-            Text("Telemetria")
+            Text(L10n.t("Telemetria", "Telemetry"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 2)
 
-            metricRow("bolt.fill", "Carga", store.powerText)
-            metricRow("gauge.with.needle", "Uso", store.loadText)
-            metricRow("powerplug.fill", "Saída", store.outputVoltageText)
+            metricRow("bolt.fill", L10n.t("Carga", "Load"), store.powerText)
+            metricRow("gauge.with.needle", L10n.t("Uso", "Usage"), store.loadText)
+            metricRow("powerplug.fill", L10n.t("Saída", "Output"), store.outputVoltageText)
 
             divider
 
             MenuRow(
                 symbol: showsPercent ? "checkmark.circle.fill" : "circle",
-                title: "Mostrar percentual na barra"
+                title: L10n.t("Mostrar percentual na barra", "Show percentage in menu bar")
             ) {
                 showsPercent.toggle()
             }
             MenuRow(
                 symbol: showsDockIcon ? "checkmark.circle.fill" : "circle",
-                title: "Mostrar ícone no Dock"
+                title: L10n.t("Mostrar ícone no Dock", "Show Dock icon")
             ) {
                 showsDockIcon.toggle()
                 DockIcon.apply(show: showsDockIcon)
@@ -71,11 +71,11 @@ struct MenuBarPopover: View {
 
             divider
 
-            MenuRow(symbol: "rectangle.expand.diagonal", title: "Abrir painel…") {
+            MenuRow(symbol: "rectangle.expand.diagonal", title: L10n.t("Abrir painel…", "Open panel…")) {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
             }
-            MenuRow(symbol: "power", title: "Sair do River Bridge") {
+            MenuRow(symbol: "power", title: L10n.t("Sair do River Bridge", "Quit River Bridge")) {
                 NSApp.terminate(nil)
             }
         }

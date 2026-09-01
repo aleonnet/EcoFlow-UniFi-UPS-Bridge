@@ -87,7 +87,7 @@ struct EnergyRing: View {
         Group {
             if showsDetail {
                 VStack(spacing: 2) {
-                    Text("Autonomia").eyebrow()
+                    Text(L10n.t("Autonomia", "Runtime")).eyebrow()
                     Text(store.runtimeText)
                         .modifier(HeroNumber(value: store.runtimeText))
                         .minimumScaleFactor(0.3)   // small rings (phone) shrink, never truncate

@@ -36,10 +36,10 @@ struct ChartsView: View {
         }
         var eyebrowSuffix: String {
             switch self {
-            case .h1: "última hora"
-            case .h6: "últimas 6 h"
-            case .h24: "últimas 24 h"
-            case .d7: "últimos 7 dias"
+            case .h1: L10n.t("última hora", "last hour")
+            case .h6: L10n.t("últimas 6 h", "last 6 h")
+            case .h24: L10n.t("últimas 24 h", "last 24 h")
+            case .d7: L10n.t("últimos 7 dias", "last 7 days")
             }
         }
     }
@@ -58,9 +58,9 @@ struct ChartsView: View {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .powerW: "Potência"
-            case .charge: "Bateria"
-            case .eventos: "Eventos"
+            case .powerW: L10n.t("Potência", "Power")
+            case .charge: L10n.t("Bateria", "Battery")
+            case .eventos: L10n.t("Eventos", "Events")
             }
         }
         var apiName: String { self == .charge ? "charge" : "power_w" }
@@ -101,7 +101,7 @@ struct ChartsView: View {
     }
 
     private var eyebrowText: String {
-        (metric == .eventos ? "Eventos — " : "Consumo — ") + scope.eyebrowSuffix
+        (metric == .eventos ? L10n.t("Eventos — ", "Events — ") : L10n.t("Consumo — ", "Usage — ")) + scope.eyebrowSuffix
     }
 
     private var isEmpty: Bool {
@@ -113,8 +113,8 @@ struct ChartsView: View {
             header
             if isEmpty {
                 Text(metric == .eventos
-                     ? "Nenhum evento na última hora — bom sinal."
-                     : "Sem histórico ainda — os dados aparecem conforme o serviço coleta.")
+                     ? L10n.t("Nenhum evento nesse recorte — bom sinal.", "No events in this window — a good sign.")
+                     : L10n.t("Sem histórico ainda — os dados aparecem conforme o serviço coleta.", "No history yet — data appears as the service collects."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120)
@@ -232,7 +232,7 @@ struct ChartsView: View {
                                 .fixedSize()
                                 .contentTransition(.numericText())
                             if let peak, let avg = peak.avg {
-                                Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
+                                Text(L10n.t("pico", "peak") + " \(format(avg)) " + L10n.t("às", "at") + " \(timeLabel(peak.ts))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .monospacedDigit()
@@ -241,8 +241,8 @@ struct ChartsView: View {
                         }
                     }
                     Spacer(minLength: 8)
-                    chip("Uso", store.loadText)
-                    chip("Saída", store.outputVoltageText)
+                    chip(L10n.t("Uso", "Load"), store.loadText)
+                    chip(L10n.t("Saída", "Output"), store.outputVoltageText)
                 }
                 // Both capsules side by side on their own line, scrolling
                 // when the window is narrower than they are (owner kept THIS
@@ -267,7 +267,7 @@ struct ChartsView: View {
                             .fixedSize()
                             .contentTransition(.numericText())
                         if let peak, let avg = peak.avg {
-                            Text("pico \(format(avg)) às \(timeLabel(peak.ts))")
+                            Text(L10n.t("pico", "peak") + " \(format(avg)) " + L10n.t("às", "at") + " \(timeLabel(peak.ts))")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
@@ -275,8 +275,8 @@ struct ChartsView: View {
                     }
                 }
                 Spacer()
-                chip("Uso", store.loadText)
-                chip("Saída", store.outputVoltageText)
+                chip(L10n.t("Uso", "Load"), store.loadText)
+                chip(L10n.t("Saída", "Output"), store.outputVoltageText)
                 picker
                 scopePicker
             }
@@ -349,11 +349,11 @@ struct ChartsView: View {
     /// separates types that share a color in the list (Queda × Bateria baixa).
     private func shortLabel(_ type: String) -> String {
         switch type {
-        case "POWER_LOSS": "Queda"
-        case "POWER_RESTORED": "Restaurada"
-        case "LOW_BATTERY": "Bateria baixa"
-        case "COMM_LOST": "Comm perdida"
-        case "COMM_RESTORED": "Comm restabelecida"
+        case "POWER_LOSS": L10n.t("Queda", "Loss")
+        case "POWER_RESTORED": L10n.t("Restaurada", "Restored")
+        case "LOW_BATTERY": L10n.t("Bateria baixa", "Low battery")
+        case "COMM_LOST": "Comm down"
+        case "COMM_RESTORED": "Comm up"
         default: type
         }
     }
@@ -361,6 +361,43 @@ struct ChartsView: View {
     // Events over time (owner 2026-08-31): stacked histogram — color = type,
     // bar height = FREQUENCY in each 2-minute bucket, legend names the hues.
     private var eventsChart: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            eventsChartCore
+            legendRow
+        }
+    }
+
+    private static let eventTypes = ["POWER_LOSS", "POWER_RESTORED", "LOW_BATTERY", "COMM_LOST", "COMM_RESTORED"]
+
+    private func legendColor(_ type: String) -> Color {
+        switch type {
+        case "POWER_LOSS": .orange
+        case "POWER_RESTORED": .green
+        case "LOW_BATTERY": .yellow
+        case "COMM_LOST": .red
+        default: .teal
+        }
+    }
+
+    /// One-line legend (the automatic one wrapped — owner's print): dots +
+    /// short names, horizontally scrollable when narrower than its content.
+    private var legendRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(Self.eventTypes, id: \.self) { type in
+                    HStack(spacing: 5) {
+                        Circle().fill(legendColor(type)).frame(width: 7, height: 7)
+                        Text(shortLabel(type))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
+            }
+        }
+    }
+
+    private var eventsChartCore: some View {
         Chart(eventRows) { row in
             BarMark(
                 x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts / eventsBucket * eventsBucket))),
@@ -376,14 +413,11 @@ struct ChartsView: View {
         .chartYScale(domain: 0...visibleYMax)
         .simultaneousGesture(magnify)
         .onTapGesture(count: 2) { zoomOut() }
-        .chartForegroundStyleScale([
-            "Queda": Color.orange,
-            "Restaurada": Color.green,
-            "Bateria baixa": Color.yellow,
-            "Comm perdida": Color.red,
-            "Comm restabelecida": Color.teal,
-        ])
-        .chartLegend(position: .bottom, spacing: 6)
+        .chartForegroundStyleScale(
+            domain: Self.eventTypes.map { shortLabel($0) },
+            range: Self.eventTypes.map { legendColor($0) }
+        )
+        .chartLegend(.hidden)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisValueLabel {
@@ -436,7 +470,7 @@ struct ChartsView: View {
                 )
                 .symbolSize(0)
                 .annotation(position: .top, spacing: 2) {
-                    Text("Pico")
+                    Text(L10n.t("Pico", "Peak"))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }

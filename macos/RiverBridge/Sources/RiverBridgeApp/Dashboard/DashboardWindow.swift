@@ -10,6 +10,7 @@ struct DashboardWindow: View {
     @State private var section: Section = DashboardWindow.initialSection()
     @State private var headerWidth: CGFloat = 1000
     @State private var beatPulse = false
+    @State private var prefs = AppPrefs.shared
     @Namespace private var railNS
 
     /// Dev seam: `--secao saude|ajustes` opens on that tab (screenshot
@@ -31,6 +32,13 @@ struct DashboardWindow: View {
         case saude = "Saúde"
         case ajustes = "Ajustes"
         var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .energia: L10n.t("Energia", "Energy")
+            case .saude: L10n.t("Saúde", "Health")
+            case .ajustes: L10n.t("Ajustes", "Settings")
+            }
+        }
         var symbol: String {
             switch self {
             case .energia: "bolt.fill"
@@ -63,6 +71,9 @@ struct DashboardWindow: View {
                 .padding(.bottom, 16)
             }
         }
+        // Language switch rebuilds the CONTENT tree; the section state lives
+        // here (outside the .id boundary), so the open tab survives.
+        .id(prefs.language)
         .animation(.snappy(duration: 0.3), value: section)
     }
 
@@ -103,7 +114,7 @@ struct DashboardWindow: View {
                         HStack(spacing: 6) {
                             Image(systemName: item.symbol)
                             if showsLabel {
-                                Text(item.rawValue)
+                                Text(item.label)
                                     .fixedSize()
                             }
                         }
@@ -122,8 +133,8 @@ struct DashboardWindow: View {
                                 .matchedGeometryEffect(id: "rail-sel", in: railNS)
                         }
                     }
-                    .help(item.rawValue)
-                    .accessibilityLabel(item.rawValue)
+                    .help(item.label)
+                    .accessibilityLabel(item.label)
                 }
             }
             .padding(3)
@@ -219,7 +230,7 @@ struct ConnectionBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Serviço parado").font(.headline)
+                Text(L10n.t("Serviço parado", "Service down")).font(.headline)
                 Text(reason).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()

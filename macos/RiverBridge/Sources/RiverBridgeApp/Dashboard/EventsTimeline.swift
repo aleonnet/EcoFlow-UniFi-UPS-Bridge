@@ -12,10 +12,10 @@ enum EventChip: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .queda: "Queda"
-        case .restaurada: "Restaurada"
-        case .bateria: "Bateria baixa"
-        case .comunicacao: "Comunicação"
+        case .queda: L10n.t("Queda", "Loss")
+        case .restaurada: L10n.t("Restaurada", "Restored")
+        case .bateria: L10n.t("Bateria baixa", "Low battery")
+        case .comunicacao: L10n.t("Comunicação", "Comm")
         }
     }
     var symbol: String {
@@ -57,11 +57,11 @@ enum EventPeriod: String, CaseIterable, Identifiable {
     /// Segment label — short enough for five segments at 414 pt.
     var short: String {
         switch self {
-        case .hoje: "Hoje"
+        case .hoje: L10n.t("Hoje", "Today")
         case .dias7: "7 d"
         case .dias30: "30 d"
-        case .tudo: "Tudo"
-        case .personalizado: "Datas"
+        case .tudo: L10n.t("Tudo", "All")
+        case .personalizado: L10n.t("Datas", "Dates")
         }
     }
 
@@ -99,13 +99,13 @@ struct EventsTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if loadFailed {
-                Text("Histórico indisponível — a UI não alcança o serviço.")
+                Text(L10n.t("Histórico indisponível — a UI não alcança o serviço.", "History unavailable — the UI can’t reach the service."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else if rows.isEmpty {
                 Text(chips.isEmpty && period == .tudo
-                     ? "Nenhum evento até agora — bom sinal."
-                     : "Nenhum evento nesse recorte.")
+                     ? L10n.t("Nenhum evento até agora — bom sinal.", "No events so far — a good sign.")
+                     : L10n.t("Nenhum evento nesse recorte.", "No events in this range."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
@@ -154,11 +154,11 @@ struct EventsTimeline: View {
 
     static func label(for event: String) -> String {
         switch event {
-        case "POWER_LOSS": return "Queda de energia — na bateria"
-        case "POWER_RESTORED": return "Energia restaurada"
-        case "LOW_BATTERY": return "Bateria baixa"
-        case "COMM_LOST": return "Comunicação perdida com o RIVER"
-        case "COMM_RESTORED": return "Comunicação restabelecida"
+        case "POWER_LOSS": return L10n.t("Queda de energia — na bateria", "Power loss — on battery")
+        case "POWER_RESTORED": return L10n.t("Energia restaurada", "Power restored")
+        case "LOW_BATTERY": return L10n.t("Bateria baixa", "Low battery")
+        case "COMM_LOST": return L10n.t("Comunicação perdida com o RIVER", "Communication with the RIVER lost")
+        case "COMM_RESTORED": return L10n.t("Comunicação restabelecida", "Communication restored")
         default: return event
         }
     }
@@ -273,12 +273,12 @@ struct EventDetailInline: View {
         VStack(alignment: .leading, spacing: 10) {
             // No title here: the row above already carries icon + label.
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
-                detailRow("Quando", friendlyWhen)
-                if let state = event.state { detailRow("Estado do UPS", state) }
+                detailRow(L10n.t("Quando", "When"), friendlyWhen)
+                if let state = event.state { detailRow(L10n.t("Estado do UPS", "UPS state"), state) }
                 if let charge = event.charge {
-                    detailRow("Bateria", TelemetryStore.percentText(charge))
+                    detailRow(L10n.t("Bateria", "Battery"), TelemetryStore.percentText(charge))
                 }
-                if let reason = event.reason { detailRow("Detalhe", reason) }
+                if let reason = event.reason { detailRow(L10n.t("Detalhe", "Detail"), reason) }
             }
 
             Text(event.ts + " · " + event.event)
@@ -313,7 +313,7 @@ struct EventsFilterBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 10) {
-                Text("Eventos").eyebrow()
+                Text(L10n.t("Eventos", "Events")).eyebrow()
                 Spacer(minLength: 8)
                 // Segmented buttons, not a menu (owner 2026-08-31). With
                 // Datas active the De/Até pickers TAKE THE SEGMENTS' PLACE
@@ -322,8 +322,8 @@ struct EventsFilterBar: View {
                 HStack(spacing: 2) {
                     if period == .personalizado {
                         HStack(spacing: 8) {
-                            DatePicker("De", selection: $customFrom, displayedComponents: .date)
-                            DatePicker("Até", selection: $customTo, displayedComponents: .date)
+                            DatePicker(L10n.t("De", "From"), selection: $customFrom, displayedComponents: .date)
+                            DatePicker(L10n.t("Até", "To"), selection: $customTo, displayedComponents: .date)
                         }
                         .datePickerStyle(.compact)
                         .font(.callout)
@@ -338,7 +338,7 @@ struct EventsFilterBar: View {
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .help("Fechar o recorte por datas")
+                        .help(L10n.t("Fechar o recorte por datas", "Close the date range"))
                     } else {
                         ForEach(EventPeriod.allCases) { p in
                             Button {

@@ -66,7 +66,7 @@ struct FlowScene: View {
                 )
 
                 sideNode(
-                    symbol: "bolt.horizontal.fill", label: "Rede elétrica",
+                    symbol: "bolt.horizontal.fill", label: L10n.t("Rede elétrica", "Grid power"),
                     value: gridActive ? "CA" : "—",
                     color: gridActive ? gridColor : .secondary, active: gridActive,
                     radius: sideRadius
@@ -79,7 +79,7 @@ struct FlowScene: View {
                     .position(center.center)
 
                 sideNode(
-                    symbol: "server.rack", label: "Equipamentos",
+                    symbol: "server.rack", label: L10n.t("Equipamentos", "Equipment"),
                     value: store.powerText,
                     color: live ? gridColor : .secondary, active: live,
                     radius: sideRadius
@@ -88,12 +88,12 @@ struct FlowScene: View {
 
                 // Labels outside the circles: below in wide mode, beside in
                 // compact (below would collide with the vertical connector).
-                Text("Rede elétrica").eyebrow()
+                Text(L10n.t("Rede elétrica", "Grid power")).eyebrow()
                     .position(
                         x: compact ? left.center.x + sideRadius + 70 : left.center.x,
                         y: compact ? left.center.y : left.center.y + sideRadius + 16
                     )
-                Text("Equipamentos").eyebrow()
+                Text(L10n.t("Equipamentos", "Equipment")).eyebrow()
                     .position(
                         x: compact ? right.center.x + sideRadius + 70 : right.center.x,
                         y: compact ? right.center.y : right.center.y + sideRadius + 16
@@ -117,8 +117,8 @@ struct FlowScene: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             store.isOnBattery
-                ? "Equipamentos alimentados pela bateria do RIVER, \(store.runtimeText) de autonomia"
-                : "Equipamentos alimentados pela rede elétrica através do RIVER"
+                ? L10n.t("Equipamentos alimentados pela bateria do RIVER, ", "Equipment powered by the RIVER battery, ") + store.runtimeText
+                : L10n.t("Equipamentos alimentados pela rede elétrica através do RIVER", "Equipment powered by the grid through the RIVER")
         )
     }
 

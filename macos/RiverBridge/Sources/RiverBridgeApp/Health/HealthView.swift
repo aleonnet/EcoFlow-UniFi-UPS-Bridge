@@ -22,18 +22,18 @@ struct HealthView: View {
 
     private var links: [Link] {
         [
-            .init(id: "usb", symbol: "cable.connector", name: "USB · RIVER",
+            .init(id: "usb", symbol: "cable.connector", name: L10n.t("USB · RIVER", "USB · RIVER"),
                   status: chain?.usb,
-                  detail: "Observável a partir da Fase 1, com o RIVER conectado."),
+                  detail: L10n.t("Observável a partir da Fase 1, com o RIVER conectado.", "Observable from Phase 1, with the RIVER connected.")),
             .init(id: "nut", symbol: "server.rack", name: "NUT (upsd)",
                   status: chain?.nut, detail: chain?.lastError),
-            .init(id: "bridge", symbol: "gearshape.2.fill", name: "Serviço river-unifi-bridge",
+            .init(id: "bridge", symbol: "gearshape.2.fill", name: L10n.t("Serviço river-unifi-bridge", "river-unifi-bridge service"),
                   status: store.phase == .live ? "ok" : "falha",
-                  detail: store.phase == .live ? "API local respondendo." : "A UI não alcança a API local."),
+                  detail: store.phase == .live ? L10n.t("API local respondendo.", "Local API responding.") : L10n.t("A UI não alcança a API local.", "The UI can’t reach the local API.")),
             .init(id: "unifi", symbol: "network", name: "UniFi (UDR7)",
-                  status: chain?.unifi, detail: "Aguarda a Fase 3 (PoC do protocolo)."),
+                  status: chain?.unifi, detail: L10n.t("Aguarda a Fase 3 (PoC do protocolo).", "Waits for Phase 3 (protocol PoC).")),
             .init(id: "ha", symbol: "house.fill", name: "Home Assistant",
-                  status: chain?.ha, detail: "O upsd não expõe clientes de forma confirmada ainda."),
+                  status: chain?.ha, detail: L10n.t("O upsd não expõe clientes de forma confirmada ainda.", "upsd does not confirmably expose clients yet.")),
         ]
     }
 
@@ -52,7 +52,7 @@ struct HealthView: View {
                         }
                     }
                 } header: {
-                    Text("Cadeia de integração").eyebrow()
+                    Text(L10n.t("Cadeia de integração", "Integration chain")).eyebrow()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
                         .background {
@@ -123,10 +123,10 @@ struct HealthView: View {
     private func badge(_ status: String?) -> (String, Color) {
         switch status {
         case "ok": ("OK", .green)
-        case "falha": ("Falha", .red)
-        case "sem_dados": ("Sem dados", .orange)
-        case "pendente_fase_3": ("Pendente — Fase 3", .secondary)
-        case "nao_observavel": ("Não observável", .secondary)
+        case "falha": (L10n.t("Falha", "Failed"), .red)
+        case "sem_dados": (L10n.t("Sem dados", "No data"), .orange)
+        case "pendente_fase_3": (L10n.t("Pendente — Fase 3", "Pending — Phase 3"), .secondary)
+        case "nao_observavel": (L10n.t("Não observável", "Not observable"), .secondary)
         default: ("—", .secondary)
         }
     }

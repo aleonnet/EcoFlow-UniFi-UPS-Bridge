@@ -8,10 +8,12 @@ import SwiftUI
 @main
 struct RiverBridgeApp: App {
     @State private var store = TelemetryStore()
+    @State private var prefs = AppPrefs.shared
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarPopover(store: store)
+                .id(prefs.language)   // rebuild on language change
         } label: {
             MenuBarLabel(store: store)
         }
@@ -19,6 +21,11 @@ struct RiverBridgeApp: App {
 
         Window("River Bridge", id: "main") {
             DashboardWindow(store: store)
+                // Theme selectable in Ajustes (auto follows the system).
+                .preferredColorScheme(
+                    prefs.themeMode == .auto ? nil
+                        : prefs.themeMode == .light ? .light : .dark
+                )
                 // Min width = iPhone XR width (owner 2026-08-31): shrinking
                 // below 520pt flips to the vertical phone layout — the window
                 // doubles as an iPhone preview. Floors allow a 414×896 shape.

@@ -80,10 +80,10 @@ public final class TelemetryStore {
     public var stateLabel: String {
         guard phase == .live, let state = latest?.power?.state else { return "—" }
         switch state {
-        case "ONLINE": return "Na tomada"
-        case "ON_BATTERY": return "Na bateria"
-        case "OUTPUT_OFF": return "Saída desligada"
-        default: return "Sem leitura"
+        case "ONLINE": return L10n.t("Na tomada", "On grid")
+        case "ON_BATTERY": return L10n.t("Na bateria", "On battery")
+        case "OUTPUT_OFF": return L10n.t("Saída desligada", "Output off")
+        default: return L10n.t("Sem leitura", "No reading")
         }
     }
 
