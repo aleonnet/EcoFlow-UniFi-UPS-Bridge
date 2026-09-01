@@ -9,8 +9,12 @@ import SwiftUI
 struct HealthView: View {
     var store: TelemetryStore
 
-    @State private var chain: HealthChain?
     @State private var scrollOffset: CGFloat = 0
+
+    /// Vem do store: fonte ÚNICA do health. Antes esta tela tinha o próprio poll
+    /// de 5 s, então o nome do dispositivo e o estado podiam divergir do resto do
+    /// app. Mudança declarada: o poll passa a viver com o app, não com a tela.
+    private var chain: HealthChain? { store.health }
 
     private struct Link: Identifiable {
         let id: String
@@ -121,14 +125,7 @@ struct HealthView: View {
         } action: { _, offset in
             scrollOffset = offset
         }
-        .task {
-            while !Task.isCancelled {
-                if let endpoint = ApiEndpoint.discover() {
-                    chain = try? await APIClient(endpoint: endpoint).health()
-                }
-                try? await Task.sleep(for: .seconds(5))
-            }
-        }
+        .task { await store.refreshHealth() }
     }
 
     private func card(_ item: Link) -> some View {

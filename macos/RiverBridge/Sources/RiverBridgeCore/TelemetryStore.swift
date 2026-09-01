@@ -18,15 +18,67 @@ public final class TelemetryStore {
     public private(set) var phase: ConnectionPhase = .connecting
     /// Increments on every applied state reading — the UI's data heartbeat.
     public private(set) var beat: Int = 0
+    /// The integration chain, polled here instead of by each view: the health is
+    /// what carries the plugin list and the names the user gave, and two pollers
+    /// would show two different truths on the same screen.
+    public private(set) var health: HealthChain?
+    /// Resolved device names. Configuration, not telemetry: it survives the
+    /// service going down (the state disappears, the name stays).
+    public private(set) var deviceNames: DeviceNames
 
     private var task: Task<Void, Never>?
+    private var healthTask: Task<Void, Never>?
+    private let client: APIClient?
+    private let seams: [String: String]
+    private var environment: [String: String]
+    /// Generation counter, NOT single-flight: single-flight would swallow the
+    /// refresh right after a PUT, which is the one that matters. An older GET
+    /// finishing late never re-displays a stale name.
+    private var healthGeneration = 0
 
-    public init() {}
+    /// A single init, every parameter with a default: `TelemetryStore()` keeps
+    /// working everywhere it is called. `environment` is injectable so a test can
+    /// be hermetic — without it the test would find the real service on the
+    /// developer's machine and pass or fail depending on who runs it.
+    public init(arguments: [String] = ProcessInfo.processInfo.arguments,
+                client: APIClient? = nil,
+                environment: [String: String] = ProcessInfo.processInfo.environment) {
+        self.client = client
+        let seams = DeviceNames.parseSeams(arguments)
+        self.seams = seams
+        self.deviceNames = DeviceNames.resolve(health: nil, seams: seams)
+        self.environment = environment
+    }
+
+    // MARK: - Health
+
+    public func refreshHealth() async {
+        healthGeneration += 1
+        let mine = healthGeneration
+        let api = client ?? ApiEndpoint.discover(environment: environment).map { APIClient(endpoint: $0) }
+        guard let api else { return }
+        let chain = try? await api.health()
+        guard mine == healthGeneration else { return }
+        health = chain
+        // `if let`: with the service down the state disappears, but the name is
+        // configuration and must stay. Without the guard it would snap back to
+        // "UDR7" the moment a GET failed.
+        if let chain { deviceNames = DeviceNames.resolve(health: chain, seams: seams) }
+    }
 
     // MARK: - Stream lifecycle
 
     public func start(environment: [String: String] = ProcessInfo.processInfo.environment) {
         guard task == nil else { return }
+        // Kept for refreshHealth: resolving the endpoint with a different
+        // environment would lose the hermeticity that RUB_STATE_DIR gives tests.
+        self.environment = environment
+        healthTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshHealth()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
         task = Task { [weak self] in
             var backoff: Double = 0.5
             while !Task.isCancelled {
@@ -54,6 +106,8 @@ public final class TelemetryStore {
     public func stop() {
         task?.cancel()
         task = nil
+        healthTask?.cancel()
+        healthTask = nil
     }
 
     public func apply(_ message: SSEMessage) {

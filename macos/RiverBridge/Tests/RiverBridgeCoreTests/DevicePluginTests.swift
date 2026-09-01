@@ -177,3 +177,29 @@ private func decode(_ json: String) throws -> HealthChain {
     #expect(text.contains("UDR7_SSH_HOST, UDR7_SSH_PORT"))   // ordenadas
     #expect(text.contains("armado"))
 }
+
+// MARK: - The store as the single source of the health
+
+@MainActor
+@Test func storeStartsWithDefaultNamesAndSeam() {
+    // Sem health nenhum: o padrão do descritor.
+    #expect(TelemetryStore().deviceNames.name(for: .udr7) == "UDR7")
+    // Com seam de linha de comando: vence, e já vale antes de qualquer GET.
+    let seamed = TelemetryStore(arguments: ["app", "--seam-nome-plugin", "udr7=Meu UDR"])
+    #expect(seamed.deviceNames.name(for: .udr7) == "Meu UDR")
+    #expect(seamed.health == nil)
+}
+
+@MainActor
+@Test func refreshHealthWithoutEndpointLeavesStateUntouched() async {
+    // Ambiente injetado e vazio: não há serviço a descobrir. Sem essa injeção o
+    // teste encontraria o daemon real da máquina de quem roda e passaria ou
+    // falharia conforme o computador — foi o que aconteceu ao escrevê-lo.
+    let store = TelemetryStore(
+        arguments: ["app", "--seam-nome-plugin", "udr7=Meu UDR"],
+        environment: ["RUB_STATE_DIR": "/nao/existe/em/lugar/nenhum"]
+    )
+    await store.refreshHealth()
+    #expect(store.health == nil)
+    #expect(store.deviceNames.name(for: .udr7) == "Meu UDR")
+}
