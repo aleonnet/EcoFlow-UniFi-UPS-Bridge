@@ -149,3 +149,26 @@ public enum JSONCoding {
         return decoder
     }
 }
+
+/// One persisted row from GET /v1/events/log ({ts, type, detail}).
+public struct EventLogRow: Codable, Equatable, Sendable, Identifiable {
+    public var ts: Int
+    public var type: String
+    public var detail: String?
+
+    public var id: String { "\(ts)-\(type)" }
+
+    /// Same instant reshaped as the SSE event type, so the UI renders a
+    /// single row kind. state/charge are not persisted in the log — nil.
+    public var asBridgeEvent: BridgeEvent {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let iso = formatter.string(from: Date(timeIntervalSince1970: Double(ts)))
+        return BridgeEvent(ts: iso, event: type, state: nil, charge: nil, reason: detail)
+    }
+}
+
+public struct EventsLogResponse: Codable, Sendable {
+    public var rows: [EventLogRow]
+}

@@ -1,5 +1,6 @@
 // Honesty fences: absent data renders as "—", never as a made-up value.
 
+import Foundation
 import Testing
 @testable import RiverBridgeCore
 
@@ -47,4 +48,16 @@ import Testing
         data: #"{"ts": "2026-08-31T17:00:00-0300", "event": "POWER_LOSS"}"#
     ))
     #expect(store.events.first?.event == "POWER_LOSS")
+}
+
+@Test func eventLogRowDecodesAndMapsToBridgeEvent() throws {
+    let json = #"{"rows": [{"ts": 1756677090, "type": "POWER_LOSS", "detail": null}]}"#
+    let resp = try JSONCoding.decoder().decode(EventsLogResponse.self, from: Data(json.utf8))
+    #expect(resp.rows.first?.type == "POWER_LOSS")
+    let event = resp.rows.first!.asBridgeEvent
+    #expect(event.event == "POWER_LOSS")
+    // Mapped ts must PARSE (timeText falls back to the raw string only on
+    // unknown formats — equality here would mean the mapping is broken).
+    #expect(event.timeText != event.ts)
+    #expect(event.reason == nil)
 }

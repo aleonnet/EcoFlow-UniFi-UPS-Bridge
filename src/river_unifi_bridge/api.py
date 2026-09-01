@@ -101,6 +101,8 @@ class ApiServer:
         app = web.Application(middlewares=[auth])
         app.router.add_get("/v1/state", self._h_state)
         app.router.add_get("/v1/events", self._h_events)
+        app.router.add_get("/v1/events/log", self._h_events_log)
+        app.router.add_delete("/v1/events/log", self._h_events_delete)
         app.router.add_get("/v1/history", self._h_history)
         app.router.add_get("/v1/health", self._h_health)
         app.router.add_get("/v1/config", self._h_config_get)
@@ -148,6 +150,35 @@ class ApiServer:
                 await asyncio.sleep(0.25)
         except (ConnectionResetError, asyncio.CancelledError):
             return resp
+
+    async def _h_events_log(self, request: web.Request) -> web.Response:
+        q = request.query
+        try:
+            ts_from = int(q.get("from", "0"))
+            ts_to = int(q.get("to", str(2**33)))
+            limit = int(q.get("limit", "200"))
+            types = [t for t in q.get("types", "").split(",") if t] or None
+            rows = self.history.query_events(ts_from, ts_to, types, limit)
+        except ValueError as exc:
+            return web.json_response({"erro": str(exc)}, status=400)
+        return web.json_response({"rows": rows})
+
+    async def _h_events_delete(self, request: web.Request) -> web.Response:
+        # `to` is mandatory by design: an accidental parameterless DELETE must
+        # never wipe the log. "Tudo" is the UI sending to=now explicitly.
+        q = request.query
+        if "to" not in q:
+            return web.json_response(
+                {"erro": "parâmetro to é obrigatório (limite superior da faixa)"},
+                status=400,
+            )
+        try:
+            ts_from = int(q.get("from", "0"))
+            ts_to = int(q["to"])
+            removed = self.history.delete_events(ts_from, ts_to)
+        except ValueError as exc:
+            return web.json_response({"erro": str(exc)}, status=400)
+        return web.json_response({"removidos": removed})
 
     async def _h_history(self, request: web.Request) -> web.Response:
         q = request.query

@@ -65,6 +65,43 @@ public struct APIClient: Sendable {
         return try JSONCoding.decoder().decode(HistoryResponse.self, from: try await run(req))
     }
 
+    /// GET /v1/events/log — persisted log, newest first.
+    public func eventsLog(from: Int? = nil, to: Int? = nil,
+                          types: [String] = [], limit: Int = 200) async throws -> [EventLogRow] {
+        var components = URLComponents(
+            url: endpoint.baseURL.appendingPathComponent("v1/events/log"),
+            resolvingAgainstBaseURL: false
+        )!
+        var items: [URLQueryItem] = [.init(name: "limit", value: String(limit))]
+        if let from { items.append(.init(name: "from", value: String(from))) }
+        if let to { items.append(.init(name: "to", value: String(to))) }
+        if !types.isEmpty {
+            items.append(.init(name: "types", value: types.joined(separator: ",")))
+        }
+        components.queryItems = items
+        var req = request("v1/events/log")
+        req.url = components.url
+        return try JSONCoding.decoder()
+            .decode(EventsLogResponse.self, from: try await run(req)).rows
+    }
+
+    /// DELETE /v1/events/log — `to` is mandatory by API contract (a
+    /// parameterless DELETE never wipes the log). Returns rows removed.
+    public func deleteEvents(from: Int = 0, to: Int) async throws -> Int {
+        var components = URLComponents(
+            url: endpoint.baseURL.appendingPathComponent("v1/events/log"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            .init(name: "from", value: String(from)),
+            .init(name: "to", value: String(to)),
+        ]
+        var req = request("v1/events/log", method: "DELETE")
+        req.url = components.url
+        struct Reply: Codable { var removidos: Int }
+        return try JSONCoding.decoder().decode(Reply.self, from: try await run(req)).removidos
+    }
+
     public func config() async throws -> ConfigResponse {
         try JSONCoding.decoder().decode(
             ConfigResponse.self, from: try await run(request("v1/config"))

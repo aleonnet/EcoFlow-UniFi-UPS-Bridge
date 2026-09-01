@@ -9,16 +9,28 @@ import SwiftUI
 struct ChartsView: View {
     var store: TelemetryStore
 
-    @State private var metric: Metric = .powerW
+    @State private var metric: Metric = ChartsView.initialMetric()
     @State private var rows: [HistoryRow] = []
+    @State private var eventRows: [EventLogRow] = []
     @State private var scrubTS: Int?
     @State private var narrow = false
 
     enum Metric: String, CaseIterable, Identifiable {
-        case powerW, charge
+        case powerW, charge, eventos
         var id: String { rawValue }
-        var label: String { self == .charge ? "Bateria" : "Potência" }
+        var label: String {
+            switch self {
+            case .powerW: "Potência"
+            case .charge: "Bateria"
+            case .eventos: "Eventos"
+            }
+        }
         var apiName: String { self == .charge ? "charge" : "power_w" }
+    }
+
+    /// Dev seam (like --secao): open on the events chart for screenshot runs.
+    static func initialMetric() -> Metric {
+        ProcessInfo.processInfo.arguments.contains("--grafico-eventos") ? .eventos : .powerW
     }
 
     private var accent: Color {
@@ -26,7 +38,8 @@ struct ChartsView: View {
     }
 
     private var peak: HistoryRow? {
-        rows.compactMap { row in row.avg.map { _ in row } }
+        guard metric != .eventos else { return nil }   // rows belong to power/charge
+        return rows.compactMap { row in row.avg.map { _ in row } }
             .max { ($0.avg ?? 0) < ($1.avg ?? 0) }
     }
 
@@ -37,17 +50,33 @@ struct ChartsView: View {
     }
 
     private var nowValue: String {
-        metric == .charge ? store.chargeText : store.powerText
+        switch metric {
+        case .charge: store.chargeText
+        case .powerW: store.powerText
+        case .eventos: "\(eventRows.count)"
+        }
+    }
+
+    private var eyebrowText: String {
+        metric == .eventos ? "Eventos — última hora" : "Consumo — última hora"
+    }
+
+    private var isEmpty: Bool {
+        metric == .eventos ? eventRows.isEmpty : rows.isEmpty
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
-            if rows.isEmpty {
-                Text("Sem histórico ainda — os dados aparecem conforme o serviço coleta.")
+            if isEmpty {
+                Text(metric == .eventos
+                     ? "Nenhum evento na última hora — bom sinal."
+                     : "Sem histórico ainda — os dados aparecem conforme o serviço coleta.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120)
+            } else if metric == .eventos {
+                eventsChart
             } else {
                 chart
             }
@@ -72,7 +101,7 @@ struct ChartsView: View {
         // hero, chips+picker on their own line — nothing wraps mid-word.
         if narrow {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Consumo — última hora").eyebrow()
+                Text(eyebrowText).eyebrow()
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(nowValue)
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
@@ -100,7 +129,7 @@ struct ChartsView: View {
             // with the hero block instead of floating on the eyebrow line.
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Consumo — última hora").eyebrow()
+                    Text(eyebrowText).eyebrow()
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(nowValue)
                             .font(.system(size: 26, weight: .semibold, design: .rounded))
@@ -155,6 +184,68 @@ struct ChartsView: View {
                 .monospacedDigit()
         }
         .padding(.trailing, 6)
+    }
+
+    /// Chart legend label per type — distinct hues so the stacked histogram
+    /// separates types that share a color in the list (Queda × Bateria baixa).
+    private func shortLabel(_ type: String) -> String {
+        switch type {
+        case "POWER_LOSS": "Queda"
+        case "POWER_RESTORED": "Restaurada"
+        case "LOW_BATTERY": "Bateria baixa"
+        case "COMM_LOST": "Comm perdida"
+        case "COMM_RESTORED": "Comm restabelecida"
+        default: type
+        }
+    }
+
+    // Events over time (owner 2026-08-31): stacked histogram — color = type,
+    // bar height = FREQUENCY in each 2-minute bucket, legend names the hues.
+    private var eventsChart: some View {
+        Chart(eventRows) { row in
+            BarMark(
+                x: .value("Hora", Date(timeIntervalSince1970: Double(row.ts / 120 * 120))),
+                y: .value("Eventos", 1),
+                width: .fixed(7)
+            )
+            .foregroundStyle(by: .value("Tipo", shortLabel(row.type)))
+        }
+        .chartForegroundStyleScale([
+            "Queda": Color.orange,
+            "Restaurada": Color.green,
+            "Bateria baixa": Color.yellow,
+            "Comm perdida": Color.red,
+            "Comm restabelecida": Color.teal,
+        ])
+        .chartLegend(position: .bottom, spacing: 6)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(date, format: .dateTime.hour().minute())
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .trailing) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
+                    .foregroundStyle(.quaternary)
+                AxisValueLabel {
+                    if let number = value.as(Int.self) {
+                        Text("\(number)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                }
+            }
+        }
+        .frame(height: 150)
+        .padding(.trailing, 26)
     }
 
     private var chart: some View {
@@ -257,7 +348,11 @@ struct ChartsView: View {
         guard let endpoint = ApiEndpoint.discover() else { return }
         let client = APIClient(endpoint: endpoint)
         let from = Int(Date().addingTimeInterval(-3600).timeIntervalSince1970)
-        if let response = try? await client.history(
+        if metric == .eventos {
+            if let result = try? await client.eventsLog(from: from, limit: 1000) {
+                eventRows = result
+            }
+        } else if let response = try? await client.history(
             metric: metric.apiName, bucketSeconds: 10, from: from
         ) {
             rows = response.rows

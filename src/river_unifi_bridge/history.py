@@ -41,8 +41,16 @@ class HistoryStore:
             conn.executescript(_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
+        # One fresh connection per operation (thread-safe by construction:
+        # poll loop and API thread never share a handle). Each `with conn:`
+        # block is ONE atomic transaction (sqlite3 context manager commits or
+        # rolls back). WAL + synchronous=NORMAL is the documented combo for
+        # this environment: "The synchronous=NORMAL setting is a good choice
+        # for most applications running in WAL mode."
+        # (https://www.sqlite.org/pragma.html#pragma_synchronous)
         conn = sqlite3.connect(self.path, timeout=5)
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
     def record_sample(self, snapshot: dict, ts: int | None = None) -> None:
@@ -99,6 +107,35 @@ class HistoryStore:
                 (limit,),
             ).fetchall()
         return [{"ts": r[0], "type": r[1], "detail": r[2]} for r in rows]
+
+    def query_events(self, ts_from: int, ts_to: int,
+                     types: list[str] | None = None,
+                     limit: int = 200) -> list[dict]:
+        """Period/type query over the persisted log (newest first)."""
+        if ts_from > ts_to:
+            raise ValueError("intervalo inválido: from maior que to")
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit fora da faixa (1..1000)")
+        sql = "SELECT ts, type, detail FROM events WHERE ts >= ? AND ts <= ?"
+        args: list[object] = [ts_from, ts_to]
+        if types:
+            sql += f" AND type IN ({','.join('?' * len(types))})"
+            args.extend(types)
+        sql += " ORDER BY ts DESC LIMIT ?"
+        args.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [{"ts": r[0], "type": r[1], "detail": r[2]} for r in rows]
+
+    def delete_events(self, ts_from: int, ts_to: int) -> int:
+        """Delete events inside [from, to]; returns rows removed."""
+        if ts_from > ts_to:
+            raise ValueError("intervalo inválido: from maior que to")
+        with self._connect() as conn:
+            return conn.execute(
+                "DELETE FROM events WHERE ts >= ? AND ts <= ?",
+                (ts_from, ts_to),
+            ).rowcount
 
     def prune(self, now: int | None = None) -> int:
         """Delete data older than the retention window. Returns rows removed."""

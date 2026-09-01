@@ -153,6 +153,10 @@ struct EnergiaSection: View {
     var store: TelemetryStore
     @State private var scrollOffset: CGFloat = 0
     @State private var headerMinY: CGFloat = 1000
+    @State private var eventChips: Set<EventChip> = []
+    @State private var eventPeriod: EventPeriod = .tudo
+    @State private var customFrom = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
+    @State private var customTo = Date.now
 
     // Validated pattern (onScrollGeometryChange, macOS 15+): the header is
     // TRANSPARENT at rest; material fades in ONLY while it is pinned with
@@ -172,9 +176,11 @@ struct EnergiaSection: View {
                     ChartsView(store: store)
                 }
                 Section {
-                    EventsTimeline(store: store)
+                    EventsTimeline(store: store, chips: eventChips, period: eventPeriod,
+                                   customFrom: customFrom, customTo: customTo)
                 } header: {
-                    Text("Eventos").eyebrow()
+                    EventsFilterBar(chips: $eventChips, period: $eventPeriod,
+                                    customFrom: $customFrom, customTo: $customTo)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
                         .background {

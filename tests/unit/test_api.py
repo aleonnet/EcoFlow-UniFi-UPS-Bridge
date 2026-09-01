@@ -139,3 +139,55 @@ async def test_health_and_version(client, server):
     assert body["ha"] == "nao_observavel"
     resp = await client.get("/v1/version", headers=client.auth)
     assert "version" in await resp.json()
+
+
+async def test_events_log_query_by_period_and_type(client, server):
+    h = server.history
+    h.record_event("POWER_LOSS", ts=100)
+    h.record_event("POWER_RESTORED", ts=160)
+    h.record_event("COMM_LOST", "upsd fora", ts=300)
+
+    resp = await client.get("/v1/events/log", headers=client.auth)
+    assert resp.status == 200
+    rows = (await resp.json())["rows"]
+    assert [r["type"] for r in rows] == ["COMM_LOST", "POWER_RESTORED", "POWER_LOSS"]
+
+    resp = await client.get(
+        "/v1/events/log?from=150&to=200", headers=client.auth
+    )
+    rows = (await resp.json())["rows"]
+    assert [r["ts"] for r in rows] == [160]
+
+    resp = await client.get(
+        "/v1/events/log?types=POWER_LOSS,COMM_LOST", headers=client.auth
+    )
+    rows = (await resp.json())["rows"]
+    assert {r["type"] for r in rows} == {"POWER_LOSS", "COMM_LOST"}
+    assert rows[0]["detail"] == "upsd fora"
+
+    resp = await client.get("/v1/events/log?limit=0", headers=client.auth)
+    assert resp.status == 400
+    resp = await client.get("/v1/events/log?from=9&to=1", headers=client.auth)
+    assert resp.status == 400
+
+
+async def test_events_delete_requires_to_and_removes_range(client, server):
+    h = server.history
+    h.record_event("POWER_LOSS", ts=100)
+    h.record_event("POWER_RESTORED", ts=160)
+    h.record_event("COMM_LOST", ts=300)
+
+    # fence: sem token nao apaga nada
+    resp = await client.delete("/v1/events/log?to=999")
+    assert resp.status == 401
+
+    # `to` obrigatorio: DELETE sem parametro jamais limpa o log
+    resp = await client.delete("/v1/events/log", headers=client.auth)
+    assert resp.status == 400
+    assert "to" in (await resp.json())["erro"]
+
+    resp = await client.delete("/v1/events/log?to=200", headers=client.auth)
+    assert resp.status == 200
+    assert (await resp.json())["removidos"] == 2
+    rows = h.query_events(0, 2**33)
+    assert [r["type"] for r in rows] == ["COMM_LOST"]
