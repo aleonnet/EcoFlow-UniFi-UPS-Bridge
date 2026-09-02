@@ -42,7 +42,7 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "COMM_LOSS_DELAY_SECONDS": (int, False, 15, (0, 600)),
     "LOW_BATTERY_PERCENT": (int, False, 30, (5, 50)),
     # Fase 3'-EXP — proteção do UDR7 (spec §2.5/§7A.5/§22; runbook
-    # docs/UDR7_PROTECAO_SSH_20260901.md). Nasce em ensaio; armar exige a trava
+    # docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md). Nasce em ensaio; armar exige a trava
     # UDR7_ARM_ALLOWED (somente arquivo) + ato no app. Defaults sem fonte são 0
     # ("não configurado" → a política bloqueia); os demais têm fonte/marca no runbook.
     "PROTECT_UDR7": (bool, False, False, None),
@@ -77,7 +77,7 @@ _NAME_PATTERN = rf"(?=.{{1,32}}\Z)[^{_NAME_BAD}](?: ?[^{_NAME_BAD}])*"
 
 # Fase 3'-EXP — shape of string keys that end up in an ssh argv or in a file path.
 # Structure fences (first char alphanumeric/letter, no whitespace) so a value can
-# never be parsed as an ssh option; sources/marks in docs/UDR7_PROTECAO_SSH_20260901.md.
+# never be parsed as an ssh option; sources/marks in docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md.
 _PATTERNS: dict[str, re.Pattern[str]] = {
     "UDR7_SSH_HOST": re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}"),
     "UDR7_SSH_USER": re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}"),

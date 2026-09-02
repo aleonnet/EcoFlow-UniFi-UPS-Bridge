@@ -45,7 +45,7 @@ avisar_estado_daemon() {
     achou=1; diga "  $PREFIX/etc/bridge.env está ARMADO (PROTECT_DRY_RUN=0) — desarme pelo app ou edite antes de reinstalar"
   fi
   if [ "$achou" = "1" ]; then
-    diga "  remoção manual (runbook docs/UDR7_PROTECAO_SSH_20260901.md): apague os arquivos acima e a chave pública no console"
+    diga "  remoção manual (runbook docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md): apague os arquivos acima e a chave pública no console"
   fi
 }
 avisar_estado_daemon || true

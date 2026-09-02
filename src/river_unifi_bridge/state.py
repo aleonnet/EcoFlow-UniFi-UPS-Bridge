@@ -82,7 +82,7 @@ class SharedState:
             "usb": usb,
             "nut": "ok" if comm_ok else ("falha" if last_error else "sem_dados"),
             "bridge": "ok",
-            # Research verdict (docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md): no documented
+            # Research verdict (docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md): no documented
             # native path for a console to consume a third-party UPS — not "impossible".
             "unifi": "sem_caminho_nativo_documentado",
             # Fase 3'-EXP: closed enum from the protection policy; None until the first tick.

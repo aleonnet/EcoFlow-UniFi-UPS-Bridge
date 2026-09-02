@@ -1,3 +1,7 @@
+---
+status: aceito
+---
+
 # UDR7/UniFi OS enxerga UPS de terceiros? — Pesquisa definitiva (2026-08-31)
 
 Pergunta do dono: a UI do UDR7 oferece algum lugar para consumir um UPS de

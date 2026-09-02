@@ -1,7 +1,7 @@
 """Fase 3'-EXP — UDR7 protection policy (graceful SSH poweroff of the console).
 
 Experimental phase, separate from the primary path (spec §2.5). Design and every
-number/source: plan "piped-seeking-toast v5.1" and docs/UDR7_PROTECAO_SSH_20260901.md.
+number/source: plan "piped-seeking-toast v5.1" and docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md.
 
 Property M1 (verifiable): the daemon only runs `ssh … poweroff` when, in the same
 tick, ALL gates pass — source outside the synthetic-driver denylist, NUT endpoint on

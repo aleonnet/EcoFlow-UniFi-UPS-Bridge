@@ -136,7 +136,7 @@ MSG_DB=(
 "rel_norte|O River Bridge está na sua barra de menus.|River Bridge is in your menu bar."
 "rel_abrindo|abrindo o app…|opening the app…"
 "rel_sem_app|o app não foi instalado nesta execução (--no-app ou sem Swift); o serviço já está no ar.|the app was not installed in this run (--no-app or no Swift); the service is already up."
-"rel_udr7|a proteção do UDR7 nasce em ENSAIO — nada é enviado ao console até você armar; passo a passo em docs/UDR7_PROTECAO_SSH_20260901.md|UDR7 protection starts in REHEARSAL — nothing is sent to the console until you arm it; step by step in docs/UDR7_PROTECAO_SSH_20260901.md"
+"rel_udr7|a proteção do UDR7 nasce em ENSAIO — nada é enviado ao console até você armar; passo a passo em docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md|UDR7 protection starts in REHEARSAL — nothing is sent to the console until you arm it; step by step in docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md"
 "prox_log|relatório desta execução: %s|this run's report: %s"
 "interrompido|interrompido na fase: %s (exit %s)|interrupted in phase: %s (exit %s)"
 "reexecutar_seguro|reexecutar é seguro: cada fase confere o estado e continua de onde parou|re-running is safe: each phase checks the state and continues where it stopped"

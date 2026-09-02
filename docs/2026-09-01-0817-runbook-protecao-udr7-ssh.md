@@ -1,3 +1,7 @@
+---
+status: aceito
+---
+
 # Runbook — Proteção do UDR7 pelo River (Fase 3'-EXP) — 2026-09-01
 
 **Fase experimental separada** (spec §2.5): o daemon, numa queda de energia confirmada e com a

@@ -176,6 +176,28 @@ def test_every_device_command_has_a_verified_source():
         for proibida in ("hypothesis", "hipótese", "TODO", "supõe", "acho que"):
             assert proibida.lower() not in cmd.fonte.lower(), (
                 f"{nome}: a fonte contém '{proibida}' — não é fonte, é suposição")
+        # A fonte declara o GRAU (docs/README.md): [P] primária ou [S] secundária.
+        # Sem isso, wiki citada três vezes começa a parecer especificação.
+        assert cmd.fonte.startswith(("[P]", "[S]")), (
+            f"{nome}: a fonte não declara o grau — use [P] (origem/medição) ou [S] (wiki, blog)")
+
+
+def test_secondary_sourced_commands_are_named_out_loud():
+    """Um comando DESTRUTIVO com fonte apenas secundária é dívida, e tem nome.
+
+    Hoje `ubnt-systool poweroff` é [S]: três fontes secundárias concordam, mas a
+    porta 22 do console está fechada e ele nunca foi confirmado no aparelho. Esta
+    cerca não proíbe — ela IMPEDE que o fato se perca: quando o comando for
+    rodado no UDR7 e virar [P], a lista aqui embaixo tem de encolher junto.
+    """
+    from river_unifi_bridge.plugins.udr7_ssh import COMMANDS
+
+    secundarios = {n for n, c in COMMANDS.items() if c.fonte.startswith("[S]")}
+    assert secundarios == {"poweroff", "reboot"}, (
+        "mudou o conjunto de comandos com fonte secundária — se um virou [P] "
+        "porque foi medido no aparelho, atualize esta cerca e o runbook juntos")
+    destrutivos_sem_primaria = {n for n in secundarios if COMMANDS[n].destrutivo}
+    assert destrutivos_sem_primaria == {"poweroff", "reboot"}
 
 
 def test_the_only_destructive_command_the_policy_fires_is_poweroff():

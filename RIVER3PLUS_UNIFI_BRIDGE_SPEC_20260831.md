@@ -107,7 +107,7 @@ Qualquer hipótese que exija:
 deve ser marcada como **fase experimental separada**, e não fazer parte do caminho primário.
 
 *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* a **Fase 3'-EXP** (desligamento
-gracioso do UDR7 via SSH com chave de `root`, `docs/UDR7_PROTECAO_SSH_20260901.md`) **é** essa
+gracioso do UDR7 via SSH com chave de `root`, `docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md`) **é** essa
 fase experimental separada — exige root persistente no UDR7. O caminho primário continua
 sendo visibilidade + alerta (app + HA). Nasce em modo ensaio (`PROTECT_DRY_RUN=1`) e só arma
 por ato do dono (§7A.5, §22).
@@ -1594,7 +1594,7 @@ UDR7_NAME=UDR7
 ```
 
 *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v8):* `UDR7_NAME` é o nome que o usuário dá ao dispositivo (1–32 caracteres); aplica a quente e, apesar do prefixo `UDR7_`, **não** entra em `PROTECTION_KEYS` nem nos pinos de armamento — renomear com a proteção armada é permitido. Semântica das chaves do bloco 6 e fontes dos
-defaults estão em `docs/UDR7_PROTECAO_SSH_20260901.md` e no `.env.example`. `READ_ONLY`
+defaults estão em `docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md` e no `.env.example`. `READ_ONLY`
 é chave **sem efeito** no código (nenhuma leitura em `src/`); não foi reaproveitada como
 trava de armamento (a trava é `UDR7_ARM_ALLOWED`, somente arquivo); `READ_ONLY=1` pode
 conviver com o daemon armado até a aposentadoria da chave (`docs/BACKLOG_20260901.md`).
@@ -1656,11 +1656,11 @@ bridge
 Sem alarm/action inicialmente.
 
 *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* a Fase 3 como "device visible" **não tem
-caminho nativo documentado** (`docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md`). Em seu lugar
+caminho nativo documentado** (`docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md`). Em seu lugar
 entra a **Fase 3'-EXP — UDR7 protegido pelo River** (fase experimental separada, §2.5):
 desligamento gracioso do console via SSH quando a queda é confirmada e a bateria cruza o
 limiar acima do corte físico; ensaio primeiro, armamento por ato do dono, religamento
-manual como caminho de base (H13/H14/H16). Runbook: `docs/UDR7_PROTECAO_SSH_20260901.md`.
+manual como caminho de base (H13/H14/H16). Runbook: `docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md`.
 
 ## Fase 4 — Telemetria
 
@@ -1728,7 +1728,7 @@ bloqueado por elas — o MVP do §24 não depende de sucesso UniFi.
 
 *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* os critérios da PoC UniFi **não foram
 atingidos** (sem caminho nativo documentado; relatório em
-`docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md`); a visibilidade nativa sai do caminho
+`docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md`); a visibilidade nativa sai do caminho
 primário. Critério da Fase 3'-EXP: em ensaio com o simulador, `UDR7_SHUTDOWN_DRYRUN` ↔
 `UDR7_PROTECTION_REARMED` com `would_block=fonte_nao_real`; armado, só com telemetria de
 fonte não-sintética, serial registrado e trava aberta pelo dono.

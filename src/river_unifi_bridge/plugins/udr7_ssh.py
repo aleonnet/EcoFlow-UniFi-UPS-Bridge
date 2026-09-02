@@ -20,9 +20,11 @@ from .base import DevicePlugin
 # ssh isolado e executa); o que se diz do outro lado é do dispositivo. Um segundo
 # aparelho traz a sua própria tabela e não toca em nada disto.
 #
-# TODO comando abaixo tem fonte verificada em 2026-09-01 — nada aqui é suposição.
-# Antes desta tabela o código tinha UM comando com o comentário "H11a — hypothesis
-# until probed", e eu cheguei a propor um `ubnt-systool info` que NÃO EXISTE.
+# Cada comando traz a fonte E O GRAU dela, na gramática da casa (docs/README.md):
+#   [P] primária — a origem: código do fabricante, especificação, medição no aparelho
+#   [S] secundária — wiki, gist, blog. NÃO vira [P] por ser citada três vezes.
+# Hoje o `poweroff` é [S]: a porta 22 do console está fechada e NENHUM comando foi
+# confirmado no UDR7. Vira [P] quando rodar lá e a saída entrar no runbook.
 
 class Cmd:
     """Um comando remoto: o que se manda, se destrói algo, e de onde veio."""
@@ -40,26 +42,28 @@ COMMANDS: dict[str, Cmd] = {
     # --- prova de alcance (não destrutivos) ---------------------------------
     "probe": Cmd(
         "probe", "command -v ubnt-systool", False,
-        "POSIX `command -v`; é o mesmo teste que o instalador oficial do "
-        "unifi-common usa (`command_exists()` em remote_install.sh)"),
+        "[P] POSIX. É o mesmo teste que o instalador oficial do unifi-common usa "
+        "DENTRO do console (`command_exists()` em remote_install.sh)"),
     "model": Cmd(
         "model", "ubnt-device-info model", False,
-        "unifi-common/remote_install.sh:38 e :131 — o script oficial da comunidade "
-        "roda isto NO console e casa a saída com \"UniFi Dream Router 7\""),
+        "[P] unifi-common/remote_install.sh:38 e :131 — código que EXECUTA no console "
+        "e casa a saída com a string \"UniFi Dream Router 7\", o nosso aparelho"),
     "firmware": Cmd(
         "firmware", "ubnt-device-info firmware", False,
-        "unifi-common/remote_install.sh:131 — `ubnt-device-info firmware`"),
+        "[P] unifi-common/remote_install.sh:131 — código que executa no console"),
     # --- ato final (destrutivo) ---------------------------------------------
     "poweroff": Cmd(
         "poweroff", "ubnt-systool poweroff", True,
-        "wiki CLI de ubnt-systool (lista completa de subcomandos) + gist "
-        "\"Graceful shutdown of UDMP via NUT\" + LazyAdmin: é o desligamento "
-        "gracioso do UniFi OS, preferível ao `poweroff` do Linux"),
+        "[S] wiki CLI de ubnt-systool + gist \"Graceful shutdown of UDMP via NUT\" + "
+        "LazyAdmin. TRÊS fontes secundárias concordam que é o desligamento gracioso do "
+        "UniFi OS, e nenhuma delas é primária: não foi confirmado no aparelho porque a "
+        "porta 22 está fechada. É o ÚNICO comando destrutivo, e o que menos deveria "
+        "estar em [S]"),
     "reboot": Cmd(
         "reboot", "ubnt-systool reboot", True,
-        "wiki CLI de ubnt-systool. NÃO é usado pela proteção: reiniciar numa "
-        "queda gastaria bateria e devolveria o console ligado. Fica declarado "
-        "para o operador saber que existe e que a escolha foi consciente"),
+        "[S] wiki CLI de ubnt-systool. NÃO é usado pela proteção: reiniciar numa "
+        "queda gastaria bateria e devolveria o console ligado. Fica declarado para o "
+        "operador saber que existe e que a escolha foi consciente"),
 }
 
 # O que a política dispara quando decide agir. É `poweroff` por decisão, não por

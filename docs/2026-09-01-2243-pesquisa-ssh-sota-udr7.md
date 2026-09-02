@@ -1,3 +1,7 @@
+---
+status: aceito
+---
+
 # SSH é mesmo o caminho para desligar o UDR7? — pesquisa, 2026-09-01
 
 Pergunta do dono: *"Todos os comandos no UniFi serão via SSH? Pesquise os benchmarks/SOTA

@@ -40,7 +40,7 @@ medido. Nada de inferência sem marca.
 
 Gramática deste arquivo: **[CONFIRMAR]** = hipótese com plano de verificação · **PENDENTE** =
 não medido. Nada abaixo foi medido no console; é o que a documentação pública e a comunidade
-responderam (docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md; research/unifi-official.md;
+responderam (docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md; research/unifi-official.md;
 research/hypotheses.md). A Fase 3'-EXP (proteção via SSH) **não depende** desta matriz.
 
 | Questão | Resultado | Evidência | Confiança |
@@ -52,7 +52,7 @@ research/hypotheses.md). A Fase 3'-EXP (proteção via SSH) **não depende** des
 | Telemetry | [CONFIRMAR] só visível no controlador para device adotado (H07 ↑) | reviews (unifi-official.md:150-160) | média (doc), não medida |
 | Alarm transport | PENDENTE — sem documentação pública (H08) | — | nenhuma |
 | UPS UI schema | PENDENTE — painel mostra bateria/carga/runtime/firmware/IP/MAC; schema não público | reviews em unifi-official.md | baixa |
-| Third-party support | **não documentado**: console não consome UPS de terceiros (NUT do UPS Tower é servidor, não cliente; feature request aberta; H10 ↓) | PESQUISA_UDR7_UPS_TERCEIROS_20260831.md; E0-B em hypotheses.md | média (ausência em fontes oficiais e comunidade), não é prova |
+| Third-party support | **não documentado**: console não consome UPS de terceiros (NUT do UPS Tower é servidor, não cliente; feature request aberta; H10 ↓) | 2026-08-31-2345-pesquisa-udr7-ups-terceiros.md; E0-B em hypotheses.md | média (ausência em fontes oficiais e comunidade), não é prova |
 | Emulation viability | PENDENTE — sem emulador público do tipo UPS; exigiria reverso (H06 ↓) | hypotheses.md H06 | baixa |
 
 - [FATO 2026-09-01] `ssh -G` com o argv da proteção: `stricthostkeychecking true`, sem linha `proxycommand` com `ProxyCommand=none`; destino malicioso após `--` → rc 255 (OpenSSH_10.3p1, LibreSSL 3.3.6). Comando: `/usr/bin/ssh -G -n -T -F /dev/null -o BatchMode=yes -o ConnectTimeout=15 -o IdentitiesOnly=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/private/var/folders/cx/svf_z53x1yv_x5tqqb8fjjh00000gn/T/pytest-of-alessandro/pytest-78/test_ssh_G_reflects_argv0/state/udr7_known_hosts -o GlobalKnownHostsFile=/dev/null -o ProxyCommand=none -o PermitLocalCommand=no -o ControlMaster=no -o ControlPath=none -o ForwardAgent=no -o ClearAllForwardings=yes -o LogLevel=ERROR -i /private/var/folders/cx/svf_z53x1yv_x5tqqb8fjjh00000gn/T/pytest-of-alessandro/pytest-78/test_ssh_G_reflects_argv0/river-bridge-udr7 -p 2222 -- root@192.0.2.1 ubnt-systool poweroff` (tests/unit/test_protect.py).

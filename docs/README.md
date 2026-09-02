@@ -1,0 +1,50 @@
+# Mapa da documentação — River Bridge
+
+Canônico vivo (sem data no nome: a identidade é o papel). **Primeiro arquivo a abrir ao
+retomar trabalho**, conforme a norma de documentação no `~/.claude/CLAUDE.md` global,
+seção "Documentação (vale para todos os projetos)".
+
+Nome de documento datado: `aaaa-mm-dd-hhmm-descricao.md`, front matter `status:` com o
+vocabulário do MADR 4.0.0 (`proposto | rejeitado | aceito | obsoleto | superado por <arquivo>`).
+Revisar é criar arquivo NOVO e marcar o antigo como `superado por` — o antigo fica.
+
+## Gramática de evidência (usada nos documentos desta árvore)
+
+`[P]` primária (a origem: código do fabricante, especificação, medição no aparelho) ·
+`[S]` secundária (wiki, gist, blog — **nunca vira `[P]` por repetição**) ·
+`[M]` medido no repositório ou no equipamento, com o comando registrado no ato ·
+`HIPÓTESE Hnn` (`research/hypotheses.md`) · `PROVISÓRIO-SEM-FONTE` · `ANALOGIA` · `INFERIDO`.
+
+Nenhum número entra num documento sem marca.
+
+## A árvore
+
+| Documento | Status | O que é |
+|---|---|---|
+| `2026-08-31-2345-pesquisa-udr7-ups-terceiros.md` | aceito | Por que um console UniFi não consome um UPS de terceiros — o veredito que originou a estratégia de agir de fora |
+| `2026-09-01-0817-runbook-protecao-udr7-ssh.md` | aceito | **Runbook operacional** da proteção do UDR7: preparar, medir, armar em 3 passos, desarmar, recuperar |
+| `2026-09-01-2243-pesquisa-ssh-sota-udr7.md` | aceito | SSH é o caminho para desligar o UDR7? Superfícies de API medidas no console, e a lista de comandos com a fonte de cada um |
+| `API_LOCAL_20260831.md` | — | Contrato da API local daemon ↔ app (§7A.3) |
+| `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
+| `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
+| `PESQUISA_ECOFLOW_WIFI_20260901.md` | — | O River 3 Plus tem Wi-Fi local? (varredura de fontes) |
+| `PESQUISA_PARAMETROS_UPS_20260831.md` | — | De onde vem cada parâmetro de tempo e limiar |
+| `BACKLOG_20260901.md` | — | Dívidas e limites declarados, com o motivo de cada um |
+| `BANCA_PLANO_20260831.md` | — | Registro das bancas do plano (encerradas em 2026-08-31) |
+
+Os documentos sem `status:` são anteriores à adoção da norma (2026-09-01) e mantêm o nome
+antigo; ganham o padrão quando forem revisados — revisão cria arquivo novo, não renomeia.
+
+## Fora desta árvore
+
+- `../RIVER3PLUS_UNIFI_BRIDGE_SPEC_20260831.md` — a especificação do sistema
+- `../research/hypotheses.md` — as hipóteses numeradas (H11a, H13, H14, H16…)
+- `../research/findings.md` — o que foi medido e fechado
+- `../CHANGELOG.md` — o que mudou, por versão
+- `../_archive/` — versões pré-correção, mantidas pelo mesmo princípio do `superado por`
+
+## Verificação de links
+
+```bash
+lychee --offline --root-dir . docs/
+```
