@@ -29,25 +29,18 @@ struct SettingsView: View {
 
     // Fase 3'-EXP — UDR7 protection (explicit Save: text fields must never PUT
     // half-typed values; the daemon freezes these keys while armed).
-    @State private var protectEnabled = false
-    @State private var dryRun = true
-    @State private var armAllowed = false
-    @State private var sshHost = ""
-    @State private var sshPort = "22"
-    @State private var sshUser = "root"
-    @State private var sshKey = ""
-    @State private var expectedSerial = ""
-    @State private var wolMac = ""
-    @State private var cutoff = 0
-    @State private var shutdown = 0
-    @State private var dischargeSecPerPct = "0"
-    @State private var runtimeMinutes = "0"
-    @State private var minOutage = "0"
-    @State private var confirmSeconds = "6"
-    @State private var protectionBaseline: [String: String] = [:]
-    @State private var protectionFeedback: String?
-    @State private var protectionNotice: String?
-    @State private var showDisarmDialog = false
+    /// Só o que a LISTA precisa: qual folha está aberta, o override enquanto um
+    /// PUT está em voo, e o dispositivo cuja confirmação de armar está na tela.
+    /// Dev seam: `--seam-plugin udr7` já abre a folha desse dispositivo, para a
+    /// captura conseguir fotografá-la (molde: DashboardWindow.initialSection).
+    @State private var openPlugin: DevicePluginDescriptor? = {
+        guard let id = AppPrefs.seamValue("--seam-plugin") else { return nil }
+        return DevicePluginRegistry.plugin(id: id)
+    }()
+    @State private var optimistic: [String: Bool] = [:]
+    @State private var pendingArm: DevicePluginDescriptor?
+    @State private var devicesFeedback: String?
+    @State private var hostWidth: CGFloat = 1000
 
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
@@ -59,7 +52,7 @@ struct SettingsView: View {
                 // HIG: steppers are for SMALL ranges; for a large range with a
                 // handful of sensible values, a picker fits mouse AND finger
                 // (developer.apple.com/design/human-interface-guidelines/steppers).
-                group(L10n.t("Aparência e idioma", "Appearance & language")) {
+                SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
                     HStack(spacing: 10) {
                         Image(systemName: "circle.lefthalf.filled")
                             .frame(width: 26)
@@ -76,7 +69,7 @@ struct SettingsView: View {
                         .labelsHidden()
                         .fixedSize()
                     }
-                    divider
+                    SettingsRows.divider
                     HStack(spacing: 10) {
                         Image(systemName: "globe")
                             .frame(width: 26)
@@ -95,26 +88,26 @@ struct SettingsView: View {
                     }
                 }
 
-                group(L10n.t("Alarmes", "Alarms")) {
-                    presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
+                SettingsRows.group(L10n.t("Alarmes", "Alarms")) {
+                    SettingsRows.presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
                               value: $powerLossDelay, presets: [0, 3, 6, 10, 30, 60])
-                    divider
-                    presetRow("bolt.badge.checkmark.fill", L10n.t("Energia restaurada", "Power restored"),
+                    SettingsRows.divider
+                    SettingsRows.presetRow("bolt.badge.checkmark.fill", L10n.t("Energia restaurada", "Power restored"),
                               value: $restoreDelay, presets: [0, 5, 10, 30, 60])
-                    divider
-                    presetRow("antenna.radiowaves.left.and.right.slash", L10n.t("Comunicação perdida", "Comm lost"),
+                    SettingsRows.divider
+                    SettingsRows.presetRow("antenna.radiowaves.left.and.right.slash", L10n.t("Comunicação perdida", "Comm lost"),
                               value: $commLossDelay, presets: [5, 15, 30, 60, 300])
-                    divider
-                    sliderRow("battery.25percent", L10n.t("Bateria baixa", "Low battery"),
-                              value: $lowBattery, range: 5...50, unit: "%")
+                    SettingsRows.divider
+                    SettingsRows.sliderRow("battery.25percent", L10n.t("Bateria baixa", "Low battery"),
+                              value: $lowBattery, range: 5...50, unit: "%", accent: accent)
                 }
 
-                group(L10n.t("Coleta", "Sampling")) {
-                    presetRow("timer", L10n.t("Intervalo de leitura", "Poll interval"),
+                SettingsRows.group(L10n.t("Coleta", "Sampling")) {
+                    SettingsRows.presetRow("timer", L10n.t("Intervalo de leitura", "Poll interval"),
                               value: $pollInterval, presets: [1, 2, 5, 10, 30, 60])
                 }
 
-                group(L10n.t("Histórico", "History")) {
+                SettingsRows.group(L10n.t("Histórico", "History")) {
                     HStack(spacing: 10) {
                         Image(systemName: "clock.arrow.circlepath")
                             .frame(width: 26)
@@ -132,7 +125,7 @@ struct SettingsView: View {
                         .labelsHidden()
                         .fixedSize()
                     }
-                    divider
+                    SettingsRows.divider
                     HStack(spacing: 10) {
                         Image(systemName: "trash")
                             .frame(width: 26)
@@ -155,100 +148,17 @@ struct SettingsView: View {
                     }
                 }
 
-                group(L10n.t("Proteção do UDR7 (experimental)", "UDR7 protection (experimental)")) {
-                    toggleRow("shield.lefthalf.filled", L10n.t("Proteger o UDR7", "Protect the UDR7"), $protectEnabled)
-                    divider
-                    HStack(spacing: 10) {
-                        Image(systemName: dryRun ? "theatermasks.fill" : "bolt.shield.fill")
-                            .frame(width: 26)
-                            .foregroundStyle(dryRun ? Color.secondary : Color.red)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(dryRun ? L10n.t("Modo ensaio", "Rehearsal mode") : L10n.t("ARMADA — desliga o console de verdade", "ARMED — really shuts the console down"))
-                                .font(.system(.body, design: .rounded))
-                                .fixedSize()
-                            Text(armAllowed
-                                 ? L10n.t("Trava aberta (UDR7_ARM_ALLOWED=1). Feche-a no arquivo do serviço depois de armar.",
-                                          "Lock open (UDR7_ARM_ALLOWED=1). Close it in the service file after arming.")
-                                 : L10n.t("Trava fechada: para armar, UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie.",
-                                          "Lock closed: to arm, set UDR7_ARM_ALLOWED=1 in the service file and restart."))
-                                .font(.caption)
-                                .foregroundStyle(armAllowed ? Color.orange : Color.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        if dryRun {
-                            Button(role: .destructive) {
-                                showDisarmDialog = true
-                            } label: {
-                                Text(L10n.t("Desligar modo ensaio…", "Turn rehearsal off…"))
-                                    .foregroundStyle(armAllowed && protectEnabled ? Color.red : Color.secondary)
-                                    .frame(minHeight: 28)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(!armAllowed || !protectEnabled)
-                        } else {
-                            Button(L10n.t("Ligar modo ensaio", "Turn rehearsal on")) {
-                                Task { await setDryRun(true) }   // disarm: always accepted
-                            }
-                            .buttonStyle(.glass)
-                        }
-                    }
-                    divider
-                    textRow("network", L10n.t("Console (host)", "Console (host)"), $sshHost, placeholder: "192.168.1.1")
-                    divider
-                    textRow("number", L10n.t("Porta SSH", "SSH port"), $sshPort, placeholder: "22", numeric: true)
-                    divider
-                    textRow("person.fill", L10n.t("Usuário SSH", "SSH user"), $sshUser, placeholder: "root")
-                    divider
-                    textRow("key.fill", L10n.t("Chave privada (caminho absoluto)", "Private key (absolute path)"), $sshKey,
-                            placeholder: "/Users/…/.ssh/river-bridge-udr7")
-                    divider
-                    textRow("barcode", L10n.t("Serial do River (upsc device.serial)", "River serial (upsc device.serial)"),
-                            $expectedSerial, placeholder: "R3P…")
-                    divider
-                    sliderRow("battery.0percent", L10n.t("Corte físico do River", "River physical cutoff"),
-                              value: $cutoff, range: 0...48, unit: "%",
-                              zeroLabel: L10n.t("não configurado", "not set"))
-                    divider
-                    sliderRow("power.circle", L10n.t("Desligar o console em", "Shut the console down at"),
-                              value: $shutdown, range: 0...50, unit: "%",
-                              zeroLabel: L10n.t("não configurado", "not set"))
-                    divider
-                    textRow("stopwatch", L10n.t("Descarga medida (s por 1 %)", "Measured discharge (s per 1 %)"),
-                            $dischargeSecPerPct, placeholder: "0", numeric: true)
-                    divider
-                    textRow("clock", L10n.t("Ou autonomia ≤ (min, 0 = desligado)", "Or runtime ≤ (min, 0 = off)"),
-                            $runtimeMinutes, placeholder: "0", numeric: true)
-                    divider
-                    textRow("hourglass", L10n.t("Queda mínima (s)", "Minimum outage (s)"), $minOutage, placeholder: "0", numeric: true)
-                    divider
-                    textRow("checkmark.seal", L10n.t("Confirmar por (s)", "Confirm for (s)"), $confirmSeconds, placeholder: "6", numeric: true)
-                    divider
-                    textRow("wake", L10n.t("MAC para religar (WoL, opcional)", "Wake MAC (WoL, optional)"), $wolMac,
-                            placeholder: "aa:bb:cc:dd:ee:ff")
-                    divider
-                    HStack(spacing: 12) {
-                        if let protectionFeedback {
-                            Label(protectionFeedback, systemImage: "exclamationmark.triangle.fill")
-                                .font(.callout).foregroundStyle(.orange)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else if let protectionNotice {
-                            Label(protectionNotice, systemImage: "checkmark.circle")
-                                .font(.callout).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button(L10n.t("Salvar proteção", "Save protection")) { Task { await saveProtection() } }
-                            .buttonStyle(.glassProminent)
-                            .tint(accent)
-                            .disabled(protectionChanges().isEmpty)
+                SettingsRows.group(L10n.t("Dispositivos protegidos", "Protected devices")) {
+                    ForEach(Array(DevicePluginRegistry.all.enumerated()), id: \.element.id) { indice, plugin in
+                        if indice > 0 { SettingsRows.divider }
+                        deviceRow(plugin)
                     }
                 }
 
                 // Auto-save is SILENT on success (macOS/iOS settings
                 // convention — owner 2026-08-31): only errors and the
                 // pending-restart action ever appear here.
-                if restartRequired || feedback != nil || notice != nil {
+                if restartRequired || feedback != nil || notice != nil || devicesFeedback != nil {
                     HStack(spacing: 12) {
                         if restartRequired {
                             Button(L10n.t("Reiniciar serviço para aplicar", "Restart service to apply")) { Task { await restart() } }
@@ -256,7 +166,11 @@ struct SettingsView: View {
                                 .tint(.orange)
                         }
                         Spacer()
-                        if let feedback {
+                        if let devicesFeedback {
+                            Label(devicesFeedback, systemImage: "exclamationmark.triangle.fill")
+                                .font(.callout)
+                                .foregroundStyle(.orange)
+                        } else if let feedback {
                             Label(feedback, systemImage: "exclamationmark.triangle.fill")
                                 .font(.callout)
                                 .foregroundStyle(.orange)
@@ -276,18 +190,32 @@ struct SettingsView: View {
             .padding(.top, 6)
         }
         .task { await loadCurrent() }
-        // Turning rehearsal OFF is the one destructive act on this screen: it
-        // is a Button + confirmation (never a Toggle bound to state, which would
-        // PUT before the person confirms). The PUT carries ONLY this key.
-        .confirmationDialog(L10n.t("Desligar o modo ensaio e ARMAR a proteção?", "Turn rehearsal off and ARM the protection?"),
-                            isPresented: $showDisarmDialog, titleVisibility: .visible) {
-            Button(L10n.t("Armar — pode desligar o UDR7 numa queda", "Arm — may shut the UDR7 down in an outage"), role: .destructive) {
-                Task { await setDryRun(false) }
+        // A largura da JANELA-MÃE, medida aqui: a folha é NSWindow própria, então
+        // medir dentro dela seria circular. Molde: DashboardWindow.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { hostWidth = $0 }
+        .sheet(item: $openPlugin) { item in
+            if let ui = DevicePluginUIRegistry.plugin(id: item.id) {
+                ui.settingsSheet(store: store, hostWidth: hostWidth) { openPlugin = nil }
+            }
+        }
+        // `isPresented` DERIVADO de pendingArm: cancelar ou Esc zera o estado
+        // pelo próprio binding, sem sobrar um booleano fantasma ligado.
+        .confirmationDialog(
+            pendingArm.map { ArmConfirmation(name: store.deviceNames.name(for: $0),
+                                             mode: .enableWithRehearsalOff).title } ?? "",
+            isPresented: Binding(get: { pendingArm != nil },
+                                 set: { if !$0 { pendingArm = nil } }),
+            titleVisibility: .visible, presenting: pendingArm
+        ) { item in
+            let arming = ArmConfirmation(name: store.deviceNames.name(for: item),
+                                         mode: .enableWithRehearsalOff)
+            Button(arming.confirmLabel, role: .destructive) {
+                Task { await putEnable(item, on: true) }
             }
             Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: {
-            Text(L10n.t("O serviço só arma com a trava aberta, leitura corrente do River registrado e fonte não sintética. Siga o runbook (docs/UDR7_PROTECAO_SSH_20260901.md).",
-                        "The service only arms with the lock open, a current reading from the registered River and a non-synthetic source. Follow the runbook (docs/UDR7_PROTECAO_SSH_20260901.md)."))
+        } message: { item in
+            Text(ArmConfirmation(name: store.deviceNames.name(for: item),
+                                 mode: .enableWithRehearsalOff).message)
         }
         // Auto-save (owner 2026-08-31): every change PUTs after a short
         // debounce — no save button, like System Settings. All keys on this
@@ -356,116 +284,84 @@ struct SettingsView: View {
 
     // MARK: - Building blocks in the house language
 
-    private var divider: some View {
-        Divider().padding(.leading, 46)
-    }
+    // MARK: - Dispositivos protegidos
 
+    /// Uma linha por dispositivo do registro: ícone, o nome que o usuário deu,
+    /// o estado, o interruptor e o chevron que abre a folha.
+    ///
+    /// O interruptor tem UMA fonte de verdade — o health. Com `store.health` nil
+    /// (serviço parado, ou antes do primeiro poll) a linha fica desligada e
+    /// desabilitada, em vez de inventar um segundo lugar de onde ler. O override
+    /// `optimistic` existe SÓ enquanto o PUT está em voo e é ele próprio o
+    /// marcador de "em voo" — nada de um `inFlight` paralelo para dessincronizar.
     @ViewBuilder
-    private func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).eyebrow()
-            // No hover on big containers — hover belongs to interactive
-            // elements only (owner 2026-08-31, print do bloco aceso).
-            VStack(spacing: 8) { content() }
-                .padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                // Material, NOT glassEffect: neighbouring glass shapes merge
-                // their backdrop into a gray wash when the window is key
-                // (measured 2026-08-31). House grammar: glass is for the
-                // CONTROL layer; content panels sit on material.
-        }
-    }
-
-    /// HIG-fit for mouse AND finger: a menu picker over sensible presets
-    /// (values anchored in the SOTA research). A custom value already in the
-    /// .env stays selectable — it joins the list instead of vanishing.
-    private func presetRow(_ symbol: String, _ label: String,
-                           value: Binding<Int>, presets: [Int]) -> some View {
-        let options = presets.contains(value.wrappedValue)
-            ? presets
-            : (presets + [value.wrappedValue]).sorted()
-        return HStack(spacing: 10) {
-            Image(systemName: symbol)
+    private func deviceRow(_ plugin: DevicePluginDescriptor) -> some View {
+        let detail = store.health?.pluginDetail(id: plugin.id)
+        let ligado = optimistic[plugin.id] ?? (detail?.enabled ?? false)
+        let badge = DevicePluginUIRegistry.plugin(id: plugin.id)?.badge(state: detail?.state)
+        HStack(spacing: 10) {
+            Image(systemName: plugin.symbol)
                 .frame(width: 26)
                 .foregroundStyle(.secondary)
-            Text(label)
-                .font(.system(.body, design: .rounded))
-                .fixedSize()
-            Spacer()
-            Picker("", selection: value) {
-                ForEach(options, id: \.self) { v in
-                    Text("\(v) s").tag(v)
+            Button {
+                openPlugin = plugin
+            } label: {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(store.deviceNames.name(for: plugin))
+                            .font(.system(.body, design: .rounded))
+                        if let badge {
+                            Text(badge.0).font(.caption).foregroundStyle(badge.1)
+                        }
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
+                .contentShape(Rectangle())
             }
-            .labelsHidden()
-            .fixedSize()
-        }
-    }
-
-    private func toggleRow(_ symbol: String, _ label: String, _ isOn: Binding<Bool>) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .frame(width: 26)
-                .foregroundStyle(.secondary)
-            Text(label)
-                .font(.system(.body, design: .rounded))
-                .fixedSize()
+            .buttonStyle(.plain)
             Spacer()
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
+            Toggle("", isOn: Binding(
+                get: { ligado },
+                set: { novo in Task { await toggleDevice(plugin, on: novo) } }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .disabled(store.health == nil || optimistic[plugin.id] != nil)
         }
     }
 
-    private func textRow(_ symbol: String, _ label: String, _ text: Binding<String>,
-                         placeholder: String, numeric: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .frame(width: 26)
-                .foregroundStyle(.secondary)
-            Text(label)
-                .font(.system(.body, design: .rounded))
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: numeric ? .monospaced : .default))
-                .multilineTextAlignment(numeric ? .trailing : .leading)
-                .frame(minWidth: numeric ? 70 : 150, maxWidth: numeric ? 90 : 260)
-                .autocorrectionDisabled()
+    /// Ligar com o ensaio DESLIGADO (ou desconhecido) arma de verdade: pede
+    /// confirmação e NÃO escreve nada antes dela. Desligar é desarme puro —
+    /// sempre aceito pelo daemon — e vai direto, de forma otimista.
+    private func toggleDevice(_ plugin: DevicePluginDescriptor, on: Bool) async {
+        let dryRun = store.health?.pluginDetail(id: plugin.id)?.dryRun
+        if DevicePluginRegistry.toggleNeedsConfirmation(on: on, dryRun: dryRun) {
+            pendingArm = plugin
+            return
         }
+        await putEnable(plugin, on: on)
     }
 
-    private func sliderRow(_ symbol: String, _ label: String,
-                           value: Binding<Int>, range: ClosedRange<Int>, unit: String,
-                           zeroLabel: String? = nil) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .frame(width: 26)
-                .foregroundStyle(.secondary)
-            // The LABEL never wraps (owner's print at min width) — the
-            // slider is the flexible element, with a floor that keeps it
-            // usable for both pointer and finger (native Slider = the HIG
-            // control for continuous ranges on every input).
-            Text(label)
-                .font(.system(.body, design: .rounded))
-                .fixedSize()
-            Spacer(minLength: 8)
-            Text(value.wrappedValue == 0 && zeroLabel != nil ? zeroLabel! : "\(value.wrappedValue)\(unit)")
-                .font(.system(.body, design: .rounded).weight(.semibold))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-            Slider(
-                value: Binding(
-                    get: { Double(value.wrappedValue) },
-                    set: { value.wrappedValue = Int($0) }
-                ),
-                in: Double(range.lowerBound)...Double(range.upperBound), step: 1
-            )
-            .tint(accent)
-            .frame(minWidth: 90, maxWidth: 170)
+    private func putEnable(_ plugin: DevicePluginDescriptor, on: Bool) async {
+        guard let endpoint = ApiEndpoint.discover() else {
+            devicesFeedback = L10n.t("Serviço parado — nada mudou.", "Service down — nothing changed.")
+            return
         }
-        .animation(.snappy(duration: 0.2), value: value.wrappedValue)
+        optimistic[plugin.id] = on
+        do {
+            _ = try await APIClient(endpoint: endpoint).putConfig([plugin.enableKey: on ? "1" : "0"])
+            devicesFeedback = nil
+            // Atualiza o health ANTES de limpar o override: limpar primeiro faria
+            // o `get` voltar ao health velho e o interruptor piscar ao contrário.
+            await store.refreshHealth()
+        } catch let APIError.badStatus(_, body) {
+            devicesFeedback = ProtectionRefusal.text(body)
+        } catch {
+            devicesFeedback = L10n.t("Falha: ", "Failed: ") + error.localizedDescription
+        }
+        optimistic[plugin.id] = nil
     }
 
     // MARK: - IO (unchanged contract: everything via the daemon's API)
@@ -480,116 +376,7 @@ struct SettingsView: View {
         lowBattery = cfg["low_battery_percent"]?.intValue ?? lowBattery
         pollInterval = cfg["poll_interval_seconds"]?.intValue ?? pollInterval
         retentionDays = cfg["history_retention_days"]?.intValue ?? retentionDays
-        protectEnabled = cfg["protect_udr7"]?.boolValue ?? protectEnabled
-        dryRun = cfg["protect_dry_run"]?.boolValue ?? dryRun
-        armAllowed = cfg["udr7_arm_allowed"]?.boolValue ?? armAllowed
-        sshHost = cfg["udr7_ssh_host"]?.stringValue ?? sshHost
-        sshPort = cfg["udr7_ssh_port"]?.stringValue ?? sshPort
-        sshUser = cfg["udr7_ssh_user"]?.stringValue ?? sshUser
-        sshKey = cfg["udr7_ssh_key"]?.stringValue ?? sshKey
-        expectedSerial = cfg["udr7_expected_serial"]?.stringValue ?? expectedSerial
-        wolMac = cfg["udr7_wol_mac"]?.stringValue ?? wolMac
-        cutoff = cfg["udr7_cutoff_percent"]?.intValue ?? cutoff
-        shutdown = cfg["udr7_shutdown_percent"]?.intValue ?? shutdown
-        dischargeSecPerPct = cfg["udr7_discharge_seconds_per_pct"]?.stringValue ?? dischargeSecPerPct
-        runtimeMinutes = cfg["udr7_runtime_minutes"]?.stringValue ?? runtimeMinutes
-        minOutage = cfg["udr7_min_outage_seconds"]?.stringValue ?? minOutage
-        confirmSeconds = cfg["udr7_confirm_seconds"]?.stringValue ?? confirmSeconds
-        protectionBaseline = protectionValues()
         loaded = true
-    }
-
-    // MARK: - Fase 3'-EXP protection group (explicit save, diff against baseline)
-
-    /// Current form values in .env form. PROTECT_DRY_RUN is deliberately NOT here:
-    /// it travels alone, through setDryRun (the daemon's pure-disarm rule).
-    private func protectionValues() -> [String: String] {
-        [
-            "PROTECT_UDR7": protectEnabled ? "1" : "0",
-            "UDR7_SSH_HOST": sshHost.trimmingCharacters(in: .whitespaces),
-            "UDR7_SSH_PORT": sshPort.trimmingCharacters(in: .whitespaces),
-            "UDR7_SSH_USER": sshUser.trimmingCharacters(in: .whitespaces),
-            "UDR7_SSH_KEY": sshKey.trimmingCharacters(in: .whitespaces),
-            "UDR7_EXPECTED_SERIAL": expectedSerial.trimmingCharacters(in: .whitespaces),
-            "UDR7_WOL_MAC": wolMac.trimmingCharacters(in: .whitespaces),
-            "UDR7_CUTOFF_PERCENT": String(cutoff),
-            "UDR7_SHUTDOWN_PERCENT": String(shutdown),
-            "UDR7_DISCHARGE_SECONDS_PER_PCT": dischargeSecPerPct.trimmingCharacters(in: .whitespaces),
-            "UDR7_RUNTIME_MINUTES": runtimeMinutes.trimmingCharacters(in: .whitespaces),
-            "UDR7_MIN_OUTAGE_SECONDS": minOutage.trimmingCharacters(in: .whitespaces),
-            "UDR7_CONFIRM_SECONDS": confirmSeconds.trimmingCharacters(in: .whitespaces),
-        ]
-    }
-
-    private func protectionChanges() -> [String: String] {
-        protectionValues().filter { protectionBaseline[$0.key] != $0.value }
-    }
-
-    /// Turns the daemon's refusal into the interface's voice (motivo -> text).
-    private func refusalText(_ body: String) -> String {
-        struct Refusal: Decodable { var erro: String?; var motivo: String? }
-        let parsed = try? JSONDecoder().decode(Refusal.self, from: Data(body.utf8))
-        switch parsed?.motivo {
-        case "armamento_bloqueado":
-            return L10n.t("Trava fechada: UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie.",
-                          "Lock closed: set UDR7_ARM_ALLOWED=1 in the service file and restart.")
-        case "armado":
-            return L10n.t("Armada: ligue o modo ensaio antes de mudar estas chaves ou reiniciar.",
-                          "Armed: turn rehearsal on before changing these keys or restarting.")
-        case "fonte_nao_real":
-            return L10n.t("Fonte recusada: a leitura corrente não é do River registrado (serial) ou é sintética.",
-                          "Source refused: the current reading is not the registered River (serial) or is synthetic.")
-        case "sem_snapshot":
-            return L10n.t("Sem leitura corrente do NUT — não há como verificar a fonte.",
-                          "No current NUT reading — the source cannot be verified.")
-        case "chave_somente_arquivo":
-            return L10n.t("Essa chave só muda no arquivo do serviço.", "That key only changes in the service file.")
-        default:
-            return L10n.t("Recusado: ", "Refused: ") + (parsed?.erro ?? body)
-        }
-    }
-
-    private func saveProtection() async {
-        guard let endpoint = ApiEndpoint.discover() else {
-            protectionFeedback = L10n.t("Serviço parado — nada salvo.", "Service down — nothing saved.")
-            return
-        }
-        let changes = protectionChanges()
-        guard !changes.isEmpty else { return }
-        do {
-            let result = try await APIClient(endpoint: endpoint).putConfig(changes)
-            protectionBaseline = protectionValues()
-            protectionFeedback = nil
-            protectionNotice = "\(changes.count) " + L10n.t("chave(s) salva(s).", "key(s) saved.")
-            if result.restartRequired { restartRequired = true }
-            if let chain = try? await APIClient(endpoint: endpoint).health(),
-               let margin = chain.udr7Detail?.marginEstimateS {
-                protectionNotice! += " " + L10n.t("Margem estimada ≈ \(margin) s.", "Estimated margin ≈ \(margin) s.")
-            }
-        } catch let APIError.badStatus(_, body) {
-            protectionFeedback = refusalText(body)
-        } catch {
-            protectionFeedback = L10n.t("Falha ao salvar: ", "Save failed: ") + error.localizedDescription
-        }
-    }
-
-    private func setDryRun(_ on: Bool) async {
-        guard let endpoint = ApiEndpoint.discover() else {
-            protectionFeedback = L10n.t("Serviço parado.", "Service down.")
-            return
-        }
-        do {
-            _ = try await APIClient(endpoint: endpoint).putConfig(["PROTECT_DRY_RUN": on ? "1" : "0"])
-            dryRun = on
-            protectionFeedback = nil
-            protectionNotice = on ? L10n.t("Modo ensaio ligado — proteção desarmada.", "Rehearsal on — protection disarmed.")
-                                  : L10n.t("Proteção ARMADA. Feche a trava no arquivo do serviço (passo 8 do runbook).",
-                                           "Protection ARMED. Close the lock in the service file (runbook step 8).")
-        } catch let APIError.badStatus(_, body) {
-            protectionFeedback = refusalText(body)
-        } catch {
-            protectionFeedback = L10n.t("Falha: ", "Failed: ") + error.localizedDescription
-        }
     }
 
     private func clearEvents(to cutoff: Int) async {
@@ -639,7 +426,7 @@ struct SettingsView: View {
             feedback = L10n.t("Reinício agendado (202).", "Restart scheduled (202).")
             restartRequired = false
         } catch let APIError.badStatus(_, body) {
-            feedback = refusalText(body)   // 409 armado: disarm first, or kickstart from the terminal
+            feedback = ProtectionRefusal.text(body)   // 409 armado: disarm first, or kickstart from the terminal
         } catch {
             feedback = L10n.t("Falha no reinício: ", "Restart failed: ") + error.localizedDescription
         }
