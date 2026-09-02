@@ -21,7 +21,11 @@ else
 fi
 
 # S1 — sintaxe de todos os fontes (inclui o simulador, que não tem .py)
-if "$PY" -m py_compile "$RAIZ"/src/river_unifi_bridge/*.py "$RAIZ/tools/fake-nut-ups" 2>/dev/null; then
+# compileall é RECURSIVO: o glob *.py não entrava em plugins/ e um erro de
+# sintaxe dentro do pacote passava batido. O fake-nut-ups não tem extensão .py,
+# então continua indo por py_compile (bash 3.2 aqui não tem globstar).
+if "$PY" -m compileall -q "$RAIZ/src/river_unifi_bridge" >/dev/null 2>&1 \
+   && "$PY" -m py_compile "$RAIZ/tools/fake-nut-ups" 2>/dev/null; then
     ok "S1 py_compile"
 else
     erro "S1 py_compile"
