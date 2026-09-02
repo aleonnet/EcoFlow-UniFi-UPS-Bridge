@@ -41,6 +41,12 @@ struct RiverBridgeApp: App {
     @State private var prefs = AppPrefs.shared
     @NSApplicationDelegateAdaptor(ReopenDelegate.self) private var reopenDelegate
 
+    /// Único mecanismo de seam do app (AppPrefs.seamValue), como os demais.
+    private static let seamWidth: CGFloat? = {
+        guard let raw = AppPrefs.seamValue("--seam-largura"), let value = Double(raw) else { return nil }
+        return CGFloat(value)
+    }()
+
     var body: some Scene {
         MenuBarExtra {
             MenuBarPopover(store: store)
@@ -68,7 +74,11 @@ struct RiverBridgeApp: App {
                 }
                 .onChange(of: prefs.themeMode) { applyAppearance() }
         }
-        .defaultSize(width: 1000, height: 880)
+        // `--seam-largura N` existe para a CAPTURA: até aqui não havia mecanismo
+        // para fotografar a janela estreita (as capturas antigas a 414 pt eram
+        // prints do dono). `.restorationBehavior(.disabled)` abaixo faz o default
+        // valer em todo lançamento, então o seam pega.
+        .defaultSize(width: Self.seamWidth ?? 1000, height: 880)
         .windowStyle(.hiddenTitleBar)
         // A power panel always opens on Energia — never on a restored tab.
         .restorationBehavior(.disabled)

@@ -38,11 +38,21 @@ struct HealthView: View {
                   status: chain?.unifi,
                   detail: L10n.t("Nenhum caminho nativo documentado para o console consumir um UPS de terceiros (pesquisa 2026-08-31).",
                                  "No documented native path for the console to consume a third-party UPS (research 2026-08-31).")),
-            .init(id: "udr7", symbol: "shield.lefthalf.filled", name: L10n.t("UDR7 · proteção", "UDR7 · protection"),
-                  status: chain?.udr7, detail: udr7Detail),
             .init(id: "ha", symbol: "house.fill", name: "Home Assistant",
                   status: chain?.ha, detail: L10n.t("O upsd não expõe clientes de forma confirmada ainda.", "upsd does not confirmably expose clients yet.")),
-        ]
+        ] + pluginLinks
+    }
+
+    /// Um cartão por DISPOSITIVO protegido, com o nome que o usuário deu. Sai do
+    /// registro, não de uma linha escrita à mão: o segundo plugin aparece aqui
+    /// sem tocar nesta tela.
+    private var pluginLinks: [Link] {
+        DevicePluginRegistry.all.map { plugin in
+            .init(id: plugin.id, symbol: plugin.symbol,
+                  name: store.deviceNames.name(for: plugin) + L10n.t(" · proteção", " · protection"),
+                  status: chain?.pluginDetail(id: plugin.id)?.state ?? chain?.udr7,
+                  detail: udr7Detail)
+        }
     }
 
     /// Honest one-liner for the protection card: source first, then warnings,

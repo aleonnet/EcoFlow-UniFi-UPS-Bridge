@@ -197,7 +197,8 @@ struct EnergiaSection: View {
                     EventsTimeline(store: store, chips: eventChips, period: eventPeriod,
                                    customFrom: customFrom, customTo: customTo)
                 } header: {
-                    EventsFilterBar(chips: $eventChips, period: $eventPeriod,
+                    EventsFilterBar(chips: $eventChips, names: store.deviceNames,
+                                    period: $eventPeriod,
                                     customFrom: $customFrom, customTo: $customTo)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)

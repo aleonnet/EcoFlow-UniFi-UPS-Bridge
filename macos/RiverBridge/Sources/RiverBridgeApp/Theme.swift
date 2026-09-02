@@ -165,3 +165,21 @@ struct HeroNumber: ViewModifier {
             .contentTransition(.numericText())
     }
 }
+
+/// A cor de cada FAMÍLIA de evento de dispositivo. Mora aqui, e não no Core,
+/// porque `Color` é SwiftUI — o Core declara o tom, a camada de tela o pinta.
+/// Escolhas: a família é roxa como antes; o desfecho que importa é vermelho;
+/// o que foi barrado é laranja; ligar/desligar é índigo e o religamento é menta.
+/// Mudança declarada: na TIMELINE, ARMED/DISARMED passam de roxo a índigo e o
+/// WoL a menta — iguais à legenda do gráfico, que até aqui divergia da lista.
+extension DeviceEventTone {
+    var color: Color {
+        switch self {
+        case .family: .purple
+        case .danger: .red
+        case .warning: .orange
+        case .toggle: .indigo
+        case .wake: .mint
+        }
+    }
+}

@@ -9,21 +9,16 @@ import SwiftUI
 enum EventChip: String, CaseIterable, Identifiable {
     case queda, restaurada, bateria, comunicacao, protecao
 
-    /// Fase 3'-EXP — the 10 protection events (protect.py PROTECTION_EVENTS).
-    static let protectionTypes = [
-        "UDR7_SHUTDOWN_DRYRUN", "UDR7_SHUTDOWN_SENT", "UDR7_SHUTDOWN_FAILED",
-        "UDR7_SHUTDOWN_BLOCKED", "UDR7_PROTECTION_REARMED", "UDR7_PROTECTION_BLIND",
-        "UDR7_ARMED", "UDR7_DISARMED", "UDR7_WOL_SENT", "UDR7_WOL_DRYRUN",
-    ]
-
     var id: String { rawValue }
-    var label: String {
+    /// O chip de proteção leva o NOME que o usuário deu ao dispositivo; os demais
+    /// são assuntos do próprio bridge e não pertencem a plugin nenhum.
+    func label(names: DeviceNames) -> String {
         switch self {
         case .queda: L10n.t("Queda", "Loss")
         case .restaurada: L10n.t("Restaurada", "Restored")
         case .bateria: L10n.t("Bateria baixa", "Low battery")
         case .comunicacao: L10n.t("Comunicação", "Comm")
-        case .protecao: "UDR7"
+        case .protecao: names.name(for: .udr7)
         }
     }
     var symbol: String {
@@ -50,7 +45,7 @@ enum EventChip: String, CaseIterable, Identifiable {
         case .restaurada: ["POWER_RESTORED"]
         case .bateria: ["LOW_BATTERY"]
         case .comunicacao: ["COMM_LOST", "COMM_RESTORED"]
-        case .protecao: Self.protectionTypes
+        case .protecao: DevicePluginRegistry.allEventTypes
         }
     }
 }
@@ -121,7 +116,8 @@ struct EventsTimeline: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(rows) { event in
-                    EventRow(event: event, selected: $selected, narrow: narrow)
+                    EventRow(event: event, selected: $selected, narrow: narrow,
+                             names: store.deviceNames)
                 }
             }
         }
@@ -163,56 +159,42 @@ struct EventsTimeline: View {
         }
     }
 
-    static func label(for event: String) -> String {
+    static func label(for event: String, names: DeviceNames) -> String {
+        // Os eventos de DISPOSITIVO saem do registro, com o nome do usuário; só os
+        // do próprio bridge ficam escritos aqui.
+        if let kind = DevicePluginRegistry.eventKind(event) {
+            return kind.long(name: names.name(forEventType: event))
+        }
         switch event {
         case "POWER_LOSS": return L10n.t("Queda de energia — na bateria", "Power loss — on battery")
         case "POWER_RESTORED": return L10n.t("Energia restaurada", "Power restored")
         case "LOW_BATTERY": return L10n.t("Bateria baixa", "Low battery")
         case "COMM_LOST": return L10n.t("Comunicação perdida com o RIVER", "Communication with the RIVER lost")
         case "COMM_RESTORED": return L10n.t("Comunicação restabelecida", "Communication restored")
-        case "UDR7_SHUTDOWN_DRYRUN": return L10n.t("UDR7 — ensaio: desligaria agora", "UDR7 — rehearsal: would shut down now")
-        case "UDR7_SHUTDOWN_SENT": return L10n.t("UDR7 — desligamento enviado", "UDR7 — shutdown sent")
-        case "UDR7_SHUTDOWN_FAILED": return L10n.t("UDR7 — desligamento falhou", "UDR7 — shutdown failed")
-        case "UDR7_SHUTDOWN_BLOCKED": return L10n.t("UDR7 — desligamento bloqueado por cerca", "UDR7 — shutdown blocked by a fence")
-        case "UDR7_PROTECTION_REARMED": return L10n.t("UDR7 — proteção rearmada (energia voltou)", "UDR7 — protection re-armed (power back)")
-        case "UDR7_PROTECTION_BLIND": return L10n.t("UDR7 — sem telemetria durante a queda", "UDR7 — no telemetry during the outage")
-        case "UDR7_ARMED": return L10n.t("UDR7 — proteção armada", "UDR7 — protection armed")
-        case "UDR7_DISARMED": return L10n.t("UDR7 — proteção desarmada", "UDR7 — protection disarmed")
-        case "UDR7_WOL_SENT": return L10n.t("UDR7 — pacote de religamento enviado", "UDR7 — wake packet sent")
-        case "UDR7_WOL_DRYRUN": return L10n.t("UDR7 — ensaio: religaria agora", "UDR7 — rehearsal: would wake now")
         default: return event
         }
     }
 
     static func symbol(for event: String) -> String {
+        if let kind = DevicePluginRegistry.eventKind(event) { return kind.symbol }
         switch event {
         case "POWER_LOSS": return "bolt.slash.fill"
         case "POWER_RESTORED": return "bolt.badge.checkmark.fill"
         case "LOW_BATTERY": return "battery.25percent"
         case "COMM_LOST": return "antenna.radiowaves.left.and.right.slash"
         case "COMM_RESTORED": return "antenna.radiowaves.left.and.right"
-        case "UDR7_SHUTDOWN_SENT": return "power.circle.fill"
-        case "UDR7_SHUTDOWN_FAILED": return "exclamationmark.shield.fill"
-        case "UDR7_SHUTDOWN_BLOCKED": return "hand.raised.fill"
-        case "UDR7_PROTECTION_BLIND": return "eye.slash.fill"
-        case "UDR7_WOL_SENT", "UDR7_WOL_DRYRUN": return "wake"
-        case "UDR7_SHUTDOWN_DRYRUN", "UDR7_PROTECTION_REARMED", "UDR7_ARMED", "UDR7_DISARMED":
-            return "shield.lefthalf.filled"
         default: return "circle.fill"
         }
     }
 
     static func color(for event: String) -> Color {
+        if let kind = DevicePluginRegistry.eventKind(event) { return kind.tone.color }
         switch event {
         case "POWER_LOSS": return .orange
         case "LOW_BATTERY": return .yellow   // matches the chart legend
         case "COMM_LOST": return .red
         case "POWER_RESTORED", "COMM_RESTORED": return .green
-        case "UDR7_SHUTDOWN_SENT", "UDR7_SHUTDOWN_FAILED": return .red
-        case "UDR7_SHUTDOWN_BLOCKED", "UDR7_PROTECTION_BLIND": return .orange
-        default:
-            if EventChip.protectionTypes.contains(event) { return .purple }
-            return .secondary
+        default: return .secondary
         }
     }
 }
@@ -224,6 +206,7 @@ private struct EventRow: View {
     let event: BridgeEvent
     @Binding var selected: BridgeEvent?
     var narrow = false
+    var names: DeviceNames
 
     @State private var hovering = false
 
@@ -246,7 +229,7 @@ private struct EventRow: View {
                     Image(systemName: EventsTimeline.symbol(for: event.event))
                         .foregroundStyle(color)
                         .frame(width: 18)
-                    Text(EventsTimeline.label(for: event.event))
+                    Text(EventsTimeline.label(for: event.event, names: names))
                         .font(.system(.callout, design: .rounded).weight(.medium))
                     Spacer()
                     Text(event.dayTimeText)
@@ -338,6 +321,7 @@ struct EventDetailInline: View {
 /// selection = everything.
 struct EventsFilterBar: View {
     @Binding var chips: Set<EventChip>
+    var names: DeviceNames
     @Binding var period: EventPeriod
     @Binding var customFrom: Date
     @Binding var customTo: Date
@@ -428,7 +412,7 @@ struct EventsFilterBar: View {
             HStack(spacing: 5) {
                 Image(systemName: chip.symbol)
                     .foregroundStyle(chip.color)
-                Text(chip.label).fixedSize()
+                Text(chip.label(names: names)).fixedSize()
             }
             .font(.system(.callout, design: .rounded).weight(isOn ? .semibold : .regular))
             .foregroundStyle(isOn ? .primary : .secondary)
