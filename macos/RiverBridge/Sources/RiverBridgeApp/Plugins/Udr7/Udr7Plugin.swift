@@ -8,9 +8,9 @@ import SwiftUI
 struct Udr7Plugin: DevicePluginUI {
     var descriptor: DevicePluginDescriptor { .udr7 }
 
-    func settingsSheet(store: TelemetryStore, hostWidth: CGFloat,
+    func settingsSheet(store: TelemetryStore, hostSize: CGSize,
                        onClose: @escaping () -> Void) -> AnyView {
-        AnyView(Udr7SettingsSheet(store: store, hostWidth: hostWidth, onClose: onClose))
+        AnyView(Udr7SettingsSheet(store: store, hostSize: hostSize, onClose: onClose))
     }
 
     func healthDetail(chain: HealthChain?) -> String? {

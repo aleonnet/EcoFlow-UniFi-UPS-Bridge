@@ -55,28 +55,75 @@ enum SettingsRows {
         }
     }
 
+    /// `estreito`: numa largura de telefone o rótulo e o campo não cabem lado a
+    /// lado — o campo encolheria até não caber um caminho de chave. Aí a linha
+    /// EMPILHA: rótulo em cima, campo ocupando a largura inteira. É o mesmo
+    /// desenho que Ajustes do iOS usa quando o valor é longo.
+    @ViewBuilder
     static func textRow(_ symbol: String, _ label: String, _ text: Binding<String>,
-                         placeholder: String, numeric: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .frame(width: 26)
-                .foregroundStyle(.secondary)
-            Text(label)
-                .font(.system(.body, design: .rounded))
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: numeric ? .monospaced : .default))
-                .multilineTextAlignment(numeric ? .trailing : .leading)
-                .frame(minWidth: numeric ? 70 : 150, maxWidth: numeric ? 90 : 260)
-                .autocorrectionDisabled()
+                        placeholder: String, numeric: Bool = false,
+                        estreito: Bool = false) -> some View {
+        let campo = TextField(placeholder, text: text)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: numeric ? .monospaced : .default))
+            .autocorrectionDisabled()
+        if estreito {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Image(systemName: symbol)
+                        .frame(width: 26)
+                        .foregroundStyle(.secondary)
+                    Text(label)
+                        .font(.system(.body, design: .rounded))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                campo
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.leading, 36)
+            }
+        } else {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .frame(width: 26)
+                    .foregroundStyle(.secondary)
+                Text(label)
+                    .font(.system(.body, design: .rounded))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                campo
+                    .multilineTextAlignment(numeric ? .trailing : .leading)
+                    .frame(minWidth: numeric ? 70 : 150, maxWidth: numeric ? 90 : 260)
+            }
         }
     }
 
+    @ViewBuilder
     static func sliderRow(_ symbol: String, _ label: String,
-                           value: Binding<Int>, range: ClosedRange<Int>, unit: String,
-                           zeroLabel: String? = nil, accent: Color) -> some View {
+                          value: Binding<Int>, range: ClosedRange<Int>, unit: String,
+                          zeroLabel: String? = nil, accent: Color,
+                          estreito: Bool = false) -> some View {
+        if estreito {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Image(systemName: symbol).frame(width: 26).foregroundStyle(.secondary)
+                    Text(label).font(.system(.body, design: .rounded))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(value.wrappedValue == 0 && zeroLabel != nil ? zeroLabel! : "\(value.wrappedValue)\(unit)")
+                        .font(.system(.body, design: .rounded).weight(.semibold))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+                Slider(value: Binding(get: { Double(value.wrappedValue) },
+                                      set: { value.wrappedValue = Int($0) }),
+                       in: Double(range.lowerBound)...Double(range.upperBound), step: 1)
+                    .tint(accent)
+                    .padding(.leading, 36)
+            }
+            .animation(.snappy(duration: 0.2), value: value.wrappedValue)
+        } else {
         HStack(spacing: 10) {
             Image(systemName: symbol)
                 .frame(width: 26)
@@ -104,5 +151,6 @@ enum SettingsRows {
             .frame(minWidth: 90, maxWidth: 170)
         }
         .animation(.snappy(duration: 0.2), value: value.wrappedValue)
+        }
     }
 }

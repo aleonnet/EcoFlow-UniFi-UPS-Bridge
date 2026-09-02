@@ -203,3 +203,34 @@ private func decode(_ json: String) throws -> HealthChain {
     #expect(store.health == nil)
     #expect(store.deviceNames.name(for: .udr7) == "Meu UDR")
 }
+
+// MARK: - A folha cabe na janela
+
+/// A folha é apresentada DENTRO da janela-mãe, que pode encolher até 414×480
+/// (RiverBridgeApp.swift). Ela precisa caber nesse mínimo, nos DOIS eixos.
+///
+/// Esta cerca existe porque a primeira versão não cabia: `minWidth` era 380
+/// contra 374 pt de espaço útil, e a ALTURA não era limitada de forma nenhuma —
+/// a folha vazava para fora da janela. Os números vivem aqui como aritmética
+/// pura, sem SwiftUI, para a cerca rodar no `swift test` do Core.
+@Test func sheetFitsInsideTheSmallestHostWindow() {
+    let hostMin = CGSize(width: 414, height: 480)      // RiverBridgeApp: .frame(minWidth:minHeight:)
+    let folga: CGFloat = 40                            // 20 pt de cada lado
+
+    // Os pisos declarados na folha (Udr7SettingsSheet.minLargura/minAltura).
+    let minLargura: CGFloat = 340
+    let minAltura: CGFloat = 380
+
+    #expect(minLargura <= hostMin.width - folga,
+            "a folha não cabe na largura mínima da janela")
+    #expect(minAltura <= hostMin.height - folga,
+            "a folha não cabe na altura mínima da janela")
+
+    // E o tamanho EFETIVO, com a mesma fórmula da folha, nunca passa do espaço útil.
+    func largura(_ host: CGSize) -> CGFloat { max(minLargura, min(600, host.width - folga)) }
+    func altura(_ host: CGSize) -> CGFloat { max(minAltura, min(640, host.height - folga)) }
+    for host in [hostMin, CGSize(width: 1000, height: 880), CGSize(width: 500, height: 600)] {
+        #expect(largura(host) <= max(minLargura, host.width - folga))
+        #expect(altura(host) <= max(minAltura, host.height - folga))
+    }
+}

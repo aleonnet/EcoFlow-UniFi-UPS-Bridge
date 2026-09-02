@@ -11,10 +11,11 @@ import SwiftUI
 protocol DevicePluginUI: Sendable {
     var descriptor: DevicePluginDescriptor { get }
 
-    /// A folha de configuração do dispositivo. `hostWidth` é a largura da
-    /// janela-mãe, medida no corpo de SettingsView: a folha é NSWindow própria,
-    /// então medir dentro dela seria circular.
-    func settingsSheet(store: TelemetryStore, hostWidth: CGFloat,
+    /// A folha de configuração do dispositivo. `hostSize` é o tamanho da
+    /// janela-mãe, medido no corpo de SettingsView: a folha é NSWindow própria,
+    /// então medir dentro dela seria circular. Os DOIS eixos importam — limitar
+    /// só a largura deixava a folha vazar por baixo.
+    func settingsSheet(store: TelemetryStore, hostSize: CGSize,
                        onClose: @escaping () -> Void) -> AnyView
 
     /// A linha honesta do cartão de saúde deste dispositivo.

@@ -40,7 +40,7 @@ struct SettingsView: View {
     @State private var optimistic: [String: Bool] = [:]
     @State private var pendingArm: DevicePluginDescriptor?
     @State private var devicesFeedback: String?
-    @State private var hostWidth: CGFloat = 1000
+    @State private var hostSize: CGSize = CGSize(width: 1000, height: 880)
 
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
@@ -192,10 +192,10 @@ struct SettingsView: View {
         .task { await loadCurrent() }
         // A largura da JANELA-MÃE, medida aqui: a folha é NSWindow própria, então
         // medir dentro dela seria circular. Molde: DashboardWindow.
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { hostWidth = $0 }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { hostSize = $0 }
         .sheet(item: $openPlugin) { item in
             if let ui = DevicePluginUIRegistry.plugin(id: item.id) {
-                ui.settingsSheet(store: store, hostWidth: hostWidth) { openPlugin = nil }
+                ui.settingsSheet(store: store, hostSize: hostSize) { openPlugin = nil }
             }
         }
         // `isPresented` DERIVADO de pendingArm: cancelar ou Esc zera o estado

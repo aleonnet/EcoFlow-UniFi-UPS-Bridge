@@ -12,7 +12,7 @@ import SwiftUI
 
 struct Udr7SettingsSheet: View {
     var store: TelemetryStore
-    var hostWidth: CGFloat
+    var hostSize: CGSize
     var onClose: () -> Void
 
     @State private var name = ""
@@ -35,6 +35,22 @@ struct Udr7SettingsSheet: View {
     @State private var notice: String?
     @State private var showArmDialog = false
 
+    /// Pisos: a janela-mãe pode encolher até 414×480, então a folha tem de caber
+    /// em 374×440. São eles que decidem quando as linhas empilham.
+    static let minLargura: CGFloat = 340
+    static let minAltura: CGFloat = 380
+    /// Abaixo desta largura, rótulo e campo empilham — é o mesmo ponto de corte
+    /// que a barra de filtros usa, e o que um telefone exigiria.
+    static let larguraEstreita: CGFloat = 420
+
+    private var largura: CGFloat {
+        max(Self.minLargura, min(600, hostSize.width - 40))
+    }
+    private var altura: CGFloat {
+        max(Self.minAltura, min(640, hostSize.height - 40))
+    }
+    private var estreito: Bool { largura < Self.larguraEstreita }
+
     private var descriptor: DevicePluginDescriptor { .udr7 }
     private var detail: Udr7Detail? { store.health?.pluginDetail(id: descriptor.id) }
     /// Estado vindo do HEALTH, nunca de uma cópia local: o badge do cartão e esta
@@ -54,45 +70,45 @@ struct Udr7SettingsSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     SettingsRows.group(L10n.t("Dispositivo", "Device")) {
                         SettingsRows.textRow("tag", L10n.t("Nome", "Name"), $name,
-                                             placeholder: descriptor.defaultName)
+                                             placeholder: descriptor.defaultName, estreito: estreito)
                     }
                     SettingsRows.group(L10n.t("Armamento", "Arming")) { armingRow }
                     SettingsRows.group(L10n.t("Console e chave", "Console and key")) {
-                        SettingsRows.textRow("network", L10n.t("Console (host)", "Console (host)"), $sshHost, placeholder: "192.168.1.1")
+                        SettingsRows.textRow("network", L10n.t("Console (host)", "Console (host)"), $sshHost, placeholder: "192.168.1.1", estreito: estreito)
                         SettingsRows.divider
-                        SettingsRows.textRow("number", L10n.t("Porta SSH", "SSH port"), $sshPort, placeholder: "22", numeric: true)
+                        SettingsRows.textRow("number", L10n.t("Porta SSH", "SSH port"), $sshPort, placeholder: "22", numeric: true, estreito: estreito)
                         SettingsRows.divider
-                        SettingsRows.textRow("person.fill", L10n.t("Usuário SSH", "SSH user"), $sshUser, placeholder: "root")
+                        SettingsRows.textRow("person.fill", L10n.t("Usuário SSH", "SSH user"), $sshUser, placeholder: "root", estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("key.fill", L10n.t("Chave privada (caminho absoluto)", "Private key (absolute path)"),
-                                             $sshKey, placeholder: "/Users/…/.ssh/river-bridge-udr7")
+                                             $sshKey, placeholder: "/Users/…/.ssh/river-bridge-udr7", estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("barcode", L10n.t("Serial do River (upsc device.serial)", "River serial (upsc device.serial)"),
-                                             $expectedSerial, placeholder: "R3P…")
+                                             $expectedSerial, placeholder: "R3P…", estreito: estreito)
                     }
                     SettingsRows.group(L10n.t("Limiares", "Thresholds")) {
                         SettingsRows.sliderRow("battery.0percent", L10n.t("Corte físico do River", "River physical cutoff"),
                                                value: $cutoff, range: 0...48, unit: "%",
-                                               zeroLabel: L10n.t("não configurado", "not set"), accent: accent)
+                                               zeroLabel: L10n.t("não configurado", "not set"), accent: accent, estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.sliderRow("power.circle", L10n.t("Desligar o console em", "Shut the console down at"),
                                                value: $shutdown, range: 0...50, unit: "%",
-                                               zeroLabel: L10n.t("não configurado", "not set"), accent: accent)
+                                               zeroLabel: L10n.t("não configurado", "not set"), accent: accent, estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("stopwatch", L10n.t("Descarga medida (s por 1 %)", "Measured discharge (s per 1 %)"),
-                                             $dischargeSecPerPct, placeholder: "0", numeric: true)
+                                             $dischargeSecPerPct, placeholder: "0", numeric: true, estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("clock", L10n.t("Ou autonomia ≤ (min, 0 = desligado)", "Or runtime ≤ (min, 0 = off)"),
-                                             $runtimeMinutes, placeholder: "0", numeric: true)
+                                             $runtimeMinutes, placeholder: "0", numeric: true, estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("hourglass", L10n.t("Queda mínima (s)", "Minimum outage (s)"),
-                                             $minOutage, placeholder: "0", numeric: true)
+                                             $minOutage, placeholder: "0", numeric: true, estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("checkmark.seal", L10n.t("Confirmar por (s)", "Confirm for (s)"),
-                                             $confirmSeconds, placeholder: "6", numeric: true)
+                                             $confirmSeconds, placeholder: "6", numeric: true, estreito: estreito)
                         SettingsRows.divider
                         SettingsRows.textRow("wake", L10n.t("MAC para religar (WoL, opcional)", "Wake MAC (WoL, optional)"),
-                                             $wolMac, placeholder: "aa:bb:cc:dd:ee:ff")
+                                             $wolMac, placeholder: "aa:bb:cc:dd:ee:ff", estreito: estreito)
                     }
                 }
                 .padding(20)
@@ -100,9 +116,12 @@ struct Udr7SettingsSheet: View {
             Divider()
             footer
         }
-        // `minWidth` vence a 414 pt: min(600, 414-40) = 374 < 380, e é o piso que
-        // mantém as linhas legíveis na janela estreita.
-        .frame(minWidth: 380, idealWidth: min(600, max(380, hostWidth - 40)), minHeight: 420, idealHeight: 640)
+        // A folha cabe DENTRO da janela-mãe no menor tamanho dela (414×480), com
+        // 20 pt de folga em cada eixo — antes o minWidth era 380 contra 374 de
+        // espaço útil, e a ALTURA não era limitada de forma nenhuma: a folha
+        // vazava para fora da janela (visto pelo dono em 2026-09-01).
+        .frame(minWidth: Self.minLargura, idealWidth: largura, maxWidth: largura,
+               minHeight: Self.minAltura, idealHeight: altura, maxHeight: altura)
         .interactiveDismissDisabled(!changes().isEmpty)
         .task { await load() }
         .confirmationDialog(arming.title, isPresented: $showArmDialog, titleVisibility: .visible) {
