@@ -7,6 +7,12 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 ## [Unreleased]
 
 ### Daemon
+- **Arquitetura de plugins**: o daemon passa a ter um contrato de *dispositivo
+  protegido* (`plugins/base.py`), com registro **estático** (`PLUGINS`) e o UDR7 como primeiro
+  deles — um adaptador fino sobre a política, que não mudou de lugar. A API, o laço e o health
+  falam com o registro: `GET /v1/health` ganha `plugins: [{id, name, state, detail}]`, e
+  `udr7`/`udr7_detail` continuam no topo como alias permanente da entrada do UDR7 (o instalador
+  os lê com `sed`). Um segundo dispositivo é um módulo novo mais uma linha no registro.
 - Nova chave **`UDR7_NAME`**: o nome que você dá ao dispositivo, que vai aparecer nos relatórios
   e gráficos do app (1–32 caracteres). Aplica a quente e, apesar do prefixo `UDR7_`, **não** é
   congelada com a proteção armada nem entra nos pinos do arquivo de armamento — renomear o

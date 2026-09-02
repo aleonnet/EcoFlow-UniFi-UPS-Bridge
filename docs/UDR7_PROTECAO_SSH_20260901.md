@@ -182,8 +182,8 @@ ao armar (spec §15, exceção 6).
 
 ## 9. Estado em 2026-09-01 (fim da execução em modo madrugada)
 
-- Código: P0–P10 executados e commitados (gate `tools/gate.sh` VERDE, 30 cenas, 196 testes
-  Python + 20 Swift; E2E prova DRYRUN com o simulador, 409 ao tentar armar com fonte sintética,
+- Código: P0–P10 executados e commitados (gate `tools/gate.sh` VERDE, 31 cenas, 217 testes
+  Python + 39 Swift; E2E prova DRYRUN com o simulador, 409 ao tentar armar com fonte sintética,
   e `SENT` 1× contra um stub de `ssh` com fonte real-parecida). Nada foi enviado a nenhum
   console: o único `ssh` executado em teste é `ssh -G` (não conecta).
 - MacBook: daemon local em ensaio (`scratchpad/demo.env`) + simulador `apagao` → `DRYRUN`

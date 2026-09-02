@@ -1212,7 +1212,9 @@ secrets redigidos) e `POST /v1/service/restart` são registrados.
    armamento.
 7. **Fronteira declarada:** quem tem o uid do serviço (token, `.env`, chave, estado) pode
    tudo; o `409` do restart armado é anti-acidente, não fronteira. O ato de armar e cada
-   transição do elo `udr7` entram no audit log (`udr7_protection_state`).
+   transição do elo `udr7` entram no audit log (`udr7_protection_state`). A linha leva o campo
+`plugin` com o id do dispositivo; o nome do evento é `<id>_protection_state`, de modo que o
+UDR7 continua gravando exatamente o que o operador já conhece.
 
 ---
 
@@ -1479,13 +1481,18 @@ river-unifi-bridge/
 │       ├── api.py          # §7A.3 — HTTP 127.0.0.1 + SSE para a UI
 │       ├── history.py      # §7A.4 — SQLite de histórico
 │       ├── service.py
+│       ├── protect.py      # Fase 3'-EXP — política de proteção do UDR7 (raiz do
+│       │                   # pacote, não em unifi/: era erro da spec até 2026-09-01)
+│       ├── plugins/        # contrato de dispositivo protegido, registro estático
+│       │   ├── __init__.py #   PLUGINS, build_plugins, plugin_statuses
+│       │   ├── base.py     #   DevicePlugin (ABC)
+│       │   └── udr7_ssh.py #   1º plugin: adaptador fino sobre protect.py
 │       └── unifi/
 │           ├── __init__.py
 │           ├── discovery.py
 │           ├── protocol.py
 │           ├── telemetry.py
 │           ├── alarms.py
-│           ├── protect.py       # Fase 3'-EXP — política de proteção do UDR7
 │           └── adoption.py
 ├── scripts/
 │   ├── install.sh
@@ -1903,7 +1910,7 @@ Este projeto segue as convenções do monorepo `/Users/alessandro/Development/AB
   ("2ª execução reporta 100"); toda cerca nova passa por teste de mutação
   (plantar o defeito, a cerca TEM de reprovar).
   *Adendo Fase 3'-EXP (2026-09-01, plano piped-seeking-toast v5.1, banca 3/3):* na Fase 3'-EXP a mutação é
-  **parcial e declarada** (10 cenas para as cercas decisivas, incluindo S4m — o nome do dispositivo não é congelado com o daemon armado — e S4o — o nome não é pino de armamento; as demais só teste) — ver §18.1.
+  **parcial e declarada** (11 cenas para as cercas decisivas, incluindo S4m — o nome do dispositivo não é congelado com o daemon armado — e S4o — o nome não é pino de armamento; as demais só teste) — ver §18.1.
 - **Reuso direto identificado (2026-08-31):** molde de instalador
   `ABHOME-macmini/macmini-backup.sh`; launchd idempotente
   `ABHOME-haos-macmini/haos-install.sh:1253-1345`; cliente da API local do UniFi OS
