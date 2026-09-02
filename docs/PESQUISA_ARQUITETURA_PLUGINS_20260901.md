@@ -50,16 +50,21 @@ pelo usuário — que é exatamente o que a proteção do UDR7 é hoje.
 
 ## 3. O que o River Bridge já é, medido no código [M]
 
-`git grep -ci udr7` em 2026-09-01: o UDR7 está em **11 arquivos** — daemon `protect.py` 78,
-`config.py` 56, `api.py` 7, `service.py` 4, `state.py` 3; app `SettingsView` 41,
-`EventsTimeline` 22, `ChartsView` 14, `ModelsDecodingTests` 9, `HealthView` 6, `Models` 4.
-São **19 chaves** com prefixo fixo `UDR7_`/`PROTECT_`, **10 tipos de evento** `UDR7_*` com o
-rótulo "UDR7" gravado no código dos chips e da legenda (`ChartsView.swift:369-378`), e o elo
-`udr7`/`udr7_detail` do health com nome fixo (`state.py:77-78`).
+`git grep -ci udr7` em 2026-09-01: o UDR7 está em **10 fontes de produção** — daemon
+`protect.py` 78, `config.py` 56, `api.py` 7, `service.py` 4, `state.py` 3; app `SettingsView`
+41, `EventsTimeline` 22, `ChartsView` 14, `HealthView` 6, `Models` 4 — mais `ModelsDecodingTests`
+9, que é teste. São **16 chaves** com prefixo `UDR7_`/`PROTECT_` (19 é `PROTECTION_KEYS`, que
+inclui as três `NUT_*`), **10 tipos de evento** `UDR7_*` com o rótulo "UDR7" gravado no código
+dos chips e da legenda (`ChartsView.swift:369-378`), e o elo `udr7`/`udr7_detail` do health com
+nome fixo (`state.py:77-78`).
 
-A costura no daemon já é a de um plugin: a política só é chamada em quatro pontos —
+> **Correção de 2026-09-01, depois da execução:** os três números acima estavam errados no
+> parecer original (11 arquivos, 19 chaves com prefixo, "quatro pontos" de chamada). Estado em
+> disco também caduca; medidos de novo ao fechar a frente.
+
+A costura no daemon já é a de um plugin: a política é chamada em **cinco** pontos —
 `observe` (`service.py:156`), `observe_failure` (`:143`), `status` (`:158`),
-`on_config_applied` (`api.py:307`) — mais `drain_transition` (`:134`). O que **não** existe
+`drain_transition` (`:134`) e `on_config_applied` (`api.py:307`). O que **não** existe
 em lugar nenhum: nome dado pelo usuário ao UDR7. Só o River tem nome (`RIVER_NAME` →
 `identity.name`, `api.py:52`); o console aparece como "UDR7" em tudo.
 

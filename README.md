@@ -17,6 +17,7 @@ segredo entra no repositório.
 | App **River Bridge** (macOS 26, barra de menus + painel: energia, gráficos, eventos, saúde, ajustes) | pronto |
 | Simulador de UPS (`tools/fake-nut-ups`) para desenvolver sem o hardware | pronto |
 | Proteção do UDR7 (desligamento via SSH quando a bateria chega ao limiar) | **em ensaio** — nada é enviado ao console até você armar (ver [runbook](docs/UDR7_PROTECAO_SSH_20260901.md)) |
+| Dispositivos protegidos, com o nome que você dá a cada um | o UDR7 é o primeiro; o nome aparece nos relatórios, nos gráficos e na saúde |
 | Driver NUT do RIVER físico (`usbhid-ups`, NUT ≥ 2.8.4) | pendente do hardware na bancada — o instalador detecta o RIVER no USB e deixa o passo marcado como pendente |
 | UDR7 exibir o RIVER como "UniFi UPS" | **sem caminho nativo documentado** — consoles UniFi não consomem UPS de terceiros ([pesquisa](docs/PESQUISA_UDR7_UPS_TERCEIROS_20260831.md)) |
 
@@ -61,6 +62,7 @@ do usuário do serviço). O jeito normal de editar é pelo app → **Ajustes**; 
 | Alarmes | `POWER_LOSS_DELAY_SECONDS`, `RESTORE_DELAY_SECONDS`, `COMM_LOSS_DELAY_SECONDS`, `LOW_BATTERY_PERCENT` | quando os eventos disparam (defaults com fonte em [docs/PESQUISA_PARAMETROS_UPS_20260831.md](docs/PESQUISA_PARAMETROS_UPS_20260831.md)) |
 | API local | `UI_API_ENABLED`, `UI_API_PORT`, `HISTORY_RETENTION_DAYS` | porta da API (35493) e retenção do histórico |
 | Proteção do UDR7 | `PROTECT_UDR7`, `PROTECT_DRY_RUN`, `UDR7_ARM_ALLOWED`, `UDR7_*` | host/porta/usuário/chave SSH do console, número de série esperado do RIVER, percentual de corte e de desligamento, confirmação, tentativas, MAC para Wake-on-LAN |
+| Nome do dispositivo | `UDR7_NAME` | como o aparelho é chamado nos relatórios e gráficos (1–32 caracteres). Muda a quente e **não** é congelada com a proteção armada |
 
 A proteção do UDR7 nasce desligada e em ensaio (`PROTECT_DRY_RUN=1`); armar de verdade exige
 três passos seus (`UDR7_ARM_ALLOWED=1` no arquivo + reinício, desligar o ensaio no app,

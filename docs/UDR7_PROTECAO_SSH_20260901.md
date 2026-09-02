@@ -118,7 +118,9 @@ válida; escreva-a.
 6. Abrir a trava: no `.env` do serviço (`/usr/local/river-unifi-bridge/etc/bridge.env`, 0600
    da sua conta) `UDR7_ARM_ALLOWED=1` → `sudo launchctl kickstart -k system/com.river.unifi-bridge`.
    A Saúde passa a avisar `lock_open`.
-7. No app → Ajustes → Proteção do UDR7: preencher host, porta, usuário, chave, serial, corte,
+7. No app → Ajustes → **Dispositivos protegidos** → toque na linha do aparelho para abrir a
+   folha dele (o campo **Nome** fica no topo: o que você escrever aparece nos relatórios e
+   gráficos). Preencher host, porta, usuário, chave, serial, corte,
    limiar, taxa; **Salvar proteção**; conferir na Saúde `armado_nao_verificado` só depois do
    passo seguinte. **Desligar modo ensaio…** (confirmação). O serviço só aceita se: trava
    aberta, leitura corrente do River **registrado** (serial) e fonte não sintética

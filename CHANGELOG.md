@@ -6,6 +6,18 @@ de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninsta
 
 ## [Unreleased]
 
+### App
+- Ajustes ganha o grupo **Dispositivos protegidos**: uma linha por aparelho, com o nome que
+  você deu, o estado, um interruptor e uma **folha** própria de configuração — o campo *Nome*
+  no topo. A lista sai do registro, então um segundo dispositivo aparece sem mexer na tela.
+- O nome do usuário chega aos **chips de filtro**, à **legenda do gráfico**, aos **rótulos da
+  timeline** e ao **cartão de saúde**. O vocabulário de evento (símbolo, cor e texto dos dez
+  eventos) saiu das telas e passou a viver no registro.
+- Ligar a proteção com o modo ensaio desligado — ou desconhecido — passa a **pedir confirmação
+  antes de escrever qualquer coisa**; desligar continua direto, porque desarmar é sempre aceito.
+- Na timeline, *armado*/*desarmado* passam de roxo a índigo e o religamento a menta: agora
+  iguais à legenda do gráfico, que divergia da lista para os mesmos eventos.
+
 ### Daemon
 - **Arquitetura de plugins**: o daemon passa a ter um contrato de *dispositivo
   protegido* (`plugins/base.py`), com registro **estático** (`PLUGINS`) e o UDR7 como primeiro
