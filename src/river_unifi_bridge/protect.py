@@ -38,7 +38,10 @@ SUBPROCESS_TIMEOUT_SECONDS = 20    # 15 + FINALDELAY 5 (same analogy); also retr
 KEYGEN_TIMEOUT_SECONDS = 5         # PROVISÓRIO-SEM-FONTE
 RUNTIME_SANITY_SECONDS = 86400     # PROVISÓRIO-SEM-FONTE (24 h; 40 h quirk guard)
 HALT_SECONDS = 30                  # PROVISÓRIO-SEM-FONTE (console halt time in margin estimate)
-POWEROFF_COMMAND = "ubnt-systool poweroff"   # H11a — hypothesis until probed on the UDR7
+# Default histórico, mantido só para quem constrói ProtectionPolicy sem passar o
+# comando. A TABELA verificada, com fonte por linha, vive no plugin do aparelho
+# (plugins/udr7_ssh.py: COMMANDS) — é de lá que o daemon tira o que manda.
+POWEROFF_COMMAND = "ubnt-systool poweroff"
 WOL_PORT = 9                       # [S] Wikipedia WoL: "port 0, 7 or 9" — choice: 9
 WOL_BROADCAST = "255.255.255.255"  # limited broadcast (INFERIDO from the same source)
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})   # literal; `localhost` is refused
@@ -308,7 +311,13 @@ class ProtectionPolicy:
         known_hosts_path: str,
         armed_path: str,
         runtime_path: str,
+        shutdown_command: str = POWEROFF_COMMAND,
     ) -> None:
+        # O QUE se manda ao aparelho vem do PLUGIN dele; esta classe é o
+        # transporte (monta o ssh isolado e executa). O default existe só para
+        # não quebrar quem constrói a política direto — o plugin do UDR7 passa
+        # o comando da sua própria tabela, com fonte verificada.
+        self._shutdown_command = shutdown_command
         self._holder = holder
         self._clock = clock
         self._runner = runner
@@ -588,7 +597,7 @@ class ProtectionPolicy:
                     else:
                         self._attempts += 1
                         self._last_attempt_at = now
-                        argv = ssh_argv(pc, self._known_hosts_path, POWEROFF_COMMAND)
+                        argv = ssh_argv(pc, self._known_hosts_path, self._shutdown_command)
                         fire_real = True
             elif not self._outage:
                 self._cond_since = None

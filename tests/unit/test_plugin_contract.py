@@ -153,3 +153,64 @@ def test_build_plugins_builds_the_registry(cfg, tmp_path):
     entradas = plugin_statuses(plugins)
     assert entradas[0]["id"] == "udr7"
     assert entradas[0]["name"] == "UDR7"
+
+
+# --- a tabela de comandos do dispositivo -------------------------------------
+
+def test_every_device_command_has_a_verified_source():
+    """Nenhum comando entra na tabela sem fonte, e nenhum é hipótese.
+
+    Esta cerca existe porque o código carregou por semanas um único comando com
+    o comentário "H11a — hypothesis until probed", e porque eu cheguei a propor
+    ao dono um `ubnt-systool info` que NÃO EXISTE (a lista de subcomandos do
+    ubnt-systool não tem `info`). Comando sem fonte é chute com cara de fato.
+    """
+    from river_unifi_bridge.plugins.udr7_ssh import COMMANDS
+
+    assert COMMANDS, "a tabela de comandos não pode ser vazia"
+    for nome, cmd in COMMANDS.items():
+        assert cmd.nome == nome
+        assert cmd.argv.strip() == cmd.argv and cmd.argv, f"{nome}: argv malformado"
+        assert isinstance(cmd.destrutivo, bool)
+        assert len(cmd.fonte) >= 40, f"{nome}: fonte curta demais para ser verificável"
+        for proibida in ("hypothesis", "hipótese", "TODO", "supõe", "acho que"):
+            assert proibida.lower() not in cmd.fonte.lower(), (
+                f"{nome}: a fonte contém '{proibida}' — não é fonte, é suposição")
+
+
+def test_the_only_destructive_command_the_policy_fires_is_poweroff():
+    """O que a política dispara é o desligamento, e nada mais.
+
+    `reboot` está na tabela porque existe e o operador precisa saber que a
+    escolha foi consciente — mas reiniciar numa queda gastaria bateria e
+    devolveria o console ligado. Se alguém trocar o comando de disparo, esta
+    cerca acusa.
+    """
+    from river_unifi_bridge.plugins.udr7_ssh import COMMANDS, POWEROFF, PROBE
+
+    assert POWEROFF.argv == "ubnt-systool poweroff"
+    assert POWEROFF.destrutivo is True
+    assert PROBE.destrutivo is False
+    destrutivos = {n for n, c in COMMANDS.items() if c.destrutivo}
+    assert destrutivos == {"poweroff", "reboot"}
+
+
+def test_policy_fires_the_command_the_plugin_declares(cfg, tmp_path):
+    """O comando que vai no ssh vem da TABELA do plugin, não de um literal solto
+    em protect.py. Prova: construir a política com outro comando muda o argv."""
+    from river_unifi_bridge.protect import ProtectionConfig, ConfigHolder, ProtectionPolicy, ssh_argv
+    from river_unifi_bridge.plugins.udr7_ssh import POWEROFF, Udr7SshPlugin
+
+    plugin = Udr7SshPlugin.build(cfg, str(tmp_path))
+    assert plugin._policy._shutdown_command == POWEROFF.argv
+
+    holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
+    outra = ProtectionPolicy(
+        holder, known_hosts_path=str(tmp_path / "kh"),
+        armed_path=str(tmp_path / "a.json"), runtime_path=str(tmp_path / "r.json"),
+        shutdown_command="comando-de-teste",
+    )
+    assert outra._shutdown_command == "comando-de-teste"
+    # e o transporte usa o que recebeu, sem reintroduzir o literal
+    argv = ssh_argv(holder.get(), str(tmp_path / "kh"), outra._shutdown_command)
+    assert argv[-1] == "comando-de-teste"

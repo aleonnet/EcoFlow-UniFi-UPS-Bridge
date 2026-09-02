@@ -14,6 +14,63 @@ from ..config import PROTECTION_KEYS
 from ..protect import ConfigHolder, ProtectionConfig, ProtectionPolicy, _is_synthetic_driver
 from .base import DevicePlugin
 
+# --- O VOCABULÁRIO DE COMANDOS DESTE DISPOSITIVO -----------------------------
+#
+# Mora AQUI, no plugin, e não em protect.py: `protect.py` é o transporte (monta o
+# ssh isolado e executa); o que se diz do outro lado é do dispositivo. Um segundo
+# aparelho traz a sua própria tabela e não toca em nada disto.
+#
+# TODO comando abaixo tem fonte verificada em 2026-09-01 — nada aqui é suposição.
+# Antes desta tabela o código tinha UM comando com o comentário "H11a — hypothesis
+# until probed", e eu cheguei a propor um `ubnt-systool info` que NÃO EXISTE.
+
+class Cmd:
+    """Um comando remoto: o que se manda, se destrói algo, e de onde veio."""
+
+    __slots__ = ("nome", "argv", "destrutivo", "fonte")
+
+    def __init__(self, nome: str, argv: str, destrutivo: bool, fonte: str):
+        self.nome = nome
+        self.argv = argv
+        self.destrutivo = destrutivo
+        self.fonte = fonte
+
+
+COMMANDS: dict[str, Cmd] = {
+    # --- prova de alcance (não destrutivos) ---------------------------------
+    "probe": Cmd(
+        "probe", "command -v ubnt-systool", False,
+        "POSIX `command -v`; é o mesmo teste que o instalador oficial do "
+        "unifi-common usa (`command_exists()` em remote_install.sh)"),
+    "model": Cmd(
+        "model", "ubnt-device-info model", False,
+        "unifi-common/remote_install.sh:38 e :131 — o script oficial da comunidade "
+        "roda isto NO console e casa a saída com \"UniFi Dream Router 7\""),
+    "firmware": Cmd(
+        "firmware", "ubnt-device-info firmware", False,
+        "unifi-common/remote_install.sh:131 — `ubnt-device-info firmware`"),
+    # --- ato final (destrutivo) ---------------------------------------------
+    "poweroff": Cmd(
+        "poweroff", "ubnt-systool poweroff", True,
+        "wiki CLI de ubnt-systool (lista completa de subcomandos) + gist "
+        "\"Graceful shutdown of UDMP via NUT\" + LazyAdmin: é o desligamento "
+        "gracioso do UniFi OS, preferível ao `poweroff` do Linux"),
+    "reboot": Cmd(
+        "reboot", "ubnt-systool reboot", True,
+        "wiki CLI de ubnt-systool. NÃO é usado pela proteção: reiniciar numa "
+        "queda gastaria bateria e devolveria o console ligado. Fica declarado "
+        "para o operador saber que existe e que a escolha foi consciente"),
+}
+
+# O que a política dispara quando decide agir. É `poweroff` por decisão, não por
+# acaso: ver a nota do `reboot` acima.
+POWEROFF = COMMANDS["poweroff"]
+# O que prova alcance sem tocar em nada. Existe porque o estado
+# `armado_nao_verificado` denunciava que o daemon armava sem NUNCA ter falado
+# com o console.
+PROBE = COMMANDS["probe"]
+
+
 # The two keys that form the arming predicate. A PUT touching ONLY these, and
 # making `armed` false, is a pure disarm and is always accepted.
 _PREDICATE_KEYS = frozenset({"PROTECT_UDR7", "PROTECT_DRY_RUN"})
@@ -58,6 +115,7 @@ class Udr7SshPlugin(DevicePlugin):
             known_hosts_path=os.path.join(state_dir, "udr7_known_hosts"),
             armed_path=os.path.join(state_dir, "udr7_armed.json"),
             runtime_path=os.path.join(state_dir, "udr7_runtime.json"),
+            shutdown_command=POWEROFF.argv,      # da tabela deste plugin
         )
         return cls(holder, policy)
 

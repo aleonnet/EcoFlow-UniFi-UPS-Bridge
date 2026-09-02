@@ -74,9 +74,23 @@ SHUTDOWNCMD "/bin/bash -c 'sshpass -p "senha" ssh -o StrictHostKeyChecking=no \
   subdriver" já no NUT 2.8.4; a issue #2735 do projeto NUT (aberta em 2024-12) mostra o
   aparelho caindo no subdriver genérico **EXPLORE HID 0.1**, com `libusb_get_interrupt:
   Connection timed out`, e está marcada para a **2.8.6**.
-- **Medição pendente:** qual subdriver o Mac mini está usando de fato. Não medi porque a
-  sessão está no MacBook, e o River e o NUT estão no mini. Comando para fechar isso lá:
-  `upsc river@127.0.0.1 driver.version.internal driver.version.data`.
+- **MEDIDO no mini em 2026-09-01** (por SSH a partir do MacBook — a "pendência" da primeira
+  versão deste documento era preguiça minha, não impossibilidade):
+
+  ```
+  upsc -V                 -> Network UPS Tools upsc 2.8.5 release
+  upsc -l                 -> river-office
+  upsc river-office@…     -> driver.name: fake-nut-ups · device.serial: SIM0001
+  system_profiler SPUSB…  -> NENHUM dispositivo EcoFlow/River conectado
+  ps                      -> /Users/alessandro/fake-nut-ups --host 0.0.0.0 --scenario apagao
+  ```
+
+  **O River 3 Plus NÃO está plugado no mini.** O que alimenta o daemon é o simulador deste
+  repositório, no cenário de apagão. O estado `fonte_nao_real` que a Saúde mostra é
+  exatamente isso, reportado com honestidade — e é por isso que armar é recusado.
+
+  E a versão do NUT lá é a **2.8.5**: a issue #2735 está marcada para a **2.8.6**, ou seja,
+  mesmo com o aparelho plugado esta versão ainda não teria o subdriver dedicado.
 
 ---
 
@@ -97,6 +111,37 @@ usuário e do sistema), `BatchMode=yes` (nunca pergunta nada), `IdentitiesOnly=y
 `ProxyCommand=none`, `PermitLocalCommand=no`, `ControlMaster=no`/`ControlPath=none` (sem
 multiplexação), `ForwardAgent=no`, `ClearAllForwardings=yes`, e `--` antes do destino para que
 nenhum valor configurado possa ser lido como opção.
+
+### 6.1-bis A LISTA COMPLETA, verificada comando a comando (2026-09-01)
+
+Esta é a tabela que hoje vive **dentro do plugin** (`plugins/udr7_ssh.py`, `COMMANDS`),
+com a fonte de cada linha. Nenhuma entrada é suposição, e há cerca de teste que reprova
+qualquer comando cuja "fonte" contenha palavras como *hypothesis* ou *TODO*.
+
+| # | Comando remoto | Destrói? | Fonte verificada |
+|---|---|---|---|
+| 1 | `command -v ubnt-systool` | não | POSIX. É o mesmo teste que o instalador oficial da comunidade usa no console (`command_exists()` em `unifi-common/remote_install.sh`) |
+| 2 | `ubnt-device-info model` | não | `unifi-common/remote_install.sh:38,131` — o script casa a saída com a string **"UniFi Dream Router 7"**, que é o nosso aparelho |
+| 3 | `ubnt-device-info firmware` | não | `unifi-common/remote_install.sh:131` |
+| 4 | `ubnt-systool poweroff` | **SIM** | wiki CLI de `ubnt-systool` (lista completa de subcomandos) · gist "Graceful shutdown of UDMP via NUT" · LazyAdmin. É o desligamento gracioso do UniFi OS, preferível ao `poweroff` do Linux |
+| 5 | `ubnt-systool reboot` | **SIM** | wiki CLI. **Declarado e NÃO usado**: reiniciar numa queda gastaria bateria e devolveria o console ligado |
+| 6 | `ssh-keygen -F <host> -f <known_hosts>` | não | local, não remoto. `man ssh-keygen`: procura o host no arquivo de hosts conhecidos |
+| 7 | magic packet WoL (UDP 9, broadcast) | não | `FF×6 + MAC×16`; a escolha da porta 9 entre "0, 7 ou 9" está registrada no código |
+
+**A lista COMPLETA de subcomandos do `ubnt-systool`** (wiki CLI, para o operador saber o que
+existe e o que deliberadamente não usamos): `adminemail`, `adminname`, `anonid`, `chpasswd`,
+`cleanup`, `cputemp`, `fwupdate`, `fwupdatestatus`, `hostname`, `led`, `network`,
+`portstatus`, **`poweroff`**, `pwcheck`, `reboot`, `reset2defaults`, `resetbutton`, `sshd`,
+`sshd-authkeys`, `sshd-passwdauth`, `sshd-port`, `support`, `supportinfo`, `timezone`.
+
+**Correção de um erro meu:** na primeira versão desta pesquisa propus um `ubnt-systool info`
+para identificar o console. **Esse subcomando não existe** — não está na lista acima. O que
+identifica o aparelho é `ubnt-device-info`, que é outro binário.
+
+**Nota sobre `sshd`, `sshd-authkeys` e `sshd-port`:** existem, e em tese permitiriam ao
+daemon gerenciar o próprio acesso. **Não vamos usá-los**: exigiriam que o bridge alterasse a
+configuração de acesso do console, o que é o oposto do princípio de menor privilégio deste
+projeto. Habilitar o SSH e instalar a chave continua sendo ato do dono, uma vez.
 
 ### 6.2 O que FALTA — e é a lacuna que o estado `armado_nao_verificado` denuncia
 
