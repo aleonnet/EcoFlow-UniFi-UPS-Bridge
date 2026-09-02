@@ -116,8 +116,8 @@ cena_mutacao S4f src/river_unifi_bridge/protect.py "if serial != expected_serial
     tests/unit/test_protect.py::test_serial_mismatch_blocks
 # S4g — autorização do PUT desligada (trava, fonte, .env intacto).
 cena_mutacao S4g src/river_unifi_bridge/api.py \
-    "refusal = _authorize(parsed, self.holder, snapshot, comm_ok)" \
-    "refusal = None and _authorize(parsed, self.holder, snapshot, comm_ok)" \
+    "refusal = _authorize(parsed, self.plugins, snapshot, comm_ok)" \
+    "refusal = None and _authorize(parsed, self.plugins, snapshot, comm_ok)" \
     tests/unit/test_api.py::test_put_arming_refused_when_lock_closed \
     tests/unit/test_api.py::test_put_refused_leaves_env_intact \
     tests/unit/test_api.py::test_arming_requires_real_source_snapshot
@@ -132,8 +132,14 @@ cena_mutacao S4k src/river_unifi_bridge/protect.py '        "--",
         f"{pc.udr7_ssh_user}@{pc.udr7_ssh_host}",' '        f"{pc.udr7_ssh_user}@{pc.udr7_ssh_host}",' \
     tests/unit/test_protect.py::test_ssh_argv_is_isolated_and_terminated
 # S4l — exceção de desarme removida (o botão de parada).
-cena_mutacao S4l src/river_unifi_bridge/api.py "if _is_pure_disarm(changes, pc):" "if False:" \
+# S4l migrou de api.py para o adaptador do UDR7 junto com as regras de armamento.
+cena_mutacao S4l src/river_unifi_bridge/plugins/udr7_ssh.py "if _is_pure_disarm(changes, pc):" "if False:" \
     tests/unit/test_api.py::test_disarm_is_always_allowed_while_armed
+
+# P6 — o alias udr7/udr7_detail do health deriva da entrada certa da lista.
+cena_mutacao S4n src/river_unifi_bridge/state.py 'if p["id"] == UDR7_ALIAS_ID' "if False" \
+    tests/unit/test_fixtures_contract.py::test_health_udr7_fixture_matches_code \
+    tests/unit/test_service_loop.py::test_process_snapshot_drives_policy_state_and_history
 
 # P1 — o nome do dispositivo: prefixo UDR7_ mas NÃO é configuração de proteção.
 cena_mutacao S4m src/river_unifi_bridge/config.py "    - DEVICE_NAME_KEYS" "    | DEVICE_NAME_KEYS" \

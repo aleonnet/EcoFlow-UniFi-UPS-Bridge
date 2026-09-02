@@ -53,51 +53,105 @@ def rig(tmp_path):
         known_hosts_path=str(tmp_path / "kh"), armed_path=str(tmp_path / "armed.json"),
         runtime_path=str(tmp_path / "runtime.json"),
     )
+    from river_unifi_bridge.plugins import Udr7SshPlugin
+
+    plugin = Udr7SshPlugin(holder, policy)
     return dict(cfg=cfg, clock=clock, tracker=TransitionTracker(cfg, clock), policy=policy,
+                plugin=plugin, plugins=[plugin],
                 shared=SharedState(), history=HistoryStore(str(tmp_path / "h.sqlite")))
 
 
 def test_process_snapshot_drives_policy_state_and_history(rig, capsys):
-    _process_snapshot(sim_snap(), rig["tracker"], rig["policy"], rig["shared"], rig["history"])
+    _process_snapshot(sim_snap(), rig["tracker"], rig["plugins"], rig["shared"], rig["history"])
     events = [e["event"] for e in rig["shared"].events()]
     assert events == ["POWER_LOSS", "LOW_BATTERY", EV_DRYRUN]      # tracker then policy
     health = rig["shared"].health()
     assert health["udr7"] == "fonte_nao_real"
     assert health["udr7_detail"]["dry_run"] is True
     assert health["udr7_detail"]["source_detail"] == "telemetria_sintetica"
+    # A lista de dispositivos e o alias descrevem o mesmo elo — nó da cena S4n.
+    assert health["plugins"][0]["id"] == "udr7"
+    assert health["plugins"][0]["state"] == health["udr7"]
+    assert health["plugins"][0]["detail"] == health["udr7_detail"]
     types = [r["type"] for r in rig["history"].query_events(0, 2**33)]
     assert EV_DRYRUN in types
     out = capsys.readouterr().out
     audit = [json.loads(l) for l in out.splitlines() if '"udr7_protection_state"' in l]
     assert audit and audit[0]["para"] == "fonte_nao_real"
+    assert audit[0]["plugin"] == "udr7"          # a linha de auditoria nomeia o dispositivo
     assert any('"UDR7_SHUTDOWN_DRYRUN"' in l for l in out.splitlines())
 
 
 def test_run_loop_feeds_policy_on_comm_failure(rig):
-    _process_snapshot(sim_snap(charge="50"), rig["tracker"], rig["policy"], rig["shared"], rig["history"])
+    _process_snapshot(sim_snap(charge="50"), rig["tracker"], rig["plugins"], rig["shared"], rig["history"])
     rig["clock"].now += 30
-    _handle_poll_failure(NutError("upsd fora"), rig["tracker"], rig["policy"], rig["shared"], rig["history"])
+    _handle_poll_failure(NutError("upsd fora"), rig["tracker"], rig["plugins"], rig["shared"], rig["history"])
     events = [e["event"] for e in rig["shared"].events()]
     assert events[-2:] == ["COMM_LOST", EV_BLIND]
     assert rig["shared"].health()["nut"] == "falha"
 
 
-def test_process_snapshot_without_policy_or_state(rig):
-    # `--once` / API off: policy None, shared None must be harmless.
-    _process_snapshot(sim_snap(), rig["tracker"], None, None, None)
-    _handle_poll_failure(NutError("x"), rig["tracker"], None, None, None)
+def test_process_snapshot_without_plugins_or_state(rig):
+    # `--once` / API desligada: lista VAZIA de plugins e shared None, inócuos.
+    _process_snapshot(sim_snap(), rig["tracker"], [], None, None)
+    _handle_poll_failure(NutError("x"), rig["tracker"], [], None, None)
 
 
 def test_once_never_protects(tmp_path, monkeypatch):
+    """`--once` é diagnóstico: nenhum plugin é construído, logo nada protege."""
     built = []
 
-    class Boom(ProtectionPolicy):
-        def __init__(self, *a, **k):
-            built.append(1)
-            raise AssertionError("policy must not exist in --once")
+    def boom(cfg, state_dir):
+        built.append(1)
+        raise AssertionError("nenhum plugin pode existir em --once")
 
-    monkeypatch.setattr(service, "ProtectionPolicy", Boom)
+    monkeypatch.setattr(service, "build_plugins", boom)
     monkeypatch.setattr(service, "poll_once", lambda cfg: sim_snap("OL CHRG", "80"))
     monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
     assert run_loop(make_cfg(), once=True) == service.EXIT_OK
     assert built == []
+
+
+def test_loop_feeds_every_plugin_and_health_lists_both(rig):
+    """O laço alimenta TODOS os plugins, não só o primeiro."""
+    from fake_plugin import FakePlugin
+
+    fake = FakePlugin()
+    plugins = [rig["plugin"], fake]
+    _process_snapshot(sim_snap(), rig["tracker"], plugins, rig["shared"], rig["history"])
+    assert len(fake.observed) == 1
+    ids = [p["id"] for p in rig["shared"].health()["plugins"]]
+    assert ids == ["udr7", "fake"]
+
+
+def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):
+    """run_loop constrói o REGISTRO, com a config e o diretório de estado certos.
+
+    Mecanismo de término: `once=False` só sai por restart_requested, então o
+    plugin injetado levanta uma sentinela no primeiro observe.
+    """
+    class Sentinela(Exception):
+        pass
+
+    class Explode:
+        id = "explode"
+
+        def observe(self, *a, **k):
+            raise Sentinela()
+
+    visto = {}
+
+    def fake_build(cfg, state_dir):
+        visto["cfg"] = cfg
+        visto["state_dir"] = state_dir
+        return [Explode()]
+
+    cfg = make_cfg()
+    cfg.ui_api_enabled = False
+    monkeypatch.setattr(service, "build_plugins", fake_build)
+    monkeypatch.setattr(service, "poll_once", lambda c: sim_snap("OL CHRG", "80"))
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    with pytest.raises(Sentinela):
+        run_loop(cfg, once=False)
+    assert visto["cfg"] is cfg
+    assert visto["state_dir"] == str(tmp_path)

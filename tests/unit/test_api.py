@@ -226,7 +226,7 @@ def _prot_env(tmp_path, arm_allowed: bool) -> str:
     return str(path)
 
 
-def _prot_server(tmp_path, arm_allowed: bool):
+def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     from river_unifi_bridge.config import load_config
     env = _prot_env(tmp_path, arm_allowed)
     cfg = load_config(env)
@@ -238,8 +238,16 @@ def _prot_server(tmp_path, arm_allowed: bool):
         known_hosts_path=str(state / "kh"), armed_path=str(state / "udr7_armed.json"),
         runtime_path=str(state / "udr7_runtime.json"),
     )
+    from river_unifi_bridge.plugins import Udr7SshPlugin
+
+    plugin = Udr7SshPlugin(holder, policy)
     srv = ApiServer(cfg=cfg, state=SharedState(), history=HistoryStore(str(tmp_path / "h.sqlite")),
-                    env_path=env, restart_cb=lambda: None, token=TOKEN, policy=policy, holder=holder)
+                    env_path=env, restart_cb=lambda: None, token=TOKEN,
+                    plugins=[plugin, *extra])
+    # Atalhos ad hoc para os testes: holder e policy continuam sendo lidos
+    # diretamente por várias asserções, e o plugin é só o invólucro deles.
+    srv.holder = holder
+    srv.policy = policy
     srv.armed_path = str(state / "udr7_armed.json")
     srv.env = env
     return srv
@@ -359,6 +367,77 @@ async def test_disarm_is_always_allowed_while_armed(unlocked):
     assert (await _put(c, {"PROTECT_UDR7": "0", "PROTECT_DRY_RUN": "1"}))[0] == 200
 
 
+@pytest.fixture
+async def two_plugins(tmp_path, aiohttp_client):
+    """UDR7 + FakePlugin: prova que a API fala com o REGISTRO, não com o UDR7."""
+    import asyncio
+
+    from fake_plugin import FakePlugin
+
+    fake = FakePlugin()
+    srv = _prot_server(tmp_path, arm_allowed=True, extra=(fake,))
+    c = await aiohttp_client(srv.build_app()); c.auth = {"Authorization": f"Bearer {TOKEN}"}
+    srv._loop = asyncio.get_running_loop()
+    return srv, c, fake
+
+
+async def test_health_lists_every_plugin_and_keeps_alias(two_plugins):
+    from river_unifi_bridge.plugins import plugin_statuses
+
+    srv, c, _fake = two_plugins
+    srv.state.set_plugins(plugin_statuses(srv.plugins))
+    body = await (await c.get("/v1/health", headers=c.auth)).json()
+    assert [p["id"] for p in body["plugins"]] == ["udr7", "fake"]
+    assert body["plugins"][1]["name"] == "Fake"
+    # O alias continua sendo o do UDR7, e não o do primeiro da lista por acaso.
+    assert body["udr7"] == body["plugins"][0]["state"]
+    assert body["udr7_detail"] == body["plugins"][0]["detail"]
+
+
+async def test_put_consults_every_plugin_before_writing(two_plugins):
+    """A recusa do 2º plugin impede a GRAVAÇÃO — a ordem é autorizar, depois escrever."""
+    srv, c, fake = two_plugins
+    antes = open(srv.env, encoding="utf-8").read()
+    fake.refuse = (409, "fake_recusa", "o plugin de teste recusou")
+    status, body = await _put(c, {"LOW_BATTERY_PERCENT": "33"})
+    assert status == 409 and body["motivo"] == "fake_recusa"
+    assert open(srv.env, encoding="utf-8").read() == antes
+
+
+async def test_put_notifies_every_plugin(two_plugins):
+    srv, c, fake = two_plugins
+    assert (await _put(c, {"LOW_BATTERY_PERCENT": "33"}))[0] == 200
+    assert len(fake.applied) == 1        # o Fake também foi avisado da config nova
+
+
+async def test_put_refreshes_health_immediately(unlocked):
+    """O health não espera o próximo tick do laço para refletir o PUT."""
+    srv, c = unlocked
+    assert (await _put(c, {"UDR7_NAME": "Meu UDR"}))[0] == 200
+    body = await (await c.get("/v1/health", headers=c.auth)).json()
+    assert body["plugins"][0]["name"] == "Meu UDR"
+
+
+async def test_restart_refused_when_any_plugin_armed(two_plugins):
+    """Basta UM dispositivo armado para o reinício pela API ser recusado."""
+    srv, c, fake = two_plugins
+    fake._armed = True
+    resp = await c.post("/v1/service/restart", headers=c.auth)
+    assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
+
+
+async def test_file_only_key_is_refused_even_with_no_plugins(tmp_path, aiohttp_client):
+    """A regra da trava de arquivo é GENÉRICA: vale sem plugin nenhum."""
+    import asyncio
+
+    srv = _prot_server(tmp_path, arm_allowed=True)
+    srv.plugins = []
+    c = await aiohttp_client(srv.build_app()); c.auth = {"Authorization": f"Bearer {TOKEN}"}
+    srv._loop = asyncio.get_running_loop()
+    status, body = await _put(c, {"UDR7_ARM_ALLOWED": "1"})
+    assert status == 400 and body["motivo"] == "chave_somente_arquivo"
+
+
 async def test_rename_allowed_while_armed(unlocked):
     """Renomear o dispositivo com a proteção ARMADA é permitido, e a quente.
 
@@ -438,8 +517,10 @@ async def test_health_exposes_udr7_detail_after_a_tick(unlocked):
     snap = snapshot_from_nut_vars("r", {"ups.status": "OL CHRG", "battery.charge": "80",
                                         "driver.name": "fake-nut-ups", "driver.version": "x",
                                         "device.serial": "SIM0001"})
+    from river_unifi_bridge.plugins import plugin_statuses
+
     srv.policy.observe(snap, [])
-    srv.state.set_protection(srv.policy.status())
+    srv.state.set_plugins(plugin_statuses(srv.plugins))
     resp = await c.get("/v1/health", headers=c.auth)
     body = await resp.json()
     assert body["udr7"] == "fonte_nao_real"
@@ -447,3 +528,8 @@ async def test_health_exposes_udr7_detail_after_a_tick(unlocked):
     assert d["dry_run"] is True and d["source"] == "sintetica"
     assert d["source_detail"] == "telemetria_sintetica" and "lock_open" in d["warnings"]
     assert d["ssh_binary"] == srv.holder.get().ssh_binary
+    # O alias e a entrada da lista descrevem o MESMO dispositivo.
+    assert body["plugins"][0]["id"] == "udr7"
+    assert body["plugins"][0]["state"] == body["udr7"]
+    assert body["plugins"][0]["detail"] == d
+    assert body["plugins"][0]["name"] == d["name"]

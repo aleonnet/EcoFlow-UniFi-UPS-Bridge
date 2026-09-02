@@ -27,6 +27,36 @@
     "sent_pending_restore": false,
     "name": "UDR7"
   },
+  "plugins": [
+    {
+      "id": "udr7",
+      "name": "UDR7",
+      "state": "fonte_nao_real",
+      "detail": {
+        "state": "fonte_nao_real",
+        "dry_run": true,
+        "enabled": true,
+        "source": "sintetica",
+        "source_detail": "telemetria_sintetica",
+        "missing_key": null,
+        "cutoff": 10,
+        "threshold": 20,
+        "charge_low": 10.0,
+        "margin_estimate_s": null,
+        "warnings": [
+          "lock_open"
+        ],
+        "ssh_host": "192.0.2.1",
+        "ssh_binary": "/usr/bin/ssh",
+        "last_event": "UDR7_SHUTDOWN_DRYRUN",
+        "last_event_at": "2026-09-01T03:00:00+0000",
+        "outage": true,
+        "attempts": 0,
+        "sent_pending_restore": false,
+        "name": "UDR7"
+      }
+    }
+  ],
   "ha": "nao_observavel",
   "last_error": null,
   "has_snapshot": false,

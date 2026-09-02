@@ -11,6 +11,12 @@ import time
 from collections import deque
 
 
+# O id cujo estado também sai no topo do health, por compatibilidade. Literal
+# aqui de propósito: state.py é folha da árvore de imports e importar plugins/
+# fecharia um ciclo.
+UDR7_ALIAS_ID = "udr7"
+
+
 class SharedState:
     def __init__(self, events_maxlen: int = 100) -> None:
         self._lock = threading.Lock()
@@ -19,11 +25,12 @@ class SharedState:
         self._events: deque[dict] = deque(maxlen=events_maxlen)
         self._comm_ok = False
         self._last_error: str | None = None
-        self._protection: dict | None = None   # Fase 3'-EXP: last policy.status()
+        self._plugins: list[dict] = []         # última leitura de plugin_statuses()
 
-    def set_protection(self, status: dict | None) -> None:
+    def set_plugins(self, statuses: list[dict]) -> None:
+        """Copia sob a trava: o chamador pode reusar a lista depois."""
         with self._lock:
-            self._protection = status
+            self._plugins = [dict(s) for s in statuses]
 
     def update_snapshot(self, snapshot: dict) -> None:
         with self._lock:
@@ -64,7 +71,12 @@ class SharedState:
             snapshot = self._snapshot
             comm_ok = self._comm_ok
             last_error = self._last_error
-            protection = dict(self._protection) if self._protection else None
+            plugins = [dict(p) for p in self._plugins]
+        # O alias udr7/udr7_detail continua sendo a entrada deste id. É PERMANENTE
+        # enquanto o instalador o ler com sed (river-bridge-install.sh): a regex
+        # casa `"udr7": "..."` no topo e não casaria `"id": "udr7"` dentro da lista.
+        alias = next((p for p in plugins if p["id"] == UDR7_ALIAS_ID), None)
+        protection = alias["detail"] if alias else None
         usb = "nao_observavel"  # only the NUT driver sees USB; Fase 1+ may refine
         return {
             "usb": usb,
@@ -74,8 +86,10 @@ class SharedState:
             # native path for a console to consume a third-party UPS — not "impossible".
             "unifi": "sem_caminho_nativo_documentado",
             # Fase 3'-EXP: closed enum from the protection policy; None until the first tick.
-            "udr7": protection["state"] if protection else "desabilitado",
+            "udr7": alias["state"] if alias else "desabilitado",
             "udr7_detail": protection,
+            # Todo dispositivo protegido, do registro do daemon.
+            "plugins": plugins,
             "ha": "nao_observavel",
             "last_error": last_error,
             "has_snapshot": snapshot is not None,

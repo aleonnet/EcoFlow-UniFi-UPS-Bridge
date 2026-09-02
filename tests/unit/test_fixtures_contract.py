@@ -42,7 +42,8 @@ def test_health_udr7_fixture_matches_code():
 
     fixture = load("health_udr7")
     state = SharedState()
-    state.set_protection(fixture["udr7_detail"])   # a status dict as the policy emits it
+    # A lista como o daemon publica: o alias udr7/udr7_detail é derivado dela.
+    state.set_plugins(fixture["plugins"])
     assert state.health() == fixture
 
 
