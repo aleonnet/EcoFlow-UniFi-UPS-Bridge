@@ -22,8 +22,10 @@ executa um cliente NUT. Ver §2.
 ## 2. Por que não dá para rodar o cliente NUT dentro do console
 
 - **Não existe cliente NUT no UniFi OS.** O pedido formal à Ubiquiti está aberto na
-  comunidade desde 2020 e o issue equivalente no `unifios-utilities` foi **fechado como "não
-  planejado"** (abril de 2023). Não há entrega oficial.
+  comunidade. *(Correção 2026-09-01: a primeira versão deste documento citava
+  `unifi-utilities/unifios-utilities/issues/528` como "fechado como não planejado". Essa URL
+  responde **404** — verificado com curl. A afirmação fica sem fonte primária até que se ache a
+  issue certa; o que sustenta a conclusão é o §3-bis abaixo, medido no console do dono.)*
 - **O que a comunidade faz para rodar código no console** é o `unifi-common` (sucessor do
   `unifios-utilities`): um serviço systemd que executa scripts de `/data/on_boot.d` a cada
   boot, com alvo declarado em **UniFi OS 4.x**. Para serviços maiores, o caminho é um
@@ -38,6 +40,37 @@ executa um cliente NUT. Ver §2.
 - **Risco declarado:** nada disso é suportado pela Ubiquiti, e a persistência entre
   atualizações de firmware é o problema que o próprio projeto existe para resolver — o que
   diz que ele é real.
+
+## 3-bis. O que foi MEDIDO no console do dono (2026-09-01, UDR7, Network 10.6.101)
+
+Esta seção substitui o que antes era inferência a partir de fóruns. Tudo abaixo saiu de
+comandos rodados contra `192.168.1.1` e `api.ui.com`, com uma chave de API real.
+
+| Chamada | Resultado |
+|---|---|
+| `GET https://192.168.1.1/api/system` (sem auth) | **200** — `{"hardware":{"shortname":"UDR7"},"name":"Dream Router 7"}` |
+| `POST https://192.168.1.1/api/system/poweroff` (sem auth) | **401** — o endpoint EXISTE |
+| `GET https://api.ui.com/v1/hosts` com `X-API-KEY` | **200** |
+| conector → `/proxy/network/integration/v1/info` | **200** — `{"applicationVersion":"10.6.101"}` |
+| conector → `/api/system` | **403 `insufficient permissions for this endpoint`** |
+| `192.168.1.1/proxy/network/integration/v1/sites` com `X-API-KEY` (3 formas de header) | **401** nas três |
+
+**Existe endpoint de desligamento** (`POST /api/system/poweroff`), achado no código da própria
+interface do console, junto da permissão `edit:os-settings:poweroff` e da string *"Console shut
+down due to power loss"*. Ele é o que o botão **Shut Down** da tela Console chama.
+
+**Mas ele não é alcançável por chave de API.** O `403 insufficient permissions` é a resposta da
+plataforma: a API de integração não abre a superfície do UniFi OS. E a chave do Site Manager é
+de NUVEM — não autentica no console local, em nenhuma das três formas de header testadas.
+
+**E mesmo que alcançasse, não serviria para o nosso caso:** o caminho é `api.ui.com`. Numa queda
+de energia a internet cai junto, e o desligamento dependeria de estar online exatamente quando
+provavelmente não está.
+
+**Conclusão revisada, e é o desenho do plugin: API para SABER, SSH para AGIR.**
+A API oficial identifica o console (modelo, versão, sites) sem porta aberta e sem chave SSH — é
+melhor que o SSH para isso. O desligamento continua em `ubnt-systool poweroff` por SSH, agora
+não por falta de pesquisa, mas porque a plataforma respondeu 403.
 
 ## 3. Por que a API oficial não resolve
 
