@@ -26,7 +26,8 @@ depois da última versão está em `[Unreleased]`.
 - **A folha nunca passa da janela.** A largura da janela-mãe era medida na própria rolagem de
   Ajustes, que a 414 pontos media 563 (as linhas largas do primeiro desenho a empurravam para
   fora da janela); a folha "cabia" em 523 e vazava. Agora a medida vem do espaço oferecido
-  (GeometryReader), e a folha tem tamanho fixo igual à janela menos a margem — o macOS ignora a
+  (GeometryReader), e a folha tem tamanho fixo: o espaço do painel menos a margem, entre o mínimo e o
+  máximo da folha — o macOS ignora a
   largura ideal de uma folha flexível e a dimensiona pelo conteúdo (470 pontos, medido em janelas
   de 414 e de 600). Cada linha decide empilhar ou não pela largura em que a folha foi de fato
   desenhada. O corte entre empilhar e lado a lado sobe de 420 para 560 pontos de largura da
@@ -34,7 +35,8 @@ depois da última versão está em `[Unreleased]`.
 - A folha aberta por linha de comando de desenvolvimento (`--seam-folha novo:…`) abre antes
   das chamadas ao serviço, para a captura não fotografar a tela sem ela.
 - Verificado por captura lida contra o defeito e por geometria de janela (folha contida na
-  janela-mãe: 374×380 em 414×480, 560×556 em 600×700, 600×640 em 1000×880): folhas de edição
+  janela-mãe, medida pela moldura da janela: 374×380 em 414×512, 560×556 em 600×700, 600×640 em
+  1000×880): folhas de edição
   e de novo dispositivo dos dois tipos, lista de tipos, em português e inglês.
 
 ### Instalador de uma linha

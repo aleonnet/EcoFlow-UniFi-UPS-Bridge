@@ -8,7 +8,7 @@ import Testing
 /// O nome do tipo host SSH nos dois idiomas. Os testes aceitam qualquer um dos dois: o
 /// idioma vivo é estado global (`L10n.cachedIsPT`) que `languagePickerWinsOverDefaultsShadowing`
 /// alterna em paralelo — comparar com `L10n.t(...)` lido noutro instante era uma corrida
-/// (revisão fria de 2026-09-03). O mapeamento idioma → nome é testado onde o idioma é o assunto.
+/// (revisão fria de 2026-09-03). O par de nomes do tipo é provado em `defaultNamesCoverBothLanguages`.
 let nomesDoTipoSSH = ["Servidor SSH", "SSH server"]
 
 
@@ -95,6 +95,16 @@ private let tres = [
     let labels = DeviceNames.uniqueLabels(instances: dup)
     #expect(labels == ["a": "Servidor 1", "b": "Servidor 2", "c": "UDR7", "d": "Servidor 3"])
     #expect(DeviceNames.uniqueLabels(instances: tres).values.sorted() == ["NAS da sala", "Servidor", "UDR7"])
+}
+
+@Test func defaultNamesCoverBothLanguages() {
+    // O nome padrão do tipo existe nos dois idiomas e o vivo é um deles (o idioma vivo é
+    // estado global alternado por outro teste; a escolha em si é `L10n.t`, testada em
+    // `languagePickerWinsOverDefaultsShadowing`).
+    #expect(DeviceTypeDescriptor.sshHost.defaultNamePT == "Servidor SSH")
+    #expect(DeviceTypeDescriptor.sshHost.defaultNameEN == "SSH server")
+    #expect(nomesDoTipoSSH.contains(DeviceTypeDescriptor.sshHost.defaultName))
+    #expect(DeviceTypeDescriptor.udr7.defaultNamePT == "UDR7" && DeviceTypeDescriptor.udr7.defaultNameEN == "UDR7")
 }
 
 @Test func suggestedNameIsUniqueAmongExisting() {
