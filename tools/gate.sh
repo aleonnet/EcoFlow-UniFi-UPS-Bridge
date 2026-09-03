@@ -161,6 +161,21 @@ cena_mutacao S4w src/river_unifi_bridge/protect.py \
     'argv, capture_output=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False,' \
     '" ".join(argv), shell=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False,' \
     tests/unit/test_protect.py::test_ssh_spawn_is_argv_list_without_shell
+# S4s — nome repetido aceito: dois dispositivos com o mesmo nome (casefold) colidiriam
+# em chips, legenda e cartões (B14). A loja recusa com nome_duplicado.
+cena_mutacao S4s src/river_unifi_bridge/devices.py \
+    'if other.name.strip().casefold() == wanted:' 'if False:' \
+    tests/unit/test_devices.py::test_store_rejects_duplicate_name_casefold
+# S4t — loja presente re-migrada: cada boot recriaria o udr7 do .env, duplicando
+# e ressuscitando o que o dono apagou.
+cena_mutacao S4t src/river_unifi_bridge/devices.py \
+    'if self.exists():   # arquivo presente: nunca re-migra' 'if False:   # arquivo presente: nunca re-migra' \
+    tests/unit/test_devices.py::test_migration_runs_once_in_ten_boots \
+    tests/unit/test_devices.py::test_deleted_udr7_is_not_resurrected
+# S4u — a loja (e o armed.json) gravados com permissão aberta: _read_private_json
+# recusaria o próprio arquivo, e qualquer usuário local leria os pinos.
+cena_mutacao S4u src/river_unifi_bridge/protect.py 'os.chmod(tmp, 0o600)' 'os.chmod(tmp, 0o644)' \
+    tests/unit/test_devices.py::test_store_is_private_0600
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1

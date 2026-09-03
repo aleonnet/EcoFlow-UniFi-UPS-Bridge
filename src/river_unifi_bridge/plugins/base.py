@@ -27,6 +27,40 @@ composes the policy and its config holder.
 from __future__ import annotations
 
 import abc
+import re
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    """Um campo de uma instância de dispositivo, declarado pelo TIPO (2026-09-03).
+
+    É o que `devices.validate_fields` aplica ao POST/PUT e o que
+    `GET /v1/device-types` publica para o app conferir (o app NÃO gera tela a
+    partir daqui — a metade de tela de cada tipo é Swift escrita à mão).
+    `type` ∈ {"str", "int", "bool"}; `bounds` (min, max) só para int; `pattern`
+    e `forbidden` só para str; `enum` = lista fechada de valores aceitos.
+    """
+
+    name: str
+    type: str
+    default: object
+    bounds: tuple[int, int] | None = None
+    pattern: re.Pattern[str] | None = None
+    enum: tuple[str, ...] | None = None
+    required: bool = False
+    forbidden: dict[str, str] | None = None
+
+    def to_json(self) -> dict:
+        out: dict = {"name": self.name, "type": self.type, "default": self.default,
+                     "required": self.required}
+        if self.bounds is not None:
+            out["min"], out["max"] = self.bounds
+        if self.pattern is not None:
+            out["pattern"] = self.pattern.pattern
+        if self.enum is not None:
+            out["enum"] = list(self.enum)
+        return out
 
 
 class DevicePlugin(abc.ABC):
