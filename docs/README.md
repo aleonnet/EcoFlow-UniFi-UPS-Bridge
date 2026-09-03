@@ -48,6 +48,7 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | `2026-09-02-0105-pesquisa-api-local-console-udr7.md` | proposto | A rota de desligamento local do console (a do botão **Shut Down**), medida e lida no aparelho; o que fecha as portas da via nativa; e o que continua sendo premissa |
 | `decisions/2026-09-02-2123-validacao-estado-e-programa-de-frentes.md` | aceito | **Validação medida** do repositório e do Mac mini contra os três objetivos do dono; correções de registro; o programa de frentes F0–F6 |
 | `decisions/2026-09-02-2124-wifi-do-river-fechado.md` | aceito | Wi‑Fi do River só fala com a nuvem: frente fechada; nuvem-para-visibilidade e BLE viram frentes próprias |
+| `plans/2026-09-02-2150-handoff-programa-de-frentes.md` | aceito | **Handoff vivo**: F0 e F1 executados, release 0.2.0 montada em dry-run, publicação aguardando decisão do dono sobre `login-state.png` |
 | `API_LOCAL_20260831.md` | — | Contrato da API local daemon ↔ app (§7A.3) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
