@@ -161,6 +161,25 @@ instalar_codigo() {
 }
 instalar_codigo || true
 
+# O README manda desinstalar por $PREFIX/scripts/uninstall.sh — mas até
+# 2026-09-02 ninguém copiava o script para lá (medido no mini: prefixo sem
+# scripts/). Classe file: do manifesto; não é código do serviço, logo não
+# mexe em CODIGO_MUDOU nem pede kickstart.
+instalar_desinstalador() {
+  jp desinstalador checando
+  local alvo="$PREFIX/scripts/uninstall.sh"
+  if [ "$DRYRUN" = "1" ]; then diga "desinstalador: copiaria scripts/uninstall.sh para $alvo"; passo desinstalador plano; return 0; fi
+  if [ -f "$alvo" ] && cmp -s "$RAIZ/scripts/uninstall.sh" "$alvo"; then
+    diga "desinstalador: já está atual"; jp desinstalador ja_estava; passo desinstalador 100; return 100
+  fi
+  man_set "file:$alvo" pending
+  mkdir -p "$PREFIX/scripts"
+  install -m 0755 "$RAIZ/scripts/uninstall.sh" "$alvo"
+  man_set "file:$alvo" created
+  diga "desinstalador: instalado em $alvo"; jp desinstalador ok; passo desinstalador 0; FEZ=1
+}
+instalar_desinstalador || true
+
 criar_venv() {
   jp venv checando
   if [ "$DRYRUN" = "1" ]; then diga "venv: criaria em $PREFIX/venv (python3.13 + aiohttp)"; passo venv plano; return 0; fi

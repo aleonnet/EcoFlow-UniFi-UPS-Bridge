@@ -106,7 +106,9 @@ while IFS=$'\t' read -r chave estado; do
 done < "$MANIFESTO"
 
 rm -f "$MANIFESTO" "$PREFIX/last-run.log" 2>/dev/null || true
-rmdir "$PREFIX/etc" "$PREFIX/src" "$PREFIX" 2>/dev/null \
+# O próprio uninstall.sh mora em $PREFIX/scripts (classe file: do manifesto):
+# o rm -f acima não afeta o processo em curso, que já tem o arquivo aberto.
+rmdir "$PREFIX/etc" "$PREFIX/src" "$PREFIX/scripts" "$PREFIX" 2>/dev/null \
   && diga "diretório $PREFIX removido (estava vazio)" \
   || diga "sobras de outra origem em $PREFIX — pasta preservada (nunca rm -rf)"
 

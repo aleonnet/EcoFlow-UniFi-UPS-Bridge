@@ -226,21 +226,27 @@ env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_1
 RC1=$?
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_2.log 2>&1
 RC2=$?
-if [ "$RC1" = "0" ] && [ "$RC2" = "100" ]; then
-    ok "S9 idempotência do instalador (1ª=0, 2ª=100)"
+# O desinstalador tem de sair instalado no prefixo (o README aponta para lá) e
+# registrado como created — refutado em 2026-09-02 comentando o install -m 0755.
+if [ "$RC1" = "0" ] && [ "$RC2" = "100" ] \
+   && [ -x "$INST/prefix/scripts/uninstall.sh" ] \
+   && grep -q "^file:$INST/prefix/scripts/uninstall.sh	created$" "$INST/prefix/manifest.tsv"; then
+    ok "S9 idempotência do instalador (1ª=0, 2ª=100) + desinstalador no prefixo"
 else
-    erro "S9 idempotência: rc1=$RC1 rc2=$RC2 — caudas:"
+    erro "S9 idempotência: rc1=$RC1 rc2=$RC2 desinstalador=$([ -x "$INST/prefix/scripts/uninstall.sh" ] && echo ok || echo ausente) — caudas:"
     tail -3 /tmp/gate_inst_1.log /tmp/gate_inst_2.log
 fi
 
-# S10 — uninstall remove o criado e PRESERVA arquivo alheio
+# S10 — uninstall (a CÓPIA INSTALADA, o caminho do README) remove o criado,
+# inclusive a si mesmo e o scripts/, e PRESERVA arquivo alheio.
 echo alheio > "$INST/prefix/arquivo-do-dono.txt"
-env $INSTALL_ENV "$RAIZ/scripts/uninstall.sh" --confirm >/tmp/gate_inst_un.log 2>&1
+env $INSTALL_ENV "$INST/prefix/scripts/uninstall.sh" --confirm >/tmp/gate_inst_un.log 2>&1
 if [ -f "$INST/prefix/arquivo-do-dono.txt" ] \
    && [ ! -d "$INST/prefix/src" ] && [ ! -d "$INST/prefix/venv" ] \
+   && [ ! -e "$INST/prefix/scripts" ] \
    && [ ! -f "$INST/ld/com.river.unifi-bridge.plist" ] \
    && [ ! -f "$INST/ld/.carregado" ]; then
-    ok "S10 uninstall: só o nosso saiu; o alheio ficou"
+    ok "S10 uninstall (cópia instalada): só o nosso saiu, scripts/ inclusive; o alheio ficou"
 else
     erro "S10 uninstall — estado final inesperado:"; find "$INST/prefix" "$INST/ld" 2>/dev/null | head -8
 fi
