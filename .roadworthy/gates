@@ -1,0 +1,6 @@
+# Gates da casa — uma linha por comando; close.sh roda todos numa árvore limpa
+tools/gate.sh
+.venv/bin/pytest
+cd macos/RiverBridge && swift test
+bash /Users/alessandro/.claude/plugins/cache/roadworthy/roadworthy/0.2.1/skills/document/scripts/docs-check.sh docs --since 2026-09-01
+lychee --offline --root-dir . docs/

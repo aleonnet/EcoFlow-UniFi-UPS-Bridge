@@ -1,0 +1,13 @@
+.roadworthy/**
+docs/**
+README.md
+CHANGELOG.md
+.gitignore
+pyproject.toml
+src/river_unifi_bridge/__init__.py
+scripts/install.sh
+scripts/uninstall.sh
+tools/release.sh
+tools/gate.sh
+tools/build-app.sh
+river-bridge-install.sh

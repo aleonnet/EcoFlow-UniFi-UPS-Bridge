@@ -1,0 +1,17 @@
+{
+  "map": "docs/README.md",
+  "decisions": "docs/decisions",
+  "plans": "docs/plans",
+  "done": "docs/plans/done",
+  "history": "docs/history",
+  "reference": "docs/reference",
+  "guides": "docs/guides",
+  "archive": "docs/archive",
+  "status": {
+    "proposed": "proposto",
+    "rejected": "rejeitado",
+    "accepted": "aceito",
+    "deprecated": "obsoleto",
+    "superseded by": "superado por"
+  }
+}

@@ -20,6 +20,24 @@ e nunca autoriza dizer que algo funciona** ·
 
 Nenhum número entra num documento sem marca.
 
+## Papéis (Roadworthy, desde 2026-09-02)
+
+Os diretórios por papel estão declarados em `../.roadworthy/docs.json` (vocabulário de
+`status:` em português). Os documentos anteriores ficam onde estão; os novos entram no papel.
+
+| Papel | Onde | O que vive lá |
+|---|---|---|
+| mapa | este arquivo | o primeiro a abrir |
+| decisões | `decisions/` | registros datados com Confirmação |
+| planos | `plans/` | frentes vivas e handoffs (o handoff mais novo pelo nome é o estado) |
+| concluídos | `plans/done/` | planos encerrados, um por linha no `README.md` de lá |
+| histórico | `history/` | frentes fechadas, movidas por `close-front.sh` |
+| referência | `reference/` | canônicos vivos, sem data no nome |
+| guias | `guides/` | runbooks |
+| arquivo | `archive/` | fora das checagens, declarado |
+
+Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs --since 2026-09-01`.
+
 ## A árvore
 
 | Documento | Status | O que é |
@@ -28,6 +46,8 @@ Nenhum número entra num documento sem marca.
 | `2026-09-01-0817-runbook-protecao-udr7-ssh.md` | aceito | **Runbook operacional** da proteção do UDR7: preparar, medir, armar em 3 passos, desarmar, recuperar |
 | `2026-09-01-2243-pesquisa-ssh-sota-udr7.md` | superado por `2026-09-02-0105-…` | SSH é o caminho para desligar o UDR7? **A conclusão "API para saber, SSH para agir" está ERRADA** — ver o documento que o supera |
 | `2026-09-02-0105-pesquisa-api-local-console-udr7.md` | proposto | A rota de desligamento local do console (a do botão **Shut Down**), medida e lida no aparelho; o que fecha as portas da via nativa; e o que continua sendo premissa |
+| `decisions/2026-09-02-2123-validacao-estado-e-programa-de-frentes.md` | aceito | **Validação medida** do repositório e do Mac mini contra os três objetivos do dono; correções de registro; o programa de frentes F0–F6 |
+| `decisions/2026-09-02-2124-wifi-do-river-fechado.md` | aceito | Wi‑Fi do River só fala com a nuvem: frente fechada; nuvem-para-visibilidade e BLE viram frentes próprias |
 | `API_LOCAL_20260831.md` | — | Contrato da API local daemon ↔ app (§7A.3) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
