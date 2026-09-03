@@ -179,6 +179,11 @@ cena_mutacao S4t src/river_unifi_bridge/devices.py \
     'if self.exists():   # arquivo presente: nunca re-migra' 'if False:   # arquivo presente: nunca re-migra' \
     tests/unit/test_devices.py::test_migration_runs_once_in_ten_boots \
     tests/unit/test_devices.py::test_deleted_udr7_is_not_resurrected
+# S4r — comando do host SSH fora da lista fechada aceito: texto livre viraria o
+# último elemento do argv do ssh (defesa em profundidade além do validate_fields).
+cena_mutacao S4r src/river_unifi_bridge/plugins/ssh_host.py \
+    'if value not in SHUTDOWN_COMMANDS:' 'if False:' \
+    tests/unit/test_plugin_contract.py::test_ssh_host_rejects_command_outside_allowlist
 # S4u — a loja (e o armed.json) gravados com permissão aberta: _read_private_json
 # recusaria o próprio arquivo, e qualquer usuário local leria os pinos.
 cena_mutacao S4u src/river_unifi_bridge/protect.py 'os.chmod(tmp, 0o600)' 'os.chmod(tmp, 0o644)' \

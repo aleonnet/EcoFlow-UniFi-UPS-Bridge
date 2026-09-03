@@ -51,3 +51,11 @@ def test_health_legacy_fixture_is_swift_only():
     # Decoded only by Swift (udr7 absent -> nil); the daemon never emits it any more.
     legacy = load("health_legacy")
     assert "udr7" not in legacy and "udr7_detail" not in legacy
+
+
+def test_device_types_fixture_matches_code():
+    """O catálogo de tipos que o Swift decodifica é o que o daemon publica; se um
+    campo mudar de nome, faixa ou lista, os dois lados quebram juntos."""
+    from river_unifi_bridge.plugins import type_catalog
+
+    assert load("device_types") == {"types": type_catalog()}

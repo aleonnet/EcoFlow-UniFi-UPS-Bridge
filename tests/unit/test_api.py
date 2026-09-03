@@ -543,3 +543,12 @@ async def test_health_exposes_udr7_detail_after_a_tick(unlocked):
     assert body["plugins"][0]["state"] == body["udr7"]
     assert body["plugins"][0]["detail"] == d
     assert body["plugins"][0]["name"] == d["name"]
+
+
+async def test_device_types_endpoint_matches_the_catalog(client):
+    from river_unifi_bridge.plugins import type_catalog
+
+    resp = await client.get("/v1/device-types", headers=client.auth)
+    assert resp.status == 200
+    assert (await resp.json()) == {"types": type_catalog()}
+    assert (await client.get("/v1/device-types")).status == 401

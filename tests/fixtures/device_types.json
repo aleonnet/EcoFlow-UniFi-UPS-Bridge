@@ -1,0 +1,199 @@
+{
+  "types": [
+    {
+      "id": "udr7_ssh",
+      "label_pt": "Console UniFi (UDR7)",
+      "label_en": "UniFi console (UDR7)",
+      "default_name": "UDR7",
+      "event_prefix": "UDR7_",
+      "fields": [
+        {
+          "name": "ssh_host",
+          "type": "str",
+          "default": "",
+          "required": false,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9.-]{0,252}"
+        },
+        {
+          "name": "ssh_port",
+          "type": "int",
+          "default": 22,
+          "required": false,
+          "min": 1,
+          "max": 65535
+        },
+        {
+          "name": "ssh_user",
+          "type": "str",
+          "default": "root",
+          "required": false,
+          "pattern": "[A-Za-z][A-Za-z0-9._-]{0,31}"
+        },
+        {
+          "name": "ssh_key",
+          "type": "str",
+          "default": "",
+          "required": false,
+          "pattern": "/[^\\s~]+"
+        },
+        {
+          "name": "shutdown_percent",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "name": "discharge_seconds_per_pct",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 3600
+        },
+        {
+          "name": "runtime_minutes",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 60
+        },
+        {
+          "name": "min_outage_seconds",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 3600
+        },
+        {
+          "name": "confirm_seconds",
+          "type": "int",
+          "default": 6,
+          "required": false,
+          "min": 0,
+          "max": 600
+        },
+        {
+          "name": "retry_max",
+          "type": "int",
+          "default": 3,
+          "required": false,
+          "min": 0,
+          "max": 3
+        },
+        {
+          "name": "wol_mac",
+          "type": "str",
+          "default": "",
+          "required": false,
+          "pattern": "[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\\1){4}[0-9A-Fa-f]{2}"
+        }
+      ]
+    },
+    {
+      "id": "ssh_host",
+      "label_pt": "Computador ou servidor via SSH",
+      "label_en": "Computer or server over SSH",
+      "default_name": "Servidor SSH",
+      "event_prefix": "SSH_HOST_",
+      "fields": [
+        {
+          "name": "ssh_host",
+          "type": "str",
+          "default": "",
+          "required": false,
+          "pattern": "[A-Za-z0-9][A-Za-z0-9.-]{0,252}"
+        },
+        {
+          "name": "ssh_port",
+          "type": "int",
+          "default": 22,
+          "required": false,
+          "min": 1,
+          "max": 65535
+        },
+        {
+          "name": "ssh_user",
+          "type": "str",
+          "default": "root",
+          "required": false,
+          "pattern": "[A-Za-z][A-Za-z0-9._-]{0,31}"
+        },
+        {
+          "name": "ssh_key",
+          "type": "str",
+          "default": "",
+          "required": false,
+          "pattern": "/[^\\s~]+"
+        },
+        {
+          "name": "shutdown_percent",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 50
+        },
+        {
+          "name": "discharge_seconds_per_pct",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 3600
+        },
+        {
+          "name": "runtime_minutes",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 60
+        },
+        {
+          "name": "min_outage_seconds",
+          "type": "int",
+          "default": 0,
+          "required": false,
+          "min": 0,
+          "max": 3600
+        },
+        {
+          "name": "confirm_seconds",
+          "type": "int",
+          "default": 6,
+          "required": false,
+          "min": 0,
+          "max": 600
+        },
+        {
+          "name": "retry_max",
+          "type": "int",
+          "default": 3,
+          "required": false,
+          "min": 0,
+          "max": 3
+        },
+        {
+          "name": "shutdown_command",
+          "type": "str",
+          "default": "shutdown -h now",
+          "required": false,
+          "enum": [
+            "shutdown -h now",
+            "sudo -n shutdown -h now",
+            "/sbin/shutdown -h now",
+            "sudo -n /sbin/shutdown -h now",
+            "poweroff",
+            "sudo -n poweroff",
+            "systemctl poweroff",
+            "sudo -n systemctl poweroff"
+          ]
+        }
+      ]
+    }
+  ]
+}

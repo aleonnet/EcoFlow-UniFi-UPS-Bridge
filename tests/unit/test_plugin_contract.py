@@ -294,3 +294,78 @@ def test_legacy_put_translates_to_an_instance_patch():
                                      "UDR7_NAME": "X", "NUT_PORT": 3494})
     assert patch == {"dry_run": False, "name": "X", "fields": {"ssh_port": 2222}}
     assert legacy_changes_to_patch({"NUT_PORT": 3494}) == {}
+
+
+# --- o tipo host SSH genérico ----------------------------------------------------------
+def test_ssh_host_module_has_no_process_seam_of_its_own():
+    """Todo spawn passa pelo ssh_argv + runner de protect.py (cerca anti-spawn e S4w).
+    Um `subprocess`/`os.system`/`shell=` próprio no módulo do tipo abriria um segundo
+    caminho, fora das cercas."""
+    import ast
+    import inspect
+    from river_unifi_bridge.plugins import ssh_host
+
+    tree = ast.parse(inspect.getsource(ssh_host))      # só CÓDIGO: docstrings não contam
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            nomes = [a.name for a in node.names] + [getattr(node, "module", "") or ""]
+            assert "subprocess" not in nomes, "import subprocess no tipo"
+        if isinstance(node, ast.Call):
+            assert not any(k.arg == "shell" for k in node.keywords), "shell= no tipo"
+            if isinstance(node.func, ast.Attribute):
+                assert node.func.attr not in ("system", "popen", "run", "Popen"), node.func.attr
+
+
+def test_ssh_host_rejects_command_outside_allowlist(cfg, tmp_path):
+    """Lista fechada nos dois portões: validate_fields (POST/PUT) e o build (loja editada
+    à mão). Nó da cena S4r."""
+    from river_unifi_bridge.devices import DevicesError, validate_fields
+    from river_unifi_bridge.plugins.ssh_host import SHUTDOWN_COMMANDS, SshHostPlugin
+
+    with pytest.raises(DevicesError, match="fora da lista permitida"):
+        validate_fields(SshHostPlugin.fields, {"shutdown_command": "rm -rf / ; shutdown -h now"})
+    inst = sample(SshHostPlugin)
+    inst.fields["shutdown_command"] = "shutdown -h now; curl evil"
+    with pytest.raises(DevicesError, match="fora da lista permitida"):
+        SshHostPlugin.build(inst, cfg, str(tmp_path))
+    for command, fonte in SHUTDOWN_COMMANDS.items():
+        assert fonte.startswith("[P]") and len(fonte) >= 40, command
+        inst.fields["shutdown_command"] = command
+        plugin = SshHostPlugin.build(inst, cfg, str(tmp_path))
+        assert plugin._holder.get().shutdown_command == command      # pinado
+        assert plugin._policy._shutdown_command == command
+
+
+def test_ssh_host_events_carry_type_prefix_and_owner(cfg, tmp_path):
+    from river_unifi_bridge.plugins.ssh_host import SshHostPlugin
+    from river_unifi_bridge.protect import EV_DRYRUN, EV_SENT, ProtectionAction
+
+    inst = sample(SshHostPlugin)
+    inst.name = "NAS da sala"
+    plugin = SshHostPlugin.build(inst, cfg, str(tmp_path))
+    tagged = plugin._tag([ProtectionAction(EV_DRYRUN, {}), ProtectionAction(EV_SENT, {"host": "h"})])
+    assert [a.event for a in tagged] == ["SSH_HOST_SHUTDOWN_DRYRUN", "SSH_HOST_SHUTDOWN_SENT"]
+    assert all(a.payload["device"] == inst.id and a.payload["device_name"] == "NAS da sala" for a in tagged)
+    assert plugin._policy._known_hosts_path == str(tmp_path / f"{inst.id}_known_hosts")
+
+
+def test_udr7_events_keep_their_prefix(cfg, tmp_path):
+    from river_unifi_bridge.protect import EV_ARMED, ProtectionAction
+
+    plugin = PLUGINS[0].build(legacy_instance(cfg), cfg, str(tmp_path))
+    tagged = plugin._tag([ProtectionAction(EV_ARMED, {})])
+    assert tagged[0].event == "UDR7_ARMED" and tagged[0].payload["device"] == "udr7"
+
+
+def test_type_catalog_lists_every_type_with_its_fields():
+    from river_unifi_bridge.plugins import type_catalog
+
+    catalog = type_catalog()
+    assert [t["id"] for t in catalog] == ["udr7_ssh", "ssh_host"]
+    by_id = {t["id"]: t for t in catalog}
+    assert "wol_mac" in [f["name"] for f in by_id["udr7_ssh"]["fields"]]
+    cmd = next(f for f in by_id["ssh_host"]["fields"] if f["name"] == "shutdown_command")
+    assert cmd["enum"] and cmd["default"] == "shutdown -h now"
+    # série esperada e corte NÃO são campos de instância de tipo nenhum (D16)
+    for t in catalog:
+        assert not {"expected_serial", "cutoff_percent"} & {f["name"] for f in t["fields"]}

@@ -12,15 +12,17 @@ import threading
 
 from ..devices import DevicesError
 from .base import DevicePlugin, FieldSpec
+from .ssh_host import SshHostPlugin
 from .udr7_ssh import Udr7SshPlugin
 
 TYPES: dict[str, type[DevicePlugin]] = {
     Udr7SshPlugin.type_id: Udr7SshPlugin,
+    SshHostPlugin.type_id: SshHostPlugin,
 }
 PLUGINS: tuple[type[DevicePlugin], ...] = tuple(TYPES.values())
 
-__all__ = ["DevicePlugin", "FieldSpec", "PLUGINS", "TYPES", "PluginSet", "Udr7SshPlugin",
-           "build_plugins", "plugin_statuses", "type_catalog"]
+__all__ = ["DevicePlugin", "FieldSpec", "PLUGINS", "TYPES", "PluginSet", "SshHostPlugin",
+           "Udr7SshPlugin", "build_plugins", "plugin_statuses", "type_catalog"]
 
 
 def build_plugins(devices, cfg, state_dir: str) -> list[DevicePlugin]:

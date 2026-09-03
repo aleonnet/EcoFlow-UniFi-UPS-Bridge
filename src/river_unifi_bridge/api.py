@@ -30,7 +30,7 @@ from .config import (
 from .envfile import update_env_file
 from .history import METRICS, HistoryStore
 from .localtoken import get_or_create_token
-from .plugins import plugin_statuses
+from .plugins import plugin_statuses, type_catalog
 from .protect import _emit
 from .state import SharedState
 
@@ -144,6 +144,7 @@ class ApiServer:
         app.router.add_put("/v1/config", self._h_config_put)
         app.router.add_post("/v1/service/restart", self._h_restart)
         app.router.add_get("/v1/version", self._h_version)
+        app.router.add_get("/v1/device-types", self._h_device_types)
         return app
 
     # -- handlers ----------------------------------------------------------
@@ -302,6 +303,11 @@ class ApiServer:
 
     async def _h_version(self, _req: web.Request) -> web.Response:
         return web.json_response({"version": __version__})
+
+    async def _h_device_types(self, _req: web.Request) -> web.Response:
+        """O catálogo de TIPOS de dispositivo: o app confere os campos por tipo
+        contra a sua metade de tela (escrita à mão), nunca gera formulário daqui."""
+        return web.json_response({"types": type_catalog()})
 
     # -- lifecycle ---------------------------------------------------------
 
