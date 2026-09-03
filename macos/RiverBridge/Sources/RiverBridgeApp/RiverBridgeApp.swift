@@ -46,6 +46,12 @@ struct RiverBridgeApp: App {
         guard let raw = AppPrefs.seamValue("--seam-largura"), let value = Double(raw) else { return nil }
         return CGFloat(value)
     }()
+    /// `--seam-altura N`: o par do de largura, para fotografar a janela mínima
+    /// (414×480) com uma folha aberta (2026-09-03).
+    private static let seamHeight: CGFloat? = {
+        guard let raw = AppPrefs.seamValue("--seam-altura"), let value = Double(raw) else { return nil }
+        return CGFloat(value)
+    }()
 
     var body: some Scene {
         MenuBarExtra {
@@ -78,7 +84,7 @@ struct RiverBridgeApp: App {
         // para fotografar a janela estreita (as capturas antigas a 414 pt eram
         // prints do dono). `.restorationBehavior(.disabled)` abaixo faz o default
         // valer em todo lançamento, então o seam pega.
-        .defaultSize(width: Self.seamWidth ?? 1000, height: 880)
+        .defaultSize(width: Self.seamWidth ?? 1000, height: Self.seamHeight ?? 880)
         .windowStyle(.hiddenTitleBar)
         // A power panel always opens on Energia — never on a restored tab.
         .restorationBehavior(.disabled)

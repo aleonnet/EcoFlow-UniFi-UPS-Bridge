@@ -64,7 +64,7 @@ protocol DevicePluginUI: Sendable {
 
 @MainActor
 enum DevicePluginUIRegistry {
-    static let all: [any DevicePluginUI] = [Udr7Plugin()]
+    static let all: [any DevicePluginUI] = [Udr7Plugin(), SshHostPlugin()]
 
     static func plugin(typeID: String) -> (any DevicePluginUI)? {
         all.first { $0.type.id == typeID }
