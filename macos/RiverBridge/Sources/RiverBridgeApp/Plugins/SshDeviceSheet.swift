@@ -18,7 +18,8 @@ struct SshDeviceSheet: View {
     let mode: DeviceSheetMode
     var store: TelemetryStore
     var hostSize: CGSize
-    var onClose: () -> Void
+    var onBack: (() -> Void)?
+    var onClose: (_ createdID: String?) -> Void
 
     @State private var name = ""
     @State private var sshHost = ""
@@ -82,8 +83,8 @@ struct SshDeviceSheet: View {
             hostSize: hostSize,
             feedback: duplicateName ? L10n.t("Já existe um dispositivo com este nome.", "A device with this name already exists.") : feedback,
             notice: notice, canSave: canSave, hasChanges: !changedFields().isEmpty || nameChanged,
-            onClose: onClose, onSave: { Task { await save() } },
-            onRemove: mode.isNew ? nil : { Task { await remove() } }
+            onClose: { onClose(nil) }, onSave: { Task { await save() } },
+            onBack: onBack, onRemove: mode.isNew ? nil : { Task { await remove() } }
         ) {
             SettingsRows.group(L10n.t("Dispositivo", "Device")) {
                 SettingsRows.textRow("tag", L10n.t("Nome", "Name"), $name,
@@ -228,6 +229,11 @@ struct SshDeviceSheet: View {
         baseline = fieldValues()
         baselineName = name.trimmingCharacters(in: .whitespaces)
         loaded = true
+        // Dev seam: `--seam-recusa <motivo>` mostra no rodapé o texto humano da
+        // recusa, para a captura fotografar sem precisar de um serviço que recuse.
+        if let motivo = AppPrefs.seamValue("--seam-recusa") {
+            feedback = ProtectionRefusal.text("{\"motivo\": \"\(motivo)\"}")
+        }
     }
 
     private func save() async {
@@ -241,10 +247,10 @@ struct SshDeviceSheet: View {
         let novoNome = name.trimmingCharacters(in: .whitespaces)
         if mode.isNew {
             do {
-                _ = try await client.createDevice(type: type.id, name: novoNome, fields: fieldValues())
+                let created = try await client.createDevice(type: type.id, name: novoNome, fields: fieldValues())
                 await store.refreshDevices()
                 await store.refreshHealth()
-                onClose()
+                onClose(created.id)
             } catch let APIError.badStatus(_, body) {
                 feedback = ProtectionRefusal.text(body)
             } catch {
@@ -326,7 +332,7 @@ struct SshDeviceSheet: View {
             try await APIClient(endpoint: endpoint).deleteDevice(id: instance.id)
             await store.refreshDevices()
             await store.refreshHealth()
-            onClose()
+            onClose(nil)
         } catch let APIError.badStatus(_, body) {
             feedback = ProtectionRefusal.text(body)     // 409 armado: desarme antes
         } catch {

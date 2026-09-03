@@ -35,6 +35,11 @@ struct SettingsView: View {
     // a captura fotografá-las (molde: DashboardWindow.initialSection).
     @State private var seamSheet: String? = AppPrefs.seamValue("--seam-folha")
     @State private var openSheet: DeviceSheetMode?
+    @State private var showAdd = false
+    @State private var addInitialType: DeviceTypeDescriptor?
+    /// A instância recém-criada, acesa por ~1,2 s ao voltar da folha (o mesmo
+    /// brilho do hoverLift): a pessoa vê ONDE a linha nova entrou.
+    @State private var highlightID: String?
     @State private var optimistic: [String: Bool] = [:]
     @State private var pendingArm: DeviceInstance?
     @State private var devicesFeedback: String?
@@ -184,6 +189,8 @@ struct SettingsView: View {
                         if indice > 0 { SettingsRows.divider }
                         deviceRow(instance)
                     }
+                    if !store.devices.isEmpty { SettingsRows.divider }
+                    addRow
                 }
 
                 // Auto-save is SILENT on success (macOS/iOS settings
@@ -231,7 +238,14 @@ struct SettingsView: View {
         .onGeometryChange(for: CGSize.self) { $0.size } action: { hostSize = $0 }
         .sheet(item: $openSheet) { item in
             if let type = item.type, let ui = DevicePluginUIRegistry.plugin(typeID: type.id) {
-                ui.settingsSheet(mode: item, store: store, hostSize: hostSize) { openSheet = nil }
+                ui.settingsSheet(mode: item, store: store, hostSize: hostSize, onBack: nil) { _ in openSheet = nil }
+            }
+        }
+        .sheet(isPresented: $showAdd) {
+            AddDeviceSheet(store: store, hostSize: hostSize, initialType: addInitialType) { created in
+                showAdd = false
+                addInitialType = nil
+                if let created { highlight(created) }
             }
         }
         // `isPresented` DERIVADO de pendingArm: cancelar ou Esc zera o estado
@@ -327,11 +341,48 @@ struct SettingsView: View {
     /// aplica-se uma vez, na primeira carga que a satisfaz.
     private func applySeamSheet() {
         guard let seam = seamSheet else { return }
-        if seam.hasPrefix("novo:"), let type = DeviceTypeRegistry.type(id: String(seam.dropFirst(5))) {
-            openSheet = .new(type); seamSheet = nil
+        if seam == "novo" {
+            showAdd = true; seamSheet = nil
+        } else if seam.hasPrefix("novo:"), let type = DeviceTypeRegistry.type(id: String(seam.dropFirst(5))) {
+            addInitialType = type; showAdd = true; seamSheet = nil
         } else if let instance = store.devices.first(where: { $0.id == seam }) {
             openSheet = .edit(instance); seamSheet = nil
         }
+    }
+
+    private func highlight(_ id: String) {
+        withAnimation(.spring(duration: 0.25)) { highlightID = id }
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation(.easeOut(duration: 0.4)) { if highlightID == id { highlightID = nil } }
+        }
+    }
+
+    /// "Adicionar dispositivo…" ao fim do grupo — o molde de Mail › Contas e de
+    /// Ajustes do Sistema › Impressoras. Desabilitada quando o serviço instalado
+    /// não gerencia dispositivos (D11), com o motivo na linha cinza acima.
+    private var addRow: some View {
+        let ok: Bool = {
+            if case .unsupported = store.deviceSupport { return false }
+            return true
+        }()
+        return Button {
+            addInitialType = nil
+            showAdd = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .frame(width: 26)
+                    .foregroundStyle(ok ? accent : Color.secondary)
+                Text(L10n.t("Adicionar dispositivo…", "Add device…"))
+                    .font(.system(.body, design: .rounded))
+                    .foregroundStyle(ok ? Color.primary : Color.secondary)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!ok)
     }
 
     /// Uma linha por INSTÂNCIA: ícone do tipo, o nome que o usuário deu, o
@@ -383,6 +434,8 @@ struct SettingsView: View {
             .toggleStyle(.switch)
             .disabled(store.health == nil || optimistic[instance.id] != nil)
         }
+        .scaleEffect(highlightID == instance.id ? 1.02 : 1)
+        .shadow(color: accent.opacity(highlightID == instance.id ? 0.30 : 0), radius: 14)
     }
 
     /// Ligar com o ensaio DESLIGADO (ou desconhecido) arma de verdade: pede

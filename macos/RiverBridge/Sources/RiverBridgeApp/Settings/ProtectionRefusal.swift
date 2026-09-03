@@ -23,6 +23,24 @@ enum ProtectionRefusal {
                           "No current NUT reading — the source cannot be verified.")
         case "chave_somente_arquivo":
             return L10n.t("Essa chave só muda no arquivo do serviço.", "That key only changes in the service file.")
+        // Rotas /v1/devices (2026-09-03). `validacao` traz no `erro` o campo e a
+        // regra que ele feriu — repassar é o que deixa a pessoa corrigir.
+        case "nome_duplicado":
+            return L10n.t("Já existe um dispositivo com este nome.", "A device with this name already exists.")
+        case "validacao":
+            return L10n.t("Campo inválido: ", "Invalid field: ") + (parsed?.erro ?? "")
+        case "tipo_desconhecido":
+            return L10n.t("O serviço instalado não conhece este tipo de dispositivo — rode o instalador para atualizar.",
+                          "The installed service does not know this device type — run the installer to update.")
+        case "armar_no_post":
+            return L10n.t("Um dispositivo nasce em ensaio; armar é ato separado, depois de criado.",
+                          "A device is born in rehearsal; arming is a separate act, after creation.")
+        case "dispositivo_ausente":
+            return L10n.t("Este dispositivo já não existe no serviço — a lista será recarregada.",
+                          "This device no longer exists in the service — the list will reload.")
+        case "sem_loja":
+            return L10n.t("O serviço instalado não gerencia dispositivos — rode o instalador para atualizar.",
+                          "The installed service does not manage devices — run the installer to update.")
         default:
             return L10n.t("Recusado: ", "Refused: ") + (parsed?.erro ?? body)
         }

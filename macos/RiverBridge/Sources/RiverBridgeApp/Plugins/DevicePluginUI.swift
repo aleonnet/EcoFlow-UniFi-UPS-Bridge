@@ -45,9 +45,12 @@ protocol DevicePluginUI: Sendable {
 
     /// A folha de configuração de UMA instância (ou de uma nova). `hostSize` é
     /// o tamanho da janela-mãe, medido no corpo de SettingsView: a folha é
-    /// NSWindow própria, então medir dentro dela seria circular.
+    /// NSWindow própria, então medir dentro dela seria circular. `onBack` só
+    /// existe na etapa 2 de "Adicionar" (volta à lista de tipos); `onClose`
+    /// devolve o id criado quando a folha fecha por um POST 201, para a lista
+    /// acender a linha nova.
     func settingsSheet(mode: DeviceSheetMode, store: TelemetryStore, hostSize: CGSize,
-                       onClose: @escaping () -> Void) -> AnyView
+                       onBack: (() -> Void)?, onClose: @escaping (_ createdID: String?) -> Void) -> AnyView
 
     /// A linha honesta do cartão de saúde desta instância. `chainPresent` diz
     /// se o health chegou (sem health não há o que dizer; com health e sem

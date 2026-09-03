@@ -23,6 +23,7 @@ struct DeviceSheetFrame<Content: View>: View {
     var hasChanges: Bool
     let onClose: () -> Void
     let onSave: () -> Void
+    var onBack: (() -> Void)?
     var onRemove: (() -> Void)?
     @ViewBuilder let content: () -> Content
 
@@ -77,8 +78,11 @@ struct DeviceSheetFrame<Content: View>: View {
         .padding(.vertical, 14)
     }
 
+    /// O aviso ocupa a linha de cima, em toda a largura; os botões ficam
+    /// inteiros na de baixo (com o aviso ao lado, "Remover dispositivo…"
+    /// quebrava em duas linhas — captura de 2026-09-03).
     private var footer: some View {
-        HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             if let feedback {
                 Label(feedback, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(.orange)
@@ -88,6 +92,7 @@ struct DeviceSheetFrame<Content: View>: View {
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            HStack(spacing: 12) {
             Spacer()
             if onRemove != nil, !mode.isNew {
                 // HIG destructive-in-a-list: texto vermelho, não um bloco cheio.
@@ -99,12 +104,18 @@ struct DeviceSheetFrame<Content: View>: View {
                 }
                 .buttonStyle(.borderless)
             }
+            if let onBack, mode.isNew {
+                Button(L10n.t("Voltar", "Back")) { onBack() }
+                    .buttonStyle(.glass)
+            }
             Button(mode.isNew ? L10n.t("Cancelar", "Cancel") : L10n.t("Fechar", "Close")) { onClose() }
                 .buttonStyle(.glass)
+                .keyboardShortcut(.cancelAction)
             Button(mode.isNew ? L10n.t("Adicionar", "Add") : L10n.t("Salvar", "Save")) { onSave() }
                 .buttonStyle(.glassProminent)
                 .tint(accent)
                 .disabled(!canSave)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)

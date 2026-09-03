@@ -9,8 +9,8 @@ struct Udr7Plugin: DevicePluginUI {
     var type: DeviceTypeDescriptor { .udr7 }
 
     func settingsSheet(mode: DeviceSheetMode, store: TelemetryStore, hostSize: CGSize,
-                       onClose: @escaping () -> Void) -> AnyView {
-        AnyView(Udr7SettingsSheet(mode: mode, store: store, hostSize: hostSize, onClose: onClose))
+                       onBack: (() -> Void)?, onClose: @escaping (_ createdID: String?) -> Void) -> AnyView {
+        AnyView(Udr7SettingsSheet(mode: mode, store: store, hostSize: hostSize, onBack: onBack, onClose: onClose))
     }
 
     func healthDetail(detail: DeviceDetail?, chainPresent: Bool) -> String? {

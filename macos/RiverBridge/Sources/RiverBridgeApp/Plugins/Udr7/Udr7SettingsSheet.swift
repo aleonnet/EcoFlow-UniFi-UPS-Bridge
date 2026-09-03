@@ -10,9 +10,11 @@ struct Udr7SettingsSheet: View {
     let mode: DeviceSheetMode
     var store: TelemetryStore
     var hostSize: CGSize
-    var onClose: () -> Void
+    var onBack: (() -> Void)?
+    var onClose: (_ createdID: String?) -> Void
 
     var body: some View {
-        SshDeviceSheet(variant: .udr7, mode: mode, store: store, hostSize: hostSize, onClose: onClose)
+        SshDeviceSheet(variant: .udr7, mode: mode, store: store, hostSize: hostSize,
+                       onBack: onBack, onClose: onClose)
     }
 }
