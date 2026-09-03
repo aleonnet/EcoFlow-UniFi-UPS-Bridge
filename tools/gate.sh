@@ -288,22 +288,44 @@ else
 fi
 
 # S9b — guarda pré-atualização (D12, 2026-09-03): serviço carregado + uma
-# instância ARMADA (<id>_armed.json no estado) → o instalador sai 3 SEM tocar no
-# plist nem reiniciar; sem o arquivo, a mesma atualização passa (rc 0). O estado
-# entra por RUB_STATE_DIR, que também muda o plist (força "mudou=1").
+# instância ARMADA (<id>_armed.json no estado) → o instalador sai 3 ANTES da
+# primeira mutação: o código instalado (marcado aqui com uma linha a mais) fica
+# intocado e o plist também; sem o arquivo, a mesma atualização passa (rc 0),
+# substitui o código (a marca some) e reinicia o serviço. O estado entra por
+# RUB_STATE_DIR, que também muda o plist. A 1ª versão da guarda ficava na fase
+# do plist e deixava o código já trocado (revisão fria de 2026-09-03).
 mkdir -p "$INST/state"; : > "$INST/state/udr7_armed.json"
+MARCA="$INST/prefix/src/river_unifi_bridge/__init__.py"
+echo "# marca S9b" >> "$MARCA"
 cp "$INST/ld/com.river.unifi-bridge.plist" /tmp/gate_plist_antes 2>/dev/null || : > /tmp/gate_plist_antes
 env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9b.log 2>&1
 RC9B=$?
 PLIST_INTACTO=$(cmp -s /tmp/gate_plist_antes "$INST/ld/com.river.unifi-bridge.plist" && echo 1 || echo 0)
+CODIGO_INTACTO=$(grep -q "^# marca S9b$" "$MARCA" && echo 1 || echo 0)
 rm -f "$INST/state/udr7_armed.json"
 env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9c.log 2>&1
 RC9C=$?
-if [ "$RC9B" = "3" ] && [ "$PLIST_INTACTO" = "1" ] && grep -q "ARMADA" /tmp/gate_inst_9b.log && [ "$RC9C" = "0" ]; then
-    ok "S9b guarda pré-atualização: armado → rc 3 e plist intacto; desarmado → rc 0"
+CODIGO_TROCADO=$(grep -q "^# marca S9b$" "$MARCA" && echo 0 || echo 1)
+REINICIOU=$(grep -Eq "recarregado|kickstart" /tmp/gate_inst_9c.log && echo 1 || echo 0)
+if [ "$RC9B" = "3" ] && [ "$PLIST_INTACTO" = "1" ] && [ "$CODIGO_INTACTO" = "1" ] && grep -q "ARMADA" /tmp/gate_inst_9b.log \
+   && [ "$RC9C" = "0" ] && [ "$CODIGO_TROCADO" = "1" ] && [ "$REINICIOU" = "1" ]; then
+    ok "S9b guarda pré-atualização: armado → rc 3, código e plist intactos; desarmado → rc 0, código trocado, serviço reiniciado"
 else
-    erro "S9b guarda pré-atualização: rc armado=$RC9B plist_intacto=$PLIST_INTACTO rc desarmado=$RC9C — caudas:"
+    erro "S9b guarda pré-atualização: rc armado=$RC9B plist_intacto=$PLIST_INTACTO codigo_intacto=$CODIGO_INTACTO rc desarmado=$RC9C codigo_trocado=$CODIGO_TROCADO reiniciou=$REINICIOU — caudas:"
     tail -3 /tmp/gate_inst_9b.log /tmp/gate_inst_9c.log
+fi
+
+# S9d — a guarda INFORMA no dry-run mesmo sem o serviço visível: sem sudo o
+# `launchctl print system/…` falha por privilégio (rc 113, medido 2026-09-03),
+# e o aviso não pode depender dele — o arquivo <id>_armed.json basta.
+: > "$INST/state/udr7_armed.json"; rm -f "$INST/ld/.carregado"
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_9d.log 2>&1
+RC9D=$?
+rm -f "$INST/state/udr7_armed.json"; : > "$INST/ld/.carregado"
+if [ "$RC9D" = "0" ] && grep -q "^│ guarda: .*seria recusada (3)" /tmp/gate_inst_9d.log; then
+    ok "S9d dry-run sem serviço visível informa a instância armada"
+else
+    erro "S9d dry-run: rc=$RC9D — cauda:"; tail -3 /tmp/gate_inst_9d.log
 fi
 
 # S10 — uninstall (a CÓPIA INSTALADA, o caminho do README) remove o criado,

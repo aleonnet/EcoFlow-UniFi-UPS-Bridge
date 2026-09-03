@@ -57,7 +57,7 @@ struct HealthView: View {
             let detail = chain?.pluginDetail(id: instance.id)
             return .init(id: instance.id, symbol: type?.symbol ?? "shield.lefthalf.filled",
                          name: (labels[instance.id] ?? instance.name) + L10n.t(" · proteção", " · protection"),
-                         status: detail?.state ?? instance.state,
+                         status: detail?.state,
                          detail: DevicePluginUIRegistry.plugin(typeID: instance.type)?
                              .healthDetail(detail: detail, chainPresent: chain != nil),
                          typeID: instance.type)

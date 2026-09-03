@@ -399,8 +399,8 @@ struct SettingsView: View {
     private func deviceRow(_ instance: DeviceInstance) -> some View {
         let type = DeviceTypeRegistry.type(id: instance.type)
         let detail = store.health?.pluginDetail(id: instance.id)
-        let ligado = optimistic[instance.id] ?? (detail?.enabled ?? instance.enabled ?? false)
-        let badge = DevicePluginUIRegistry.plugin(typeID: instance.type)?.badge(state: detail?.state ?? instance.state)
+        let ligado = optimistic[instance.id] ?? (detail?.enabled ?? false)
+        let badge = DevicePluginUIRegistry.plugin(typeID: instance.type)?.badge(state: detail?.state)
         HStack(spacing: 10) {
             Image(systemName: type?.symbol ?? "shield.lefthalf.filled")
                 .frame(width: 26)
@@ -442,7 +442,7 @@ struct SettingsView: View {
     /// confirmação e NÃO escreve nada antes dela. Desligar é desarme puro —
     /// sempre aceito pelo daemon — e vai direto, de forma otimista.
     private func toggleDevice(_ instance: DeviceInstance, on: Bool) async {
-        let dryRun = store.health?.pluginDetail(id: instance.id)?.dryRun ?? instance.dryRun
+        let dryRun = store.health?.pluginDetail(id: instance.id)?.dryRun
         if DeviceTypeRegistry.toggleNeedsConfirmation(on: on, dryRun: dryRun) {
             pendingArm = instance
             return

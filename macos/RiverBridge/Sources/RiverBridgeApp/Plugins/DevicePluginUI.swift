@@ -102,7 +102,7 @@ struct ArmConfirmation {
     }
 
     var message: String {
-        L10n.t("O serviço só arma com a trava aberta, leitura corrente do River registrado e fonte não sintética. Siga o runbook (docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md).",
-               "The service only arms with the lock open, a current reading from the registered River and a non-synthetic source. Follow the runbook (docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md).")
+        L10n.t("O serviço só arma com a trava aberta, leitura corrente do River registrado e fonte não sintética. Siga o runbook (docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md).",
+               "The service only arms with the lock open, a current reading from the registered River and a non-synthetic source. Follow the runbook (docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md).")
     }
 }

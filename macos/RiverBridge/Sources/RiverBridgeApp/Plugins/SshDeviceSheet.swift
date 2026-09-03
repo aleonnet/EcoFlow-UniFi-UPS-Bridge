@@ -48,8 +48,8 @@ struct SshDeviceSheet: View {
     /// Estado vindo do HEALTH, nunca de uma cópia local: o badge do cartão e esta
     /// folha mostram a mesma coisa porque leem a mesma fonte.
     private var detail: DeviceDetail? { instance.flatMap { store.health?.pluginDetail(id: $0.id) } }
-    private var dryRun: Bool { detail?.dryRun ?? instance?.dryRun ?? true }
-    private var enabled: Bool { detail?.enabled ?? instance?.enabled ?? false }
+    private var dryRun: Bool { detail?.dryRun ?? true }
+    private var enabled: Bool { detail?.enabled ?? false }
     private var currentName: String {
         if let instance { return store.deviceNames.name(forDevice: instance.id, type: type) }
         return DeviceNames.suggestedName(type: type, existing: store.devices)
@@ -196,6 +196,13 @@ struct SshDeviceSheet: View {
 
     // MARK: - IO
 
+    /// A recusa em texto humano; se o serviço diz que a instância já não existe,
+    /// recarrega a lista (é o que o texto promete).
+    private func refused(_ body: String) async -> String {
+        if ProtectionRefusal.motivo(body) == "dispositivo_ausente" { await store.refreshDevices() }
+        return ProtectionRefusal.text(body)
+    }
+
     private func load() async {
         guard !loaded else { return }
         if let instance {
@@ -252,7 +259,7 @@ struct SshDeviceSheet: View {
                 await store.refreshHealth()
                 onClose(created.id)
             } catch let APIError.badStatus(_, body) {
-                feedback = ProtectionRefusal.text(body)
+                feedback = await refused(body)
             } catch {
                 feedback = L10n.t("Falha ao adicionar: ", "Add failed: ") + error.localizedDescription
             }
@@ -273,7 +280,7 @@ struct SshDeviceSheet: View {
                 await store.refreshDevices()
                 await store.refreshHealth()
             } catch let APIError.badStatus(_, body) {
-                feedback = ProtectionRefusal.text(body)
+                feedback = await refused(body)
                 return                                  // nome recusado é falha total
             } catch {
                 feedback = L10n.t("Falha ao salvar: ", "Save failed: ") + error.localizedDescription
@@ -297,7 +304,7 @@ struct SshDeviceSheet: View {
         } catch let APIError.badStatus(_, body) {
             feedback = nameSaved
                 ? ProtectionSave.partialFeedback(refused: Array(rest.keys), motivo: ProtectionRefusal.motivo(body))
-                : ProtectionRefusal.text(body)
+                : await refused(body)
         } catch {
             feedback = L10n.t("Falha ao salvar: ", "Save failed: ") + error.localizedDescription
         }
@@ -317,7 +324,7 @@ struct SshDeviceSheet: View {
             await store.refreshDevices()
             await store.refreshHealth()
         } catch let APIError.badStatus(_, body) {
-            feedback = ProtectionRefusal.text(body)
+            feedback = await refused(body)
         } catch {
             feedback = L10n.t("Falha: ", "Failed: ") + error.localizedDescription
         }
@@ -334,7 +341,7 @@ struct SshDeviceSheet: View {
             await store.refreshHealth()
             onClose(nil)
         } catch let APIError.badStatus(_, body) {
-            feedback = ProtectionRefusal.text(body)     // 409 armado: desarme antes
+            feedback = await refused(body)     // 409 armado: desarme antes
         } catch {
             feedback = L10n.t("Falha ao remover: ", "Remove failed: ") + error.localizedDescription
         }

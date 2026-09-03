@@ -65,6 +65,8 @@ Comandos rodados no ato, nesta sessão, na árvore em `main`:
 | `.venv/bin/pytest` (C1–C7) | `274 passed` |
 | `cd macos/RiverBridge && swift test` (após C12) | `Test run with 53 tests in 0 suites passed` |
 | `tools/gate.sh` (após C9, C10, C11, C12) | 42 `[OK]` em cada rodada; única falha `S15 logo` (render não determinístico do ícone, B17, presente também no HEAD anterior à frente) |
+| `tools/gate.sh` (após C13, com a S9b) | 43 `[OK]`; só a S15 |
+| revisão fria do diff C9–C13 (2026-09-03) | 1 BLOCKER (guarda pré-atualização na fase do plist, depois de o código já ter sido trocado) e 3 avisos, corrigidos; segunda rodada: APPROVED; S9b reescrita (código e plist intactos sob armado; reinício na rodada seguinte) e refutada com a guarda desligada (S9b vermelha: rc 0, código trocado, rodada seguinte 100 sem reinício); cenas S8/S9/S9b/S9d isoladas: `FALHAS=0` |
 | `tools/release.sh --check` (após C13) | `[OK] release --check: v0.3.0 consistente nos 6 arquivos e no CHANGELOG` |
 | refutações (mutante vermelho, restaurado) | S4p, S4q, S4r, S4s, S4t, S4u, S4v, S4w, S4l (motor), fonte de `ssh_host` sem `subprocess`, `chipsFollowInstances`, `fieldKeysMatchTheDaemonCatalogPerType`, `chipMatchesEventsByOwnerAndFallsBackToTheOnlyOneOfItsType` |
 | capturas lidas contra o defeito (1000 e 414 pt) | lista com três instâncias; folha do UDR7 (edição) e a 414×480; lista de tipos; formulário novo (UDR7 e host SSH); recusa `armado` no rodapé; folha do host a 414×480; Saúde por instância; sete chips com o do UDR7 ligado; legenda e callout por instância |

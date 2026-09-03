@@ -10,9 +10,9 @@
 // its own settings view, and a STATIC registry lists them. No disk discovery, no
 // schema: with one plugin that would be structure without a consumer.
 //
-// House rule: only members with a runtime consumer. `sheetKeys` is declarative
-// data, and it is consumed by the sheet that builds the PUT body (P8) and by the
-// test that compares it with the daemon's own list.
+// House rule: only members with a runtime consumer. `fieldKeys` is declarative
+// data: the list of each type's fields, consumed by the test that compares it
+// with the daemon's catalogue (`GET /v1/device-types`).
 import Foundation
 
 // MARK: - Health, as the daemon publishes it
@@ -20,7 +20,7 @@ import Foundation
 /// One entry of `health.plugins` (daemon P6). `udr7`/`udr7_detail` stay as an
 /// alias of the first plugin, so the installer's `sed` keeps working.
 /// Not `Identifiable`: nobody iterates `chain.plugins` — the UI list iterates the
-/// registry, which is the source of what CAN be shown.
+/// INSTANCES from `GET /v1/devices`; the health only reinforces name and state.
 public struct HealthPlugin: Codable, Equatable, Sendable {
     public var id: String?
     /// The device TYPE of this instance (2026-09-03); nil on older daemons.
@@ -210,7 +210,7 @@ public enum ProtectionSave {
 // MARK: - Tipos × instâncias (2026-09-03)
 
 /// A device TYPE, as the app knows it: icon, human labels, the fields its
-/// hand-written sheet edits (checked against the daemon's catalog by a test),
+/// hand-written sheet may edit (checked against the daemon's catalog by a test),
 /// and its event vocabulary. An INSTANCE is a `DeviceInstance` from the daemon.
 public struct DeviceTypeDescriptor: Identifiable, Equatable, Sendable {
     public let id: String
@@ -220,7 +220,8 @@ public struct DeviceTypeDescriptor: Identifiable, Equatable, Sendable {
     public let labelEN: String
     public let blurbPT: String
     public let blurbEN: String
-    /// The instance fields the type's sheet edits (daemon field names).
+    /// The type's instance fields (daemon field names), as the catalogue lists
+    /// them; a sheet may leave one alone (`retry_max` today), never invent one.
     public let fieldKeys: [String]
     public let events: [DeviceEventKind]
 
@@ -379,7 +380,9 @@ extension DeviceNames {
     /// default name — never a guess between two devices.
     public func name(forEvent type: String, device: String?, devices: [DeviceInstance]) -> String {
         guard let kind = DeviceTypeRegistry.type(forEventType: type) else { return "" }
-        if let device, let known = byPluginID[device] { return known }
+        // An owner that is no longer listed (a removed instance) keeps the type's
+        // name — never another instance's (revisão fria, 2026-09-03).
+        if let device { return byPluginID[device] ?? kind.defaultName }
         let ofType = devices.filter { $0.type == kind.id }
         if ofType.count == 1 { return name(forDevice: ofType[0].id, type: kind) }
         return kind.defaultName

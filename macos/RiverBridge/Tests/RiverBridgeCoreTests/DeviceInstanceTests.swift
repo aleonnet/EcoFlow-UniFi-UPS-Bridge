@@ -104,6 +104,12 @@ private let tres = [
     // dois hosts e nenhum dono: o nome do TIPO, nunca um chute entre os dois
     #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: tres) == "Servidor SSH")
     #expect(names.name(forEvent: "POWER_LOSS", device: nil, devices: tres) == "")
+    // Dono que já não existe (instância removida) com UMA instância do tipo restante:
+    // o nome do TIPO, nunca o da que sobrou. (Com duas restantes o caminho antigo já
+    // caía no tipo — o caso discriminante é este, revisão fria de 2026-09-03.)
+    let soUm = [tres[0], tres[2]]
+    #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_apagado", devices: soUm) == "Servidor SSH")
+    #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: soUm) == "Servidor")
 }
 
 @Test func resolveTakesDevicesOverHealthAndSeamsOverBoth() throws {

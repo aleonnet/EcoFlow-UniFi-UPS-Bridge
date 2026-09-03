@@ -141,6 +141,30 @@ if [ "$DRYRUN" = "0" ]; then
 fi
 garantir_brew_pacote python@3.13 "python313" || true
 
+# ── guarda pré-atualização (D12, 2026-09-03) ─────────────────────────────────
+# Com o serviço carregado e uma instância ARMADA (<id>_armed.json no estado do
+# usuário do serviço), NADA desta instalação acontece: nem código, nem venv,
+# nem plist, nem reinício. O POST /v1/service/restart já recusa reinício armado
+# e o instalador contornava esse veto. A guarda fica ANTES da primeira mutação
+# de propósito: na fase do plist (1ª versão, revisão fria de 2026-09-03) o
+# código já tinha sido substituído, e a rodada seguinte, já "igual", não
+# reiniciava o serviço — metade da atualização em disco, serviço no código
+# velho. Sai 3 (validação); no dry-run só informa.
+guarda_armado() {
+  local armado carregado=0
+  launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 && carregado=1
+  for armado in "$STATE_DIR"/*_armed.json; do
+    [ -e "$armado" ] || continue
+    # O dry-run corre sem sudo, e sem sudo o `launchctl print system/…` falha
+    # por privilégio (rc 113, medido em 2026-09-03): a informação não pode
+    # depender dele — o arquivo basta para avisar.
+    if [ "$DRYRUN" = "1" ]; then diga "guarda: $armado existe — com o serviço carregado, fora do dry-run, a atualização seria recusada (3)"; return 0; fi
+    [ "$carregado" = "1" ] || return 0
+    echo "instância ARMADA ($armado): desarme pelo app (ligar modo ensaio) antes de atualizar (validação)"; exit 3
+  done
+}
+guarda_armado
+
 # ── fase: código + venv ──────────────────────────────────────────────────────
 CODIGO_MUDOU=0
 instalar_codigo() {
@@ -269,21 +293,6 @@ EOF
 
   local mudou=1
   if [ -f "$plist" ] && cmp -s "$tmp" "$plist"; then mudou=0; fi
-  # Guarda pré-atualização (D12, 2026-09-03): com o serviço carregado e uma
-  # instância ARMADA (<id>_armed.json no estado do usuário do serviço), nem
-  # reescrever o plist nem reiniciar — o POST /v1/service/restart já recusa
-  # reinício armado e o kickstart daqui contornava esse veto. Sai 3 (validação),
-  # antes de tocar em qualquer arquivo desta fase.
-  if { [ "$mudou" = "1" ] || [ "$CODIGO_MUDOU" = "1" ]; } \
-     && launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1; then
-    local armado
-    for armado in "$STATE_DIR"/*_armed.json; do
-      if [ -e "$armado" ]; then
-        rm -f "$tmp"
-        echo "instância ARMADA ($armado): desarme pelo app (ligar modo ensaio) antes de atualizar (validação)"; exit 3
-      fi
-    done
-  fi
   if [ "$mudou" = "1" ]; then
     man_set "plist:$plist" pending
     install -m 0644 "$tmp" "$plist"
