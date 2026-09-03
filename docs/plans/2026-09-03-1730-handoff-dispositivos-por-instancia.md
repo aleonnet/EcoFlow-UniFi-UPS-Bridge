@@ -18,6 +18,14 @@ frente — a release foi produzida com `--no-gate` sobre essa rodada, declarado 
 `274 passed`; Swift `53 tests passed`. Revisão fria do diff C9–C13: 1 BLOCKER e 3 avisos
 corrigidos em `2d932ae`; segunda rodada APPROVED.
 
+**0.3.1 (mesmo dia):** o dono rodou o one-liner da 0.3.0 neste MacBook (não no mini) e o
+relatório disse "service v0.1.0" com ✔: um daemon de desenvolvimento de 2026-09-01 ocupava a
+porta 35493, o serviço instalado morria e o instalador não provava nada. A 0.3.1 (`b0cb16d`,
+release https://github.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/releases/tag/v0.3.1) só declara
+"provado" com o PID do job na porta da API, falha nomeando quem ocupa a porta, e tira o Swift do
+pré-voo no canal release. Gate: 46 cenas verdes (S9e, S9f novas; S15/B17 vermelha). Neste
+MacBook o processo intruso (PID 84834) ainda precisa ser encerrado pelo dono.
+
 ## Onde o estado real mora
 
 - Plano aprovado (com banca): `~/.claude/plans/este-foi-o-prompt-binary-sedgewick.md`.
