@@ -17,7 +17,7 @@
 # PATH. Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.1.0"
+VERSAO="0.2.0"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"

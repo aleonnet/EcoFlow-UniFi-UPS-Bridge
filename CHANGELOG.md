@@ -1,10 +1,40 @@
 # Changelog
 
-Formato de [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Ainda não há tags
-de versão: `0.1.0` é a versão declarada em `pyproject.toml`, `scripts/uninstall.sh` e
-`tools/build-app.sh`. O que veio depois dela está em `[Unreleased]`.
+Formato de [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). A partir da `v0.2.0`
+cada versão é uma tag `vX.Y.Z` que amarra as seis declarações de versão (`pyproject.toml`,
+`src/river_unifi_bridge/__init__.py`, `scripts/install.sh`, `scripts/uninstall.sh`,
+`tools/build-app.sh`, `river-bridge-install.sh`) e a seção correspondente aqui — conferido por
+`tools/release.sh --check`, que é quem produz a release. A `0.1.0` não teve tag. O que veio
+depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
+
+## [0.2.0] — 2026-09-02
+
+### Instalação e release
+- **Release no GitHub, produzida na máquina de desenvolvimento** por `tools/release.sh`:
+  gate, build do app, tag anotada, tarball do código **na tag**, `River-Bridge.app.zip` (ad-hoc,
+  arm64, por `ditto`) e `SHA256SUMS`, publicados com `gh release create` e conferidos pela mesma
+  URL que o instalador usa. `--check` exige as seis declarações de versão iguais e a seção do
+  CHANGELOG; `--dry-run` monta os assets sem taguear. Sem CI: não há `.github/`, e o runner
+  com macOS 26 não foi verificado.
+- **O one-liner passa a consumir a release** (canal `release`, default): lê o `SHA256SUMS` em
+  `releases/latest/download` só com `curl` (a tag vem do redirect), pina o tarball e o app,
+  baixa o app pronto (sha divergente = exit 3, nada instalado; sem Swift o app continua
+  chegando) e cai para o tarball de `main` com aviso quando a release não é alcançável. O
+  relatório e o `installer-last-run.log` dizem de onde veio o código (`fonte=`). Flags
+  `--release TAG` e `--from-main`. `RUB_SRC_URL` explícito implica canal `main`.
+- **Conserto de produção:** o desinstalador nunca era copiado para o prefixo, e o comando de
+  desinstalação do README apontava para um arquivo inexistente (medido no Mac mini em
+  2026-09-02). `scripts/install.sh` passa a instalá-lo em `$PREFIX/scripts` (classe `file:` do
+  manifesto) e o desinstalador remove também o próprio diretório.
+- Cercas: **S18** (canal release por `file://`, cinco rodadas, refutada com uma mutação por
+  rodada), **S19** (`release.sh --check` reprova um mutante com versão divergente citando o
+  arquivo), **S9/S10** passam a exigir o desinstalador no prefixo e a rodar a cópia instalada.
+- **Roadworthy no repositório:** `.roadworthy/docs.json` (árvore de documentos por papel e o
+  vocabulário de `status:` em português), `.roadworthy/gates` (os gates que o `close.sh` roda
+  numa árvore limpa) e `docs/decisions/` com a validação medida de 2026-09-02 e a decisão que
+  fecha a frente Wi‑Fi do River.
 
 ### App
 - Ajustes ganha o grupo **Dispositivos protegidos**: uma linha por aparelho, com o nome que
