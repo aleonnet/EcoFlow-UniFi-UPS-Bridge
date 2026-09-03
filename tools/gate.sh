@@ -287,6 +287,25 @@ else
     tail -3 /tmp/gate_inst_1.log /tmp/gate_inst_2.log
 fi
 
+# S9b — guarda pré-atualização (D12, 2026-09-03): serviço carregado + uma
+# instância ARMADA (<id>_armed.json no estado) → o instalador sai 3 SEM tocar no
+# plist nem reiniciar; sem o arquivo, a mesma atualização passa (rc 0). O estado
+# entra por RUB_STATE_DIR, que também muda o plist (força "mudou=1").
+mkdir -p "$INST/state"; : > "$INST/state/udr7_armed.json"
+cp "$INST/ld/com.river.unifi-bridge.plist" /tmp/gate_plist_antes 2>/dev/null || : > /tmp/gate_plist_antes
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9b.log 2>&1
+RC9B=$?
+PLIST_INTACTO=$(cmp -s /tmp/gate_plist_antes "$INST/ld/com.river.unifi-bridge.plist" && echo 1 || echo 0)
+rm -f "$INST/state/udr7_armed.json"
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9c.log 2>&1
+RC9C=$?
+if [ "$RC9B" = "3" ] && [ "$PLIST_INTACTO" = "1" ] && grep -q "ARMADA" /tmp/gate_inst_9b.log && [ "$RC9C" = "0" ]; then
+    ok "S9b guarda pré-atualização: armado → rc 3 e plist intacto; desarmado → rc 0"
+else
+    erro "S9b guarda pré-atualização: rc armado=$RC9B plist_intacto=$PLIST_INTACTO rc desarmado=$RC9C — caudas:"
+    tail -3 /tmp/gate_inst_9b.log /tmp/gate_inst_9c.log
+fi
+
 # S10 — uninstall (a CÓPIA INSTALADA, o caminho do README) remove o criado,
 # inclusive a si mesmo e o scripts/, e PRESERVA arquivo alheio.
 echo alheio > "$INST/prefix/arquivo-do-dono.txt"

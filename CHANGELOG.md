@@ -9,6 +9,35 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-03
+
+### Dispositivos protegidos por instância
+- **Escolher e adicionar dispositivos pela interface.** Em Ajustes → Dispositivos protegidos,
+  "Adicionar dispositivo…" abre uma folha em duas etapas: o tipo (Console UniFi (UDR7) ou
+  Computador ou servidor via SSH) e o formulário do tipo, com nome sugerido único. Cada
+  instância tem folha própria (nome, armamento, máquina e chave, limiares), interruptor,
+  badge de estado, cartão em Saúde, chip de filtro nos eventos e entrada na legenda do
+  gráfico. Remover é pelo rodapé da folha, com confirmação; uma instância armada não é removida.
+- **Segundo tipo: computador ou servidor via SSH.** Roda um comando de desligamento de uma
+  lista fechada (`shutdown -h now`, `poweroff`, `systemctl poweroff`, com e sem `sudo -n`,
+  cada um com fonte); nunca texto livre, nunca shell local.
+- **Várias instâncias do mesmo tipo**, cada uma com seus arquivos de estado
+  (`<id>_known_hosts`, `<id>_armed.json`, `<id>_runtime.json`), eventos com o dono no
+  payload (`device`, `device_name`) e coluna `device` no histórico.
+- **Migração sem toque:** no primeiro boot, o bloco `PROTECT_*`/`UDR7_*` do `.env` vira a
+  instância `udr7` em `<estado>/devices.json` (0600). O `.env` nunca é escrito no boot; os PUTs
+  pelo app (ou pelo app 0.2.0, via `/v1/config`) gravam nos dois. A trava `UDR7_ARM_ALLOWED`
+  continua global e somente arquivo; o ensaio passa a ser por instância. A série esperada e o
+  corte físico do River são do núcleo (valem para todas as instâncias) e ficam em Ajustes → River.
+- **API local:** `GET /v1/device-types`, `GET/POST /v1/devices`, `GET/PUT/DELETE /v1/devices/{id}`,
+  `GET /v1/events/log?device=`; recusas `{erro, motivo}` novas (`validacao`, `tipo_desconhecido`,
+  `armar_no_post`, `nome_duplicado`, `dispositivo_ausente`, `sem_loja`).
+- **Instalador:** recusa atualizar (código 3, sem reiniciar o serviço) enquanto existir uma
+  instância armada (`*_armed.json`) — o mesmo veto do `POST /v1/service/restart`. O
+  desinstalador lista o estado por padrão de nome e diz qual instância está armada.
+- Reversão para a 0.2.0: `--release v0.2.0`; o `.env` está sempre fiel à instância `udr7`.
+  Instâncias além dela ficam sem proteção até voltar à 0.3.0 (o `devices.json` fica intacto).
+
 ### Instalação
 - **Conserto de produção:** ao salvar Ajustes pelo app, o daemon respondia 500 ("Server got
   itself in trouble"): `$PREFIX/etc` era do root e o daemon, rodando como o usuário do

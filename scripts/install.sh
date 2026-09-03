@@ -17,7 +17,7 @@
 # PATH. Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.2.0"
+VERSAO="0.3.0"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
@@ -26,7 +26,7 @@ USER_HOME="$(eval echo "~$SERVICE_USER")"
 MANIFESTO="$PREFIX/manifest.tsv"
 LABEL_BRIDGE="com.river.unifi-bridge"
 LOG_AGENTE="$USER_HOME/Library/Logs/river-unifi-bridge.log"
-STATE_DIR="$USER_HOME/Library/Application Support/river-unifi-bridge"
+STATE_DIR="${RUB_STATE_DIR:-$USER_HOME/Library/Application Support/river-unifi-bridge}"
 
 DRYRUN=0; JSONPROG=0; CONSENT_BREW=0; FEZ=0
 INICIO=$(date +%s); PASSOS=""
@@ -269,6 +269,21 @@ EOF
 
   local mudou=1
   if [ -f "$plist" ] && cmp -s "$tmp" "$plist"; then mudou=0; fi
+  # Guarda pré-atualização (D12, 2026-09-03): com o serviço carregado e uma
+  # instância ARMADA (<id>_armed.json no estado do usuário do serviço), nem
+  # reescrever o plist nem reiniciar — o POST /v1/service/restart já recusa
+  # reinício armado e o kickstart daqui contornava esse veto. Sai 3 (validação),
+  # antes de tocar em qualquer arquivo desta fase.
+  if { [ "$mudou" = "1" ] || [ "$CODIGO_MUDOU" = "1" ]; } \
+     && launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1; then
+    local armado
+    for armado in "$STATE_DIR"/*_armed.json; do
+      if [ -e "$armado" ]; then
+        rm -f "$tmp"
+        echo "instância ARMADA ($armado): desarme pelo app (ligar modo ensaio) antes de atualizar (validação)"; exit 3
+      fi
+    done
+  fi
   if [ "$mudou" = "1" ]; then
     man_set "plist:$plist" pending
     install -m 0644 "$tmp" "$plist"

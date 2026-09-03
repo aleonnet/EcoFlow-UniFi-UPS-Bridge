@@ -16,8 +16,7 @@ segredo entra no repositório.
 | Daemon `river-unifi-bridge` (LaunchDaemon, lê o NUT, API local HTTP+SSE, histórico SQLite) | pronto |
 | App **River Bridge** (macOS 26, barra de menus + painel: energia, gráficos, eventos, saúde, ajustes) | pronto |
 | Simulador de UPS (`tools/fake-nut-ups`) para desenvolver sem o hardware | pronto |
-| Proteção do UDR7 (desligamento via SSH quando a bateria chega ao limiar) | **em ensaio** — nada é enviado ao console até você armar (ver [runbook](docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md)) |
-| Dispositivos protegidos, com o nome que você dá a cada um | o UDR7 é o primeiro; o nome aparece nos relatórios, nos gráficos e na saúde |
+| Dispositivos protegidos (desligamento via SSH quando a bateria chega ao limiar), adicionados pela interface | **em ensaio** por dispositivo — nada é enviado até você armar; dois tipos: Console UniFi (UDR7) ([runbook](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md)) e Computador ou servidor via SSH ([runbook](docs/guides/2026-09-03-1720-runbook-host-ssh.md)); várias instâncias do mesmo tipo, cada uma com o nome que você dá |
 | Driver NUT do RIVER físico (`usbhid-ups`, NUT ≥ 2.8.4) | pendente do hardware na bancada — o instalador detecta o RIVER no USB e deixa o passo marcado como pendente |
 | UDR7 exibir o RIVER como "UniFi UPS" | **sem caminho nativo documentado** — consoles UniFi não consomem UPS de terceiros ([pesquisa](docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md)) |
 
@@ -67,14 +66,17 @@ do usuário do serviço). O jeito normal de editar é pelo app → **Ajustes**; 
 | Bridge | `POLL_INTERVAL_SECONDS`, `EMULATE_MODEL`, `READ_ONLY` | ritmo de leitura |
 | Alarmes | `POWER_LOSS_DELAY_SECONDS`, `RESTORE_DELAY_SECONDS`, `COMM_LOSS_DELAY_SECONDS`, `LOW_BATTERY_PERCENT` | quando os eventos disparam (defaults com fonte em [docs/PESQUISA_PARAMETROS_UPS_20260831.md](docs/PESQUISA_PARAMETROS_UPS_20260831.md)) |
 | API local | `UI_API_ENABLED`, `UI_API_PORT`, `HISTORY_RETENTION_DAYS` | porta da API (35493) e retenção do histórico |
-| Proteção do UDR7 | `PROTECT_UDR7`, `PROTECT_DRY_RUN`, `UDR7_ARM_ALLOWED`, `UDR7_*` | host/porta/usuário/chave SSH do console, número de série esperado do RIVER, percentual de corte e de desligamento, confirmação, tentativas, MAC para Wake-on-LAN |
-| Nome do dispositivo | `UDR7_NAME` | como o aparelho é chamado nos relatórios e gráficos (1–32 caracteres). Muda a quente e **não** é congelada com a proteção armada |
+| River (núcleo da proteção) | `UDR7_EXPECTED_SERIAL`, `UDR7_CUTOFF_PERCENT` | número de série esperado do RIVER e corte físico da saída — valem para todos os dispositivos protegidos (Ajustes → River) |
+| Trava de armamento | `UDR7_ARM_ALLOWED` | global e somente arquivo: o app nunca a muda |
+| Espelho da instância `udr7` | `PROTECT_UDR7`, `PROTECT_DRY_RUN`, `UDR7_*` restantes, `UDR7_NAME` | desde a 0.3.0 os dispositivos são instâncias em `devices.json`, editadas pelo app; este bloco é lido uma vez na migração e depois só espelha a instância `udr7` |
 
-A proteção do UDR7 nasce desligada e em ensaio (`PROTECT_DRY_RUN=1`); armar de verdade exige
-três passos seus (`UDR7_ARM_ALLOWED=1` no arquivo + reinício, desligar o ensaio no app,
+Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige três passos seus
+(`UDR7_ARM_ALLOWED=1` no arquivo + reinício, desligar o ensaio na folha do dispositivo,
 `UDR7_ARM_ALLOWED=0` + reinício) e só é aceito com o RIVER real no NUT — o simulador nunca
-consegue armar. O passo a passo, as medições que fazer antes e a recuperação estão no
-[runbook](docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md).
+consegue armar. O instalador recusa atualizar o serviço enquanto houver um dispositivo armado.
+O passo a passo, as medições que fazer antes e a recuperação estão nos runbooks
+([UDR7](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md),
+[host SSH](docs/guides/2026-09-03-1720-runbook-host-ssh.md)).
 
 ## Operar
 
@@ -119,9 +121,9 @@ snapshot.
 ## Documentos
 
 - [Especificação](RIVER3PLUS_UNIFI_BRIDGE_SPEC_20260831.md) — a fonte de verdade das decisões.
-- [Runbook da proteção do UDR7](docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md).
+- [Runbook da proteção do UDR7 por instância](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md) e [do host SSH](docs/guides/2026-09-03-1720-runbook-host-ssh.md).
 - [Instalação em uma linha](docs/INSTALACAO_UMA_LINHA_20260901.md).
-- [API local](docs/API_LOCAL_20260831.md).
+- [API local](docs/reference/api-local.md).
 - Pesquisas: [UniFi × UPS de terceiros](docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md),
   [parâmetros de UPS](docs/PESQUISA_PARAMETROS_UPS_20260831.md),
   [RIVER 3 Plus e Wi-Fi](docs/PESQUISA_ECOFLOW_WIFI_20260901.md),

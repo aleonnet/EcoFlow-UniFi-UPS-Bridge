@@ -43,13 +43,18 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | Documento | Status | O que é |
 |---|---|---|
 | `2026-08-31-2345-pesquisa-udr7-ups-terceiros.md` | aceito | Por que um console UniFi não consome um UPS de terceiros — o veredito que originou a estratégia de agir de fora |
-| `2026-09-01-0817-runbook-protecao-udr7-ssh.md` | aceito | **Runbook operacional** da proteção do UDR7: preparar, medir, armar em 3 passos, desarmar, recuperar |
+| `2026-09-01-0817-runbook-protecao-udr7-ssh.md` | superado por `guides/2026-09-03-1710-…` | Runbook da proteção do UDR7 na era das 17 chaves planas do `.env` (0.1.0–0.2.0) |
 | `2026-09-01-2243-pesquisa-ssh-sota-udr7.md` | superado por `2026-09-02-0105-…` | SSH é o caminho para desligar o UDR7? **A conclusão "API para saber, SSH para agir" está ERRADA** — ver o documento que o supera |
 | `2026-09-02-0105-pesquisa-api-local-console-udr7.md` | proposto | A rota de desligamento local do console (a do botão **Shut Down**), medida e lida no aparelho; o que fecha as portas da via nativa; e o que continua sendo premissa |
 | `decisions/2026-09-02-2123-validacao-estado-e-programa-de-frentes.md` | aceito | **Validação medida** do repositório e do Mac mini contra os três objetivos do dono; correções de registro; o programa de frentes F0–F6 |
 | `decisions/2026-09-02-2124-wifi-do-river-fechado.md` | aceito | Wi‑Fi do River só fala com a nuvem: frente fechada; nuvem-para-visibilidade e BLE viram frentes próprias |
-| `plans/2026-09-02-2150-handoff-programa-de-frentes.md` | aceito | **Handoff vivo**: F0 e F1 executados, release 0.2.0 montada em dry-run, publicação aguardando decisão do dono sobre `login-state.png` |
-| `API_LOCAL_20260831.md` | — | Contrato da API local daemon ↔ app (§7A.3) |
+| `plans/2026-09-02-2150-handoff-programa-de-frentes.md` | superado por `plans/2026-09-03-1730-…` | Handoff do programa de frentes (F0 e F1 executados, release 0.2.0) |
+| `decisions/2026-09-03-1700-dispositivos-por-instancia.md` | proposto | **Dispositivos protegidos por instância** (0.3.0): as 16 decisões, a matriz de compatibilidade com a 0.2.0, o que foi medido nesta máquina e o bloco a medir no mini |
+| `guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md` | aceito | **Runbook** da proteção do UDR7 como instância: preparar, medir, armar em 3 passos, desarmar, recuperar, reverter para a 0.2.0 |
+| `guides/2026-09-03-1720-runbook-host-ssh.md` | aceito | **Runbook** do tipo "Computador ou servidor via SSH": chave por instância, `known_hosts`, `sudoers`, ensaio e armamento |
+| `reference/api-local.md` | — | **Contrato vivo** da API local daemon ↔ app: todas as rotas, inclusive `/v1/devices` e `/v1/device-types` |
+| `plans/2026-09-03-1730-handoff-dispositivos-por-instancia.md` | aceito | **Handoff vivo**: C1–C13 executados, o que falta (publicar e medir no mini), o próximo passo e o prompt para colar |
+| `API_LOCAL_20260831.md` | superado por `reference/api-local.md` | Contrato da API local até a 0.2.0 (sem as rotas de dispositivos) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
 | `PESQUISA_ECOFLOW_WIFI_20260901.md` | — | O River 3 Plus tem Wi-Fi local? (varredura de fontes) |

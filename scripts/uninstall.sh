@@ -8,7 +8,7 @@
 # as únicas remoções recursivas, após validar caminho literal e não-symlink.
 set -Eeuo pipefail
 
-VERSAO="0.2.0"
+VERSAO="0.3.0"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
 MANIFESTO="$PREFIX/manifest.tsv"
@@ -30,22 +30,25 @@ diga() { printf '│ %s\n' "$1"; }
 SERVICE_USER="${RUB_SERVICE_USER:-${SUDO_USER:-$(id -un)}}"
 USER_HOME="$(eval echo "~$SERVICE_USER")"
 STATE_DIR="${RUB_STATE_DIR:-$USER_HOME/Library/Application Support/river-unifi-bridge}"
+# Desde a 0.3.0 os dispositivos são INSTÂNCIAS, cada uma com os seus arquivos
+# (<id>_known_hosts, <id>_armed.json, <id>_runtime.json) e a loja devices.json:
+# a lista é por PADRÃO de nome, não por literal. "Está armado" = existe um
+# <id>_armed.json (o .env é só espelho da instância migrada e não decide mais).
 avisar_estado_daemon() {
   local item achou=0
-  for item in "$STATE_DIR/udr7_armed.json" "$STATE_DIR/udr7_runtime.json" \
-              "$STATE_DIR/udr7_known_hosts" "$STATE_DIR/ui-api.token" \
-              "$USER_HOME/.ssh/river-bridge-udr7" "$USER_HOME/.ssh/river-bridge-udr7.pub"; do
-    if [ -e "$item" ]; then
-      [ "$achou" = "0" ] && diga "AVISO — estado da proteção do UDR7 criado em runtime (não removido por este script):"
-      achou=1; diga "  $item"
-    fi
+  for item in "$STATE_DIR"/*_armed.json "$STATE_DIR"/*_runtime.json "$STATE_DIR"/*_known_hosts \
+              "$STATE_DIR/devices.json" "$STATE_DIR/ui-api.token" "$STATE_DIR/history.sqlite" \
+              "$USER_HOME"/.ssh/river-bridge-*; do
+    [ -e "$item" ] || continue
+    [ "$achou" = "0" ] && diga "AVISO — estado dos dispositivos protegidos criado em runtime (não removido por este script):"
+    achou=1; diga "  $item"
   done
-  if [ -f "$PREFIX/etc/bridge.env" ] && grep -q '^PROTECT_DRY_RUN=0' "$PREFIX/etc/bridge.env" 2>/dev/null; then
-    [ "$achou" = "0" ] && diga "AVISO — estado da proteção do UDR7:"
-    achou=1; diga "  $PREFIX/etc/bridge.env está ARMADO (PROTECT_DRY_RUN=0) — desarme pelo app ou edite antes de reinstalar"
-  fi
+  for item in "$STATE_DIR"/*_armed.json; do
+    [ -e "$item" ] || continue
+    diga "  $(basename "$item" _armed.json) está ARMADO — desarme pelo app (ligar modo ensaio) antes de reinstalar"
+  done
   if [ "$achou" = "1" ]; then
-    diga "  remoção manual (runbook docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md): apague os arquivos acima e a chave pública no console"
+    diga "  remoção manual (runbook docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md): apague os arquivos acima e a chave pública em cada máquina"
   fi
 }
 avisar_estado_daemon || true

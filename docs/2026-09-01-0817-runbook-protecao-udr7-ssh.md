@@ -1,5 +1,5 @@
 ---
-status: aceito
+status: superado por guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md
 ---
 
 # Runbook — Proteção do UDR7 pelo River (Fase 3'-EXP) — 2026-09-01

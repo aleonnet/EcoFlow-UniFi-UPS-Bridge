@@ -38,7 +38,7 @@
 # =============================================================================
 # shellcheck disable=SC2034  # paleta e glifos são globais da camada visual
 set -Eeuo pipefail
-RBI_VERSION="0.2.0"
+RBI_VERSION="0.3.0"
 E_USO=2; E_VALID=3; E_DEP=4; E_CONEXAO=10; E_FALHA=1; E_CANCEL=130
 _src="${BASH_SOURCE[0]:-$0}"
 REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
@@ -151,7 +151,7 @@ MSG_DB=(
 "verif_esperando|esperando a API local (127.0.0.1:%s)|waiting for the local API (127.0.0.1:%s)"
 "verif_sem_api|a API local não respondeu em %s s — veja %s|the local API did not answer in %s s — see %s"
 "verif_sem_token|token da API ainda não existe (%s) — o serviço não subiu?|API token does not exist yet (%s) — did the service start?"
-"verif_ok|serviço v%s · NUT %s · UDR7 %s · UniFi %s|service v%s · NUT %s · UDR7 %s · UniFi %s"
+"verif_ok|serviço v%s · NUT %s · UDR7 %s · UniFi %s · dispositivos: %s|service v%s · NUT %s · UDR7 %s · UniFi %s · devices: %s"
 "verif_pulada|verificação pulada (RUB_SKIP_HEALTH=1)|verification skipped (RUB_SKIP_HEALTH=1)"
 "confirmar|Instalar/atualizar o River Bridge nesta máquina?|Install/update River Bridge on this machine?"
 "sn_prompt|[s/N] |[y/N] "
@@ -168,7 +168,7 @@ MSG_DB=(
 "rel_norte|O River Bridge está na sua barra de menus.|River Bridge is in your menu bar."
 "rel_abrindo|abrindo o app…|opening the app…"
 "rel_sem_app|o app não foi instalado nesta execução (--no-app ou sem Swift); o serviço já está no ar.|the app was not installed in this run (--no-app or no Swift); the service is already up."
-"rel_udr7|a proteção do UDR7 nasce em ENSAIO — nada é enviado ao console até você armar; passo a passo em docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md|UDR7 protection starts in REHEARSAL — nothing is sent to the console until you arm it; step by step in docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md"
+"rel_udr7|cada dispositivo protegido nasce em ENSAIO — nada é enviado a ele até você armar; adicione e configure em Ajustes → Dispositivos protegidos; passo a passo em docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md|each protected device starts in REHEARSAL — nothing is sent to it until you arm it; add and configure under Settings → Protected devices; step by step in docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md"
 "prox_log|relatório desta execução: %s|this run's report: %s"
 "interrompido|interrompido na fase: %s (exit %s)|interrupted in phase: %s (exit %s)"
 "reexecutar_seguro|reexecutar é seguro: cada fase confere o estado e continua de onde parou|re-running is safe: each phase checks the state and continues where it stopped"
@@ -879,7 +879,8 @@ fase_verificacao() {
       "$SERVICO_VERSAO" \
       "$(printf '%s' "$health" | sed -n 's/.*"nut": *"\([^"]*\)".*/\1/p')" \
       "$(printf '%s' "$health" | sed -n 's/.*"udr7": *"\([^"]*\)".*/\1/p')" \
-      "$(printf '%s' "$health" | sed -n 's/.*"unifi": *"\([^"]*\)".*/\1/p')")"
+      "$(printf '%s' "$health" | sed -n 's/.*"unifi": *"\([^"]*\)".*/\1/p')" \
+      "$(printf '%s' "$health" | grep -o '"type": *"' | wc -l | tr -d ' ')")"
   return 0
 }
 

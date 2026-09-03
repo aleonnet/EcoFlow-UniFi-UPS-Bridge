@@ -1,5 +1,5 @@
 ---
-status: aceito
+status: superado por 2026-09-03-1730-handoff-dispositivos-por-instancia.md
 ---
 
 # Handoff — programa de frentes (release → prova de alcance) — 2026-09-02 21:50
