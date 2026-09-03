@@ -38,7 +38,7 @@
 # =============================================================================
 # shellcheck disable=SC2034  # paleta e glifos são globais da camada visual
 set -Eeuo pipefail
-RBI_VERSION="0.3.1"
+RBI_VERSION="0.3.2"
 E_USO=2; E_VALID=3; E_DEP=4; E_CONEXAO=10; E_FALHA=1; E_CANCEL=130
 _src="${BASH_SOURCE[0]:-$0}"
 REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
@@ -57,12 +57,12 @@ STATE_DIR="${RUB_STATE_DIR:-$HOME/Library/Application Support/river-unifi-bridge
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LABEL_BRIDGE="com.river.unifi-bridge"
 APP_DEST="${RUB_APP_DEST:-$HOME/Applications/River Bridge.app}"
-API_PORT="${RUB_API_PORT:-35493}"
+API_PORT="${RUB_API_PORT:-}"                   # vazio: lida do bridge.env instalado na verificação
 SUDO_CMD="${RUB_SUDO-sudo}"
 SERVICO_VERSAO=""                               # lida de /v1/version na verificação                     # RUB_SUDO="" no gate (stubs, sem root)
 TTY_DEV="${TTY_DEV:-/dev/tty}"                  # prompts leem daqui, nunca do stdin (curl | bash)
 OP_DRYRUN=0; OP_YES=0; OP_DEPS=0; OP_NOAPP=0; OP_DEMO=0; OP_NOOPEN=0
-FEZ=0; PASSOS_FEITOS=""; FASE_ATUAL=""; MAIN_INICIADO=0; PORTOES_ABERTOS=0
+FEZ=0; PASSOS_FEITOS=""; FASE_ATUAL=""; MAIN_INICIADO=0; PORTOES_ABERTOS=0; ULTIMA_FALHA=""
 
 # ── idioma: pt-BR/en-US pela locale do Mac; --lang força ─────────────────────
 IDIOMA="en"
@@ -91,14 +91,14 @@ MSG_DB=(
 "lang_invalido|--lang aceita pt ou en|--lang accepts pt or en"
 "fase_prevoo|Pré-voo|Pre-flight"
 "fase_fonte|Código-fonte|Source code"
-"fase_servico|Serviço (LaunchDaemon)|Service (LaunchDaemon)"
+"fase_servico|Serviço|Service"
 "fase_app|River Bridge.app|River Bridge.app"
 "fase_verificacao|Verificação|Verification"
 "nao_macos|este instalador é para macOS (launchd, Homebrew, .app)|this installer is for macOS (launchd, Homebrew, .app)"
 "macos_ok|macOS %s · %s · v%s|macOS %s · %s · v%s"
 "dry_aviso|DRY-RUN: só leitura — nada é baixado, escrito ou instalado|DRY-RUN: read-only — nothing is downloaded, written or installed"
 "sem_ferramenta|%s ausente — faz parte do macOS; algo está errado com o sistema|%s missing — it ships with macOS; something is wrong with the system"
-"brew_ok|Homebrew em %s|Homebrew at %s"
+"brew_ok|Homebrew presente|Homebrew present"
 "brew_falta|Homebrew ausente — o serviço precisa dele (nut, python@3.13)|Homebrew missing — the service needs it (nut, python@3.13)"
 "brew_dica|instale-o (https://brew.sh) ou rode de novo com --install-deps (instalador oficial, sem perguntas)|install it (https://brew.sh) or run again with --install-deps (official installer, no questions)"
 "brew_instalando|instalando o Homebrew (instalador oficial, NONINTERACTIVE)|installing Homebrew (official installer, NONINTERACTIVE)"
@@ -108,16 +108,16 @@ MSG_DB=(
 "rel_buscando|release: %s|release: %s"
 "rel_indisponivel|release indisponível (curl %s) — usando o tarball de main|release unavailable (curl %s) — using the main tarball"
 "rel_sem_tarball|SHA256SUMS da release sem o tarball do código — usando o tarball de main|release SHA256SUMS lacks the source tarball — using the main tarball"
-"rel_ok|release: tarball e app pinados pelo SHA256SUMS|release: tarball and app pinned by SHA256SUMS"
+"rel_ok|release conferida: código e app vêm com assinatura de integridade|release checked: code and app come with an integrity signature"
 "rel_fonte|código: %s|code: %s"
 "app_baixando|baixando o app pronto de %s|downloading the prebuilt app from %s"
 "app_download_falhou|download do app falhou (%s) — compilando localmente, se houver Swift|app download failed (%s) — building locally, if Swift is available"
-"app_sha_div|SHA-256 do River-Bridge.app.zip diverge do SHA256SUMS da release — recusado|River-Bridge.app.zip SHA-256 differs from the release SHA256SUMS — refused"
+"app_sha_div|o app baixado não bate com a assinatura de integridade da release — recusado por segurança. Rode de novo; se repetir, avise: a release está corrompida.|the downloaded app does not match the release integrity signature — refused for safety. Run again; if it repeats, report it: the release is corrupted."
 "app_zip_invalido|o zip da release não trouxe River Bridge.app — compilando localmente, se houver Swift|the release zip has no River Bridge.app — building locally, if Swift is available"
 "app_assinatura|a assinatura do app baixado não verifica (codesign) — seguindo, ad-hoc|the downloaded app signature does not verify (codesign) — continuing, ad-hoc"
 "app_da_release|app pronto da release %s|prebuilt app from release %s"
-"verif_sem_versao|não li a versão do código instalado em %s/src/river_unifi_bridge/__init__.py — sem ela a verificação não prova nada|could not read the installed code version at %s/src/river_unifi_bridge/__init__.py — without it the check proves nothing"
-"verif_outro_processo|o código instalado é v%s, mas quem responde em 127.0.0.1:%s é v%s (%s) — o serviço instalado não está no ar; encerre esse processo e rode de novo|the installed code is v%s, but what answers on 127.0.0.1:%s is v%s (%s) — the installed service is not up; stop that process and run again"
+"verif_sem_versao|o código baixado está incompleto (não tem a versão do serviço). Rode a instalação de novo; se repetir, o download está corrompido.|the downloaded code is incomplete (no service version in it). Run the installer again; if it repeats, the download is corrupted."
+"verif_outro_processo|quem responde na porta %s não é o serviço instalado (é %s, na versão %s). Feche esse programa e rode a instalação de novo.|what answers on port %s is not the installed service (it is %s, version %s). Close that program and run the installer again."
 "sudo_pede|o sudo vai pedir sua senha UMA vez (quem pergunta é o sudo; o instalador não guarda nem repassa)|sudo will ask for your password ONCE (sudo asks; the installer never stores or forwards it)"
 "sudo_sem_tty|sem terminal para o sudo — rode num terminal interativo, ou 'sudo -v' antes|no terminal for sudo — run in an interactive terminal, or 'sudo -v' first"
 "sudo_recusado|sudo recusado|sudo refused"
@@ -127,30 +127,35 @@ MSG_DB=(
 "fonte_baixando|baixando o código de %s|downloading the code from %s"
 "fonte_dry|(dry-run) baixaria %s para %s e extrairia em %s|(dry-run) would download %s to %s and extract it under %s"
 "fonte_falhou|download falhou (%s) — repositório privado, sem rede ou URL errada; use --src DIR ou RUB_SRC_URL|download failed (%s) — private repository, no network or wrong URL; use --src DIR or RUB_SRC_URL"
-"fonte_sha_div|SHA-256 do tarball diverge do pino (RUB_SRC_SHA256 ou SHA256SUMS da release) — recusado|tarball SHA-256 differs from the pin (RUB_SRC_SHA256 or the release SHA256SUMS) — refused"
-"fonte_sha|tarball %s · sha256 %s|tarball %s · sha256 %s"
-"fonte_cache|código já no cache (%s)|code already cached (%s)"
-"fonte_extraida|código em %s|code at %s"
+"fonte_sha_div|o código baixado não bate com a assinatura de integridade da release — recusado por segurança. Rode de novo; se repetir, avise: a release está corrompida.|the downloaded code does not match the release integrity signature — refused for safety. Run again; if it repeats, report it: the release is corrupted."
+"fonte_sha|código baixado (%s)|code downloaded (%s)"
+"fonte_cache|código já estava baixado|code was already downloaded"
+"fonte_extraida|código pronto para instalar|code ready to install"
 "fonte_sem_install|o tarball não trouxe scripts/install.sh — árvore inesperada|the tarball has no scripts/install.sh — unexpected tree"
 "servico_dry|(dry-run) plano do instalador do serviço:|(dry-run) service installer plan:"
-"servico_dry_remoto|scripts/install.sh --dry-run (após baixar o código-fonte)|scripts/install.sh --dry-run (after downloading the source)"
-"servico_rodando|sudo scripts/install.sh --consent-homebrew (brew nut + python, código, venv, config, LaunchDaemon)|sudo scripts/install.sh --consent-homebrew (brew nut + python, code, venv, config, LaunchDaemon)"
-"servico_spin|instalando o serviço (sudo scripts/install.sh)|installing the service (sudo scripts/install.sh)"
+"servico_dry_remoto|o plano do serviço só aparece depois de baixar o código|the service plan only shows after the source is downloaded"
+"servico_rodando|o serviço é instalado com sudo: Homebrew (nut e python), código, ambiente, configuração e o serviço do sistema|the service is installed with sudo: Homebrew (nut and python), code, environment, configuration and the system service"
+"servico_spin|instalando o serviço|installing the service"
 "servico_ok|serviço instalado/atualizado|service installed/updated"
 "servico_ja|serviço já estava atual|service already up to date"
-"servico_falhou|scripts/install.sh falhou (exit %s) — cauda:|scripts/install.sh failed (exit %s) — tail:"
+"servico_falhou|a instalação do serviço parou:|the service installation stopped:"
+"servico_detalhes|detalhes técnicos em %s|technical details in %s"
 "app_dry|(dry-run) baixaria o River-Bridge.app.zip da release (ou compilaria com swift build -c release) e instalaria em %s se o binário mudasse|(dry-run) would download River-Bridge.app.zip from the release (or build with swift build -c release) and install to %s if the binary changed"
 "app_pulado|app pulado (--no-app)|app skipped (--no-app)"
 "app_compilando|swift build -c release (primeira vez pode levar alguns minutos)|swift build -c release (the first time may take a few minutes)"
-"app_falhou|compilação do app falhou — cauda:|app build failed — tail:"
+"app_falhou|a compilação do app falhou (o serviço já está instalado). Detalhes técnicos em %s|the app build failed (the service is already installed). Technical details in %s"
 "app_ja|app já está atual em %s|app already current at %s"
 "app_instalado|app instalado em %s|app installed at %s"
 "app_reaberto|app estava aberto: fechado e reaberto com a versão nova|app was open: closed and reopened with the new version"
 "verif_dry|(dry-run) aqui eu esperaria a API local em 127.0.0.1:%s e leria /v1/version e /v1/health|(dry-run) here I would wait for the local API on 127.0.0.1:%s and read /v1/version and /v1/health"
 "verif_esperando|esperando a API local (127.0.0.1:%s)|waiting for the local API (127.0.0.1:%s)"
-"verif_sem_api|a API local não respondeu em %s s — veja %s|the local API did not answer in %s s — see %s"
-"verif_sem_token|token da API ainda não existe (%s) — o serviço não subiu?|API token does not exist yet (%s) — did the service start?"
-"verif_ok|serviço v%s · NUT %s · UDR7 %s · UniFi %s · dispositivos: %s|service v%s · NUT %s · UDR7 %s · UniFi %s · devices: %s"
+"verif_sem_api|o serviço foi instalado, mas não respondeu em %s segundos. Veja as últimas linhas de %s e rode a instalação de novo.|the service was installed but did not answer within %s seconds. Check the last lines of %s and run the installer again."
+"verif_sem_token|o serviço foi instalado, mas não chegou a subir (o arquivo de acesso não foi criado em 30 s). Veja as últimas linhas de %s e rode a instalação de novo.|the service was installed but never came up (its access file was not created within 30 s). Check the last lines of %s and run the installer again."
+"verif_ok|serviço v%s no ar · NUT: %s · dispositivos protegidos: %s|service v%s up · NUT: %s · protected devices: %s"
+"nut_ok|ok|ok"
+"nut_sem|sem dados ainda (o River não está ligado, ou o NUT ainda não respondeu)|no data yet (the River is not plugged in, or NUT has not answered yet)"
+"nut_falha|com falha — o NUT não respondeu; veja Saúde no app|failing — NUT did not answer; see Health in the app"
+"nut_nao_lido|não lido|not read"
 "verif_pulada|verificação pulada (RUB_SKIP_HEALTH=1)|verification skipped (RUB_SKIP_HEALTH=1)"
 "confirmar|Instalar/atualizar o River Bridge nesta máquina?|Install/update River Bridge on this machine?"
 "sn_prompt|[s/N] |[y/N] "
@@ -161,16 +166,20 @@ MSG_DB=(
 "rel_titulo_ja|Nada a fazer — tudo já estava no lugar|Nothing to do — everything was already in place"
 "rel_tempo|concluído em %s|done in %s"
 "rel_instalado|O que ficou instalado nesta máquina:|Installed on this machine:"
-"rel_i_servico|o serviço river-unifi-bridge%s — LaunchDaemon com.river.unifi-bridge, lendo o NUT em 127.0.0.1|the river-unifi-bridge service%s — LaunchDaemon com.river.unifi-bridge, reading NUT at 127.0.0.1"
+"rel_i_servico|o serviço River Bridge%s — sobe sozinho com o Mac e conversa com o NUT local|the River Bridge service%s — starts with the Mac and talks to the local NUT"
 "rel_i_app|o app River Bridge — %s|the River Bridge app — %s"
 "rel_i_config|sua configuração — %s/etc/bridge.env (edite pelo app → Ajustes)|your configuration — %s/etc/bridge.env (edit via the app → Settings)"
 "rel_norte|O River Bridge está na sua barra de menus.|River Bridge is in your menu bar."
 "rel_abrindo|abrindo o app…|opening the app…"
 "rel_sem_app|o app não foi instalado nesta execução (--no-app ou sem Swift); o serviço já está no ar.|the app was not installed in this run (--no-app or no Swift); the service is already up."
-"rel_udr7|cada dispositivo protegido nasce em ENSAIO — nada é enviado a ele até você armar; adicione e configure em Ajustes → Dispositivos protegidos; passo a passo em docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md|each protected device starts in REHEARSAL — nothing is sent to it until you arm it; add and configure under Settings → Protected devices; step by step in docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md"
+"rel_udr7|cada dispositivo protegido nasce em ensaio — nada é desligado até você armar. Adicione e configure em Ajustes → Dispositivos protegidos.|each protected device starts in rehearsal — nothing is shut down until you arm it. Add and configure under Settings → Protected devices."
 "prox_log|relatório desta execução: %s|this run's report: %s"
-"interrompido|interrompido na fase: %s (exit %s)|interrupted in phase: %s (exit %s)"
-"reexecutar_seguro|reexecutar é seguro: cada fase confere o estado e continua de onde parou|re-running is safe: each phase checks the state and continues where it stopped"
+"interrompido|parou na fase: %s|stopped in phase: %s"
+"reexecutar_seguro|rodar de novo é seguro: cada fase confere o que já está feito e continua de onde parou|running again is safe: each phase checks what is already done and continues where it stopped"
+"status_feito|Feito até aqui:|Done so far:"
+"status_nada|nada ainda|nothing yet"
+"status_faltou|Faltou:|Not done:"
+"status_proximo|O que fazer agora: %s|What to do now: %s"
 "portao|portão aberto (só avisa em dry-run): %s|gate open (warn-only in dry-run): %s"
 )
 
@@ -348,7 +357,7 @@ ui_spin() { # ui_spin "rótulo" <pid>
   case "$rc" in
     0)   ui_ok "$label" ;;
     100) ui_skip "$label" ;;
-    *)   ui_err "$label  (exit $rc)" ;;
+    *)   ui_err "$label" ;;   # o código vai ao registro (last-run), não à tela
   esac
   return "$rc"
 }
@@ -601,7 +610,7 @@ ui_banner() {
 # INFRA: prompts sob pipe, sudo uma vez, fases, trap único
 # =============================================================================
 tem_tty() { [ -r "$TTY_DEV" ] && [ -w "$TTY_DEV" ] || return 1; ( : <"$TTY_DEV" ) 2>/dev/null; }
-morrer() { local rc="$1"; shift; ui_err "$*"; exit "$rc"; }
+morrer() { local rc="$1"; shift; ULTIMA_FALHA="$*"; ui_err "$*"; exit "$rc"; }
 portao() { # <mensagem> — em dry-run só avisa e conta; fora dele, morre com E_DEP
   if [ "$OP_DRYRUN" = "1" ]; then ui_warn "$(msg portao "$1")"; PORTOES_ABERTOS=$(( PORTOES_ABERTOS + 1 )); return 0; fi
   morrer "$E_DEP" "$1"
@@ -660,7 +669,11 @@ relatorio_final() {
   printf '\n  %s%s%s %s\n\n' "$C_CYAN" "$UI_G_INFO" "$NC" "$(msg prox_log "$LAST_RUN")"
   return 0
 }
-fase() { FASE_ATUAL="$1"; UI_BAR_N=$(( UI_BAR_N + 1 )); ui_phase "$1"; }
+FASES_TODAS=(); FASES_RESTANTES=()
+fase() {
+  FASE_ATUAL="$1"; UI_BAR_N=$(( UI_BAR_N + 1 )); ui_phase "$1"
+  [ "${#FASES_TODAS[@]}" -gt 0 ] && FASES_RESTANTES=("${FASES_TODAS[@]:$(( UI_BAR_N - 1 ))}") || true
+}
 LAST_RUN="$STATE_DIR/installer-last-run.log"
 limpar() {
   local rc=$?
@@ -671,7 +684,19 @@ limpar() {
       } > "$LAST_RUN"; } 2>/dev/null || true
   fi
   if [ "$rc" != "0" ] && [ "$rc" != "100" ] && [ -n "$FASE_ATUAL" ]; then
-    printf '\n' >&2; ui_err "$(msg interrompido "$FASE_ATUAL" "$rc")"; ui_info "$(msg reexecutar_seguro)" >&2
+    # O status humano ao final de uma falha (dono, 2026-09-03): o que foi feito,
+    # o que faltou e a UMA coisa a fazer agora. O código de saída vai ao log.
+    UI_BAR_TOTAL=0; ui_bar_limpa   # a barra não é redesenhada depois do status (senão cola no prompt)
+    printf '\n' >&2; ui_err "$(msg interrompido "$FASE_ATUAL")"
+    ui_linha "$(msg status_feito)" >&2
+    if [ -n "$PASSOS_FEITOS" ]; then printf '%s' "$PASSOS_FEITOS" | sed "s/^/$(printf '%s' "$UI_GUT")  ${C_GREEN}${UI_G_OK}${NC} /" >&2
+    else ui_linha "  $(msg status_nada)" >&2; fi
+    ui_linha "$(msg status_faltou)" >&2
+    # bash 3.2 (o /bin/bash do macOS, sob `curl | bash`) trata array vazio como
+    # variável indefinida sob `set -u` — medido em 2026-09-03; a guarda ${A[@]+…} evita.
+    local f; for f in ${FASES_RESTANTES[@]+"${FASES_RESTANTES[@]}"}; do ui_linha "  ${C_MUTED}${UI_G_SKIP}${NC} $f" >&2; done
+    [ -n "$ULTIMA_FALHA" ] && ui_warn "$(msg status_proximo "$ULTIMA_FALHA")" >&2
+    ui_info "$(msg reexecutar_seguro)" >&2
   fi
   exit "$rc"
 }
@@ -689,7 +714,7 @@ fase_prevoo() {
   for f in curl tar shasum; do command -v "$f" >/dev/null 2>&1 || morrer "$E_DEP" "$(msg sem_ferramenta "$f")"; done
   for f in /opt/homebrew/bin/brew /usr/local/bin/brew; do [ -x "$f" ] && BREW="$f" && break; done
   [ -z "$BREW" ] && BREW="$(command -v brew 2>/dev/null || true)"
-  if [ -n "$BREW" ]; then ok "$(msg brew_ok "$BREW")"
+  if [ -n "$BREW" ]; then ok "$(msg brew_ok)"
   elif [ "$OP_DEPS" = "1" ] && [ "$OP_DRYRUN" = "0" ]; then
     garantir_sudo
     ui_info "$(msg brew_instalando)"
@@ -697,7 +722,7 @@ fase_prevoo() {
       || morrer "$E_DEP" "$(msg brew_falhou)"
     for f in /opt/homebrew/bin/brew /usr/local/bin/brew; do [ -x "$f" ] && BREW="$f" && break; done
     [ -n "$BREW" ] || morrer "$E_DEP" "$(msg brew_falhou)"
-    ok "$(msg brew_ok "$BREW")"; FEZ=1
+    ok "$(msg brew_ok)"; FEZ=1
   else
     ui_warn "$(msg brew_falta)"; portao "$(msg brew_dica)"
   fi
@@ -762,16 +787,16 @@ fase_fonte() { # define SRC_DIR (árvore com scripts/install.sh)
     RELEASE_TAG="$(tar -tzf "$tgz" 2>/dev/null | sed -n 's|^river-unifi-bridge-\(v[^/]*\)/.*|\1|p' | head -1)"
     FONTE="release ${RELEASE_TAG:-?}"
   else FONTE="main ${sha:0:12}"; fi
-  ok "$(msg fonte_sha "$(du -h "$tgz" | cut -f1 | tr -d ' ')" "${sha:0:12}")"
+  ok "$(msg fonte_sha "$(du -h "$tgz" | cut -f1 | tr -d ' ')")"
   dest="$CACHE_DIR/src-${sha:0:12}"
   if [ -x "$dest/scripts/install.sh" ]; then
-    ui_info "$(msg fonte_cache "$dest")"; SRC_DIR="$dest"; return 100
+    ui_info "$(msg fonte_cache)"; SRC_DIR="$dest"; return 100
   fi
   rm -rf "$dest.parcial"; mkdir -p "$dest.parcial"
   tar -xzf "$tgz" -C "$dest.parcial" --strip-components=1
   [ -x "$dest.parcial/scripts/install.sh" ] || { rm -rf "$dest.parcial"; morrer "$E_VALID" "$(msg fonte_sem_install)"; }
   rm -rf "$dest"; mv "$dest.parcial" "$dest"
-  SRC_DIR="$dest"; ok "$(msg fonte_extraida "$dest")"; FEZ=1; return 0
+  SRC_DIR="$dest"; ok "$(msg fonte_extraida)"; FEZ=1; return 0
 }
 
 fase_servico() {
@@ -780,7 +805,7 @@ fase_servico() {
   if [ "$OP_DRYRUN" = "1" ]; then
     ui_info "$(msg servico_dry)"
     if [ -n "$SRC_DIR" ]; then
-      ( cd "$SRC_DIR" && "./scripts/install.sh" --dry-run 2>&1 ) | sed "s/^/$(printf '%s' "$UI_GUT")  /" || true
+      ( cd "$SRC_DIR" && "./scripts/install.sh" --dry-run 2>&1 ) | grep -E '^(│|✖)' | sed "s/^/$(printf '%s' "$UI_GUT")  /" || true
     else ui_linha "  $(msg servico_dry_remoto)"; fi
     return 0
   fi
@@ -794,7 +819,14 @@ fase_servico() {
   case "$rc" in
     0)   ok "$(msg servico_ok)"; FEZ=1; return 0 ;;
     100) ui_skip "$(msg servico_ja)"; return 100 ;;
-    *)   ui_err "$(msg servico_falhou "$rc")"; tail -8 "$log" | sed 's/^/    /' >&2; exit "$E_FALHA" ;;
+    *)
+      # A pessoa vê a frase `✖` do instalador (humana); o resto fica no log.
+      # Recusas de validação (3) e dependência (4) mantêm o código; o resto é 1.
+      local motivo; motivo="$(grep '^✖ ' "$log" 2>/dev/null | tail -1 | sed 's/^✖ //')"
+      ui_err "$(msg servico_falhou)"
+      if [ -n "$motivo" ]; then ui_err "  $motivo"; ULTIMA_FALHA="$motivo"; else tail -3 "$log" | sed 's/^/    /' >&2; fi
+      ui_info "$(msg servico_detalhes "$log")"
+      case "$rc" in 3|4) exit "$rc" ;; *) exit "$E_FALHA" ;; esac ;;
   esac
 }
 
@@ -854,26 +886,33 @@ fase_app() {
     local log="$CACHE_DIR/build-app.log" rc=0
     ( cd "$SRC_DIR" && ./tools/build-app.sh ) >"$log" 2>&1 &
     ui_spin "$(msg app_compilando)" $! || rc=$?
-    [ "$rc" = "0" ] || { ui_err "$(msg app_falhou)"; tail -8 "$log" | sed 's/^/    /' >&2; exit "$E_FALHA"; }
+    [ "$rc" = "0" ] || morrer "$E_FALHA" "$(msg app_falhou "$log")"
     APP_NOVO="$SRC_DIR/macos/RiverBridge/dist/River Bridge.app"
   fi
   instalar_app_bundle "$APP_NOVO"
 }
 
+# A porta é a do bridge.env INSTALADO (a pessoa pode ter trocado UI_API_PORT a
+# pedido do instalador): lida como o daemon a lê (strip); 35493 sem o arquivo.
+porta_instalada() {
+  [ -n "$API_PORT" ] && { printf '%s' "$API_PORT"; return 0; }
+  { sed -n 's/^[[:space:]]*UI_API_PORT[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1 | grep . ; } || echo 35493
+}
 fase_verificacao() {
   fase "$(msg fase_verificacao)"
-  if [ "$OP_DRYRUN" = "1" ]; then ui_info "$(msg verif_dry "$API_PORT")"; return 0; fi
+  if [ "$OP_DRYRUN" = "1" ]; then ui_info "$(msg verif_dry "$(porta_instalada)")"; return 0; fi
   if [ "${RUB_SKIP_HEALTH:-0}" = "1" ]; then ui_skip "$(msg verif_pulada)"; return 100; fi
+  API_PORT="$(porta_instalada)"
   local token_f="$STATE_DIR/ui-api.token" i T ver health
   for i in $(seq 1 30); do [ -s "$token_f" ] && break; sleep 1; done
-  [ -s "$token_f" ] || { ui_warn "$(msg verif_sem_token "$token_f")"; return 100; }
+  [ -s "$token_f" ] || morrer "$E_FALHA" "$(msg verif_sem_token "$HOME/Library/Logs/river-unifi-bridge.log")"
   T="$(cat "$token_f")"
   ui_info "$(msg verif_esperando "$API_PORT")"
   for i in $(seq 1 30); do
     ver="$(curl -sf -m 2 -H "Authorization: Bearer $T" "http://127.0.0.1:$API_PORT/v1/version" 2>/dev/null || true)"
     [ -n "$ver" ] && break; sleep 1
   done
-  [ -n "$ver" ] || { ui_warn "$(msg verif_sem_api 30 "$HOME/Library/Logs/river-unifi-bridge.log")"; return 100; }
+  [ -n "$ver" ] || morrer "$E_FALHA" "$(msg verif_sem_api 30 "$HOME/Library/Logs/river-unifi-bridge.log")"
   health="$(curl -sf -m 2 -H "Authorization: Bearer $T" "http://127.0.0.1:$API_PORT/v1/health" 2>/dev/null || true)"
   SERVICO_VERSAO="$(printf '%s' "$ver" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
   # Quem responde tem de ser o serviço que acabou de ser instalado — versão do
@@ -881,17 +920,15 @@ fase_verificacao() {
   # respondia v0.1.0, o instalado morria ("API local não subiu") e isto era só
   # um aviso seguido de ✔. Agora é falha, nomeando quem ocupa a porta.
   local instalada; instalada="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' "$SRC_DIR/src/river_unifi_bridge/__init__.py" 2>/dev/null | head -1)"
-  [ -n "$instalada" ] || morrer "$E_FALHA" "$(msg verif_sem_versao "$SRC_DIR")"
+  [ -n "$instalada" ] || morrer "$E_FALHA" "$(msg verif_sem_versao)"
   if [ "$SERVICO_VERSAO" != "$instalada" ]; then
-    local ouvinte; ouvinte="$(/usr/sbin/lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print "PID " $2 " " $1}')"
-    morrer "$E_FALHA" "$(msg verif_outro_processo "$instalada" "$API_PORT" "$SERVICO_VERSAO" "${ouvinte:-?}")"
+    local opid onome=""; opid="$({ /usr/sbin/lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; } || true)"
+    [ -n "$opid" ] && { onome="$(ps -o comm= -p "$opid" 2>/dev/null | head -1)"; onome="${onome##*/}"; }
+    morrer "$E_FALHA" "$(msg verif_outro_processo "$API_PORT" "${onome:-desconhecido}" "$SERVICO_VERSAO")"
   fi
-  ok "$(msg verif_ok \
-      "$SERVICO_VERSAO" \
-      "$(printf '%s' "$health" | sed -n 's/.*"nut": *"\([^"]*\)".*/\1/p')" \
-      "$(printf '%s' "$health" | sed -n 's/.*"udr7": *"\([^"]*\)".*/\1/p')" \
-      "$(printf '%s' "$health" | sed -n 's/.*"unifi": *"\([^"]*\)".*/\1/p')" \
-      "$(printf '%s' "$health" | grep -o '"type": *"' | wc -l | tr -d ' ')")"
+  local nut; nut="$(printf '%s' "$health" | sed -n 's/.*"nut": *"\([^"]*\)".*/\1/p')"
+  case "$nut" in ok) nut="$(msg nut_ok)" ;; sem_dados) nut="$(msg nut_sem)" ;; falha) nut="$(msg nut_falha)" ;; *) nut="$(msg nut_nao_lido)" ;; esac
+  ok "$(msg verif_ok "$SERVICO_VERSAO" "$nut" "$(printf '%s' "$health" | grep -o '"type": *"' | wc -l | tr -d ' ')")"
   return 0
 }
 
@@ -954,6 +991,7 @@ main() {
   MAIN_INICIADO=1
   local t0=$SECONDS rc r
   UI_BAR_TOTAL=5; UI_BAR_N=0
+  FASES_TODAS=("$(msg fase_prevoo)" "$(msg fase_fonte)" "$(msg fase_servico)" "$(msg fase_app)" "$(msg fase_verificacao)")
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
     ui_banner "$(msg titulo)" "$(msg subtitulo) ${UI_G_SEP} v${RBI_VERSION}"
   else

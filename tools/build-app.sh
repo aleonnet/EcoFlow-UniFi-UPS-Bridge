@@ -8,7 +8,7 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$RAIZ/macos/RiverBridge"
 DIST="$PKG/dist"
 APP="$DIST/River Bridge.app"
-VERSAO="0.3.1"
+VERSAO="0.3.2"
 
 echo "│ swift build -c release"
 (cd "$PKG" && swift build -c release >/dev/null)

@@ -9,6 +9,29 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-09-03
+
+### Instalação — revisão inteira dos dois instaladores (dono: "trate TUDO")
+- **Toda checagem que pode recusar roda antes da primeira mutação** (`scripts/install.sh`):
+  macOS, sudo, Homebrew, dispositivo armado, **quem está na porta da API**, versão do NUT. Recusar
+  no meio deixava metade da atualização em disco (medido em 2026-09-03).
+- **Uma cópia do nosso serviço rodando fora do launchd** (resto de sessão de desenvolvimento) é
+  **encerrada pelo próprio instalador**, que segue e prova o serviço instalado na porta; antes,
+  o serviço novo morria de porta ocupada e a pessoa era mandada matar processos na mão.
+- **Um programa alheio na porta** é recusado (código 3) com o nome do programa e a saída
+  (fechar, ou trocar `UI_API_PORT` no `bridge.env`) — sem PID nem linha de comando na tela.
+- **Duas vozes na saída**: as linhas `│` são para a pessoa (o que aconteceu, o que foi feito, o
+  que falta); as linhas `#` são o registro técnico. O one-liner mostra à pessoa a frase da
+  falha e onde estão os detalhes, em vez da cauda crua do log. `manifesto`, `COMM_LOST`, `PID`,
+  `kickstart`, `(exit N)` saem da tela.
+- **Ao final de qualquer falha**: *Feito até aqui* (o que ficou), *Faltou* (as fases não
+  concluídas) e *O que fazer agora* (uma frase). A verificação final fecha: serviço que não
+  sobe ou não responde é falha (código 1), não aviso com ✔.
+- **Prova com launchd real, sem root**: seam `RUB_LAUNCHD_DOMAIN=gui/<uid>` (e `RUB_LOG_FILE`);
+  cena **S9g** do gate instala de verdade no domínio do usuário e prova (1) o PID do job na
+  porta, (2) o serviço antigo fora do launchd encerrado e substituído, (3) o programa alheio
+  recusado antes de tocar em nada.
+
 ## [0.3.1] — 2026-09-03
 
 ### Instalação

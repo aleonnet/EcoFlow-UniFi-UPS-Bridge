@@ -308,7 +308,7 @@ env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consen
 RC9C=$?
 CODIGO_TROCADO=$(grep -q "^# marca S9b$" "$MARCA" && echo 0 || echo 1)
 REINICIOU=$(grep -Eq "recarregado|kickstart" /tmp/gate_inst_9c.log && echo 1 || echo 0)
-if [ "$RC9B" = "3" ] && [ "$PLIST_INTACTO" = "1" ] && [ "$CODIGO_INTACTO" = "1" ] && grep -q "ARMADA" /tmp/gate_inst_9b.log \
+if [ "$RC9B" = "3" ] && [ "$PLIST_INTACTO" = "1" ] && [ "$CODIGO_INTACTO" = "1" ] && grep -q "ARMADO" /tmp/gate_inst_9b.log \
    && [ "$RC9C" = "0" ] && [ "$CODIGO_TROCADO" = "1" ] && [ "$REINICIOU" = "1" ]; then
     ok "S9b guarda pré-atualização: armado → rc 3, código e plist intactos; desarmado → rc 0, código trocado, serviço reiniciado"
 else
@@ -317,25 +317,22 @@ else
 fi
 
 # S9d — a guarda INFORMA no dry-run mesmo sem o serviço visível: sem sudo o
-# `launchctl print system/…` falha por privilégio (rc 113, medido 2026-09-03),
-# e o aviso não pode depender dele — o arquivo <id>_armed.json basta.
+# `launchctl print system/…` pode falhar por privilégio (113 para alguns
+# serviços, medido 2026-09-03), e o aviso não depende dele — o arquivo basta.
 : > "$INST/state/udr7_armed.json"; rm -f "$INST/ld/.carregado"
 env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_9d.log 2>&1
 RC9D=$?
 rm -f "$INST/state/udr7_armed.json"; : > "$INST/ld/.carregado"
-if [ "$RC9D" = "0" ] && grep -q "^│ guarda: .*seria recusada (3)" /tmp/gate_inst_9d.log; then
+if [ "$RC9D" = "0" ] && grep -q "^│ atenção: .*ARMADO.*seria recusada" /tmp/gate_inst_9d.log; then
     ok "S9d dry-run sem serviço visível informa a instância armada"
 else
     erro "S9d dry-run: rc=$RC9D — cauda:"; tail -3 /tmp/gate_inst_9d.log
 fi
 
-# S9e — a prova "serviço no ar" nomeia um processo ALHEIO na porta da API
-# (2026-09-03: um daemon de desenvolvimento em 35493 matava o instalado e o
-# instalador dizia "provado"). Porta livre 35997 no bridge.env do prefixo, um
-# ouvinte de mentira nela, código com marca (força reinício) e a prova ligada:
-# rc 1 e a mensagem com o PID do ouvinte. O caso positivo (o job abre a porta)
-# não é provável com stubs — fica para a medição no mini (RUB_SKIP_HEALTH=1
-# nas demais cenas).
+# S9e — programa ALHEIO na porta da API: a guarda recusa (3) ANTES de qualquer
+# mutação, com a frase humana nomeando o programa (sem PID) e o PID no registro
+# `#`. O código instalado (marcado) fica intacto. Porta livre 35997 no
+# bridge.env do prefixo; ouvinte python de mentira.
 sed -i '' 's/^UI_API_PORT=.*/UI_API_PORT=35997/' "$INST/prefix/etc/bridge.env"
 python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35997)); s.listen(1); time.sleep(90)' &
 OUVINTE_PID=$!
@@ -344,23 +341,131 @@ echo "# marca S9e" >> "$MARCA"
 env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e.log 2>&1
 RC9E=$?
 kill "$OUVINTE_PID" 2>/dev/null; wait "$OUVINTE_PID" 2>/dev/null
-if [ "$RC9E" = "1" ] && grep -q "ocupada pelo PID $OUVINTE_PID" /tmp/gate_inst_9e.log; then
-    ok "S9e prova do serviço no ar: processo alheio na porta → rc 1 nomeando o PID"
+if [ "$RC9E" = "3" ] && grep -q "^✖ a porta 35997 já está em uso por outro programa" /tmp/gate_inst_9e.log \
+   && grep -q "^#  porta 35997: PID $OUVINTE_PID" /tmp/gate_inst_9e.log && grep -q "^# marca S9e$" "$MARCA"; then
+    ok "S9e programa alheio na porta → recusa 3 antes de tocar no código, frase humana + PID só no registro"
 else
-    erro "S9e prova do serviço no ar: rc=$RC9E — cauda:"; tail -3 /tmp/gate_inst_9e.log
+    erro "S9e programa alheio na porta: rc=$RC9E marca=$(grep -c '^# marca S9e$' "$MARCA") — cauda:"; tail -3 /tmp/gate_inst_9e.log
 fi
+# resincroniza o código (a marca some) para a S9f ver "código igual"
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e2.log 2>&1 || true
 
 # S9f — nada mudou, job "carregado" (stub) mas NINGUÉM na porta: o instalador
-# relança (kickstart) e, sem daemon real, a prova falha em 15 s nomeando a
-# porta — nunca "já instalado e carregado" com o serviço morto (revisão fria,
-# 2026-09-03: a parada deliberada sai 0 e o KeepAlive não relança).
+# relança (kickstart) e, sem daemon real, a prova falha em 15 s com a frase
+# humana — nunca "já instalado" com o serviço morto (revisão fria, 2026-09-03:
+# a parada deliberada sai 0 e o KeepAlive não relança).
 rm -f "$INST/ld/.kicks"
 env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9f.log 2>&1
 RC9F=$?
-if [ "$RC9F" = "1" ] && [ -f "$INST/ld/.kicks" ] && grep -q "não abriu a porta 35997" /tmp/gate_inst_9f.log && ! grep -q "plist: já instalado" /tmp/gate_inst_9f.log; then
-    ok "S9f serviço fora da porta com código igual → kickstart e falha nomeando a porta (nunca 'já instalado')"
+if [ "$RC9F" = "1" ] && [ -f "$INST/ld/.kicks" ] && grep -q "^✖ o serviço foi instalado, mas não respondeu na porta 35997" /tmp/gate_inst_9f.log && ! grep -q "serviço: já instalado" /tmp/gate_inst_9f.log; then
+    ok "S9f serviço fora da porta com código igual → kickstart e falha humana (nunca 'já instalado')"
 else
     erro "S9f serviço fora da porta: rc=$RC9F kicks=$([ -f "$INST/ld/.kicks" ] && echo sim || echo nao) — cauda:"; tail -3 /tmp/gate_inst_9f.log
+fi
+
+# S9g — o ciclo REAL do launchd, sem root: domínio gui/<uid> (seam
+# RUB_LAUNCHD_DOMAIN), venv de verdade, o daemon de verdade na porta 35998
+# (bridge.env pré-criado com a porta, porque a real 35493 pode estar em uso).
+# Prova: (1) instalação nova → o PID que escuta é o PID do job; (2) o NOSSO
+# daemon rodando fora do launchd na porta → o instalador o encerra sozinho e o
+# job assume (o caso de 2026-09-03 no MacBook do dono); (3) um programa alheio
+# → recusa 3 antes de tocar em nada. O job é removido ao fim.
+G9="$(mktemp -d)"; mkdir -p "$G9/bin" "$G9/prefix/etc" "$G9/ld" "$G9/state"; cp "$INST/bin/brew" "$G9/bin/brew"
+sed 's/^UI_API_PORT=.*/UI_API_PORT=35998/' "$RAIZ/config/river-unifi-bridge.env.example" > "$G9/prefix/etc/bridge.env"; chmod 600 "$G9/prefix/etc/bridge.env"
+G9_ENV="PATH=$G9/bin:/usr/bin:/bin:/usr/sbin:/sbin RUB_BREW=$G9/bin/brew RUB_PREFIX=$G9/prefix RUB_LAUNCHD_DIR=$G9/ld RUB_LAUNCHD_DOMAIN=gui/$(id -u) RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_STATE_DIR=$G9/state RUB_LOG_FILE=$G9/daemon.log"
+G9_ALVO="gui/$(id -u)/com.river.unifi-bridge"
+g9_pid_job() { launchctl print "$G9_ALVO" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1; }
+g9_ouvinte() { /usr/sbin/lsof -nP -iTCP:35998 -sTCP:LISTEN -t 2>/dev/null | head -1; }
+launchctl bootout "$G9_ALVO" 2>/dev/null || true
+env $G9_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9g1.log 2>&1; RC9G1=$?
+J1="$(g9_pid_job)"; O1="$(g9_ouvinte)"
+if [ "$RC9G1" = "0" ] && [ -n "$J1" ] && [ "$J1" = "$O1" ] && grep -q "^│ serviço: instalado, carregado e no ar" /tmp/gate_inst_9g1.log; then
+    ok "S9g.1 launchd real (gui): instalação nova → o PID do job é quem escuta a porta"
+else
+    erro "S9g.1 launchd real: rc=$RC9G1 job=$J1 ouvinte=$O1 — cauda:"; tail -3 /tmp/gate_inst_9g1.log; tail -3 "$G9/daemon.log" 2>/dev/null
+fi
+# (2) o nosso daemon fora do launchd
+launchctl bootout "$G9_ALVO" 2>/dev/null || true; sleep 1
+( cd "$G9" && env RUB_STATE_DIR="$G9/state" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual.log" 2>&1 ) &
+MANUAL_PID=$!
+for i in $(seq 1 15); do [ -n "$(g9_ouvinte)" ] && break; sleep 1; done
+O_ANTES="$(g9_ouvinte)"
+env $G9_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9g2.log 2>&1; RC9G2=$?
+J2="$(g9_pid_job)"; O2="$(g9_ouvinte)"
+if [ "$RC9G2" = "0" ] && [ -n "$O_ANTES" ] && [ -n "$J2" ] && [ "$J2" = "$O2" ] && [ "$O2" != "$O_ANTES" ] \
+   && grep -q "^│ uma cópia antiga do serviço estava rodando por fora — foi encerrada" /tmp/gate_inst_9g2.log \
+   && ! grep -q "PID" <(grep '^│' /tmp/gate_inst_9g2.log); then
+    ok "S9g.2 launchd real: o nosso daemon fora do launchd é encerrado pelo instalador e o job assume a porta (frase humana sem PID)"
+else
+    erro "S9g.2 launchd real: rc=$RC9G2 antes=$O_ANTES job=$J2 ouvinte=$O2 — cauda:"; tail -4 /tmp/gate_inst_9g2.log
+fi
+kill "$MANUAL_PID" 2>/dev/null; wait "$MANUAL_PID" 2>/dev/null
+# (3) programa alheio
+launchctl bootout "$G9_ALVO" 2>/dev/null || true; sleep 1
+python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35998)); s.listen(1); time.sleep(90)' &
+ALHEIO_PID=$!; sleep 1
+env $G9_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9g3.log 2>&1; RC9G3=$?
+kill "$ALHEIO_PID" 2>/dev/null; wait "$ALHEIO_PID" 2>/dev/null
+if [ "$RC9G3" = "3" ] && grep -q "^✖ a porta 35998 já está em uso por outro programa" /tmp/gate_inst_9g3.log && ! launchctl print "$G9_ALVO" >/dev/null 2>&1; then
+    ok "S9g.3 launchd real: programa alheio na porta → recusa 3 antes de carregar o serviço"
+else
+    erro "S9g.3 launchd real: rc=$RC9G3 — cauda:"; tail -3 /tmp/gate_inst_9g3.log
+fi
+launchctl bootout "$G9_ALVO" 2>/dev/null || true
+# S9j — dry-run SEM sudo no domínio system (launchd não consultável com
+# segurança): quem escuta a porta é o serviço INSTALADO (python do venv do
+# prefixo + --env do prefixo, prefixo LONGO como o do gate) → o dry-run diz que
+# está tudo no lugar, não "cópia antiga … seria encerrada" (revisão fria B-1:
+# o corte de 160 colunas no comando escondia o "--env" e o ramo nunca casava).
+( cd "$G9" && env RUB_STATE_DIR="$G9/state" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual2.log" 2>&1 ) &
+MANUAL2_PID=$!
+for i in $(seq 1 15); do [ -n "$(g9_ouvinte)" ] && break; sleep 1; done
+env PATH="$G9/bin:/usr/bin:/bin:/usr/sbin:/sbin" RUB_BREW="$G9/bin/brew" RUB_PREFIX="$G9/prefix" RUB_LAUNCHD_DIR="$G9/ld" RUB_SERVICE_USER="$(id -un)" RUB_STATE_DIR="$G9/state" RUB_LOG_FILE="$G9/daemon.log" \
+  "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_9j.log 2>&1; RC9J=$?
+kill "$MANUAL2_PID" 2>/dev/null; wait "$MANUAL2_PID" 2>/dev/null
+if [ "$RC9J" = "0" ] && grep -q "é o serviço instalado" /tmp/gate_inst_9j.log && ! grep -q "cópia antiga" /tmp/gate_inst_9j.log && ! grep -q "em uso por outro programa" /tmp/gate_inst_9j.log; then
+    ok "S9j dry-run sem sudo com o serviço instalado na porta (prefixo longo) → reconhecido, sem acusar cópia nem programa alheio"
+else
+    erro "S9j dry-run com o serviço instalado na porta: rc=$RC9J — cauda:"; tail -4 /tmp/gate_inst_9j.log
+fi
+
+# S9h — o ONE-LINER inteiro, com launchd real (gui) e a verificação REAL, nos
+# três desfechos: (1) instala → "serviço v… no ar" e rc 0; (2) reexecução → 100
+# ("Nada a fazer"); (3) programa alheio na porta → rc 3, frase humana, e o bloco
+# final "Feito até aqui / Faltou / O que fazer agora" sem "(exit" na tela.
+# Porta 35994 pré-gravada no bridge.env do prefixo; RUB_SUDO vazio (sem root).
+H9="$(mktemp -d)"; mkdir -p "$H9/bin" "$H9/prefix/etc" "$H9/ld" "$H9/state" "$H9/cache"; cp "$INST/bin/brew" "$H9/bin/brew"
+sed 's/^UI_API_PORT=.*/UI_API_PORT=35994/' "$RAIZ/config/river-unifi-bridge.env.example" > "$H9/prefix/etc/bridge.env"; chmod 600 "$H9/prefix/etc/bridge.env"
+H9_ENV="PATH=$H9/bin:/usr/bin:/bin:/usr/sbin:/sbin RUB_SUDO= RUB_BREW=$H9/bin/brew RUB_PREFIX=$H9/prefix RUB_LAUNCHD_DIR=$H9/ld RUB_LAUNCHD_DOMAIN=gui/$(id -u) RUB_STATE_DIR=$H9/state RUB_CACHE_DIR=$H9/cache RUB_LOG_FILE=$H9/daemon.log RUB_PYTHON=$RAIZ/.venv/bin/python NO_COLOR=1 LANG=pt_BR.UTF-8"
+launchctl bootout "$G9_ALVO" 2>/dev/null || true
+env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r1.log" 2>&1; RH1=$?
+env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r2.log" 2>&1; RH2=$?
+launchctl bootout "$G9_ALVO" 2>/dev/null || true; sleep 1
+python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35994)); s.listen(1); time.sleep(90)' &
+H9_ALHEIO=$!; sleep 1
+env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r3.log" 2>&1; RH3=$?
+kill "$H9_ALHEIO" 2>/dev/null; wait "$H9_ALHEIO" 2>/dev/null
+launchctl bootout "$G9_ALVO" 2>/dev/null || true
+if [ "$RH1" = "0" ] && grep -q "serviço v[0-9.]* no ar" "$H9/r1.log" && [ "$RH2" = "100" ] && grep -q "Nada a fazer" "$H9/r2.log" \
+   && [ "$RH3" = "3" ] && grep -q "já está em uso por outro programa (python" "$H9/r3.log" && grep -q "O que fazer agora:" "$H9/r3.log" \
+   && grep -q "Feito até aqui:" "$H9/r3.log" && ! grep -q "(exit" "$H9/r3.log" && ! grep -E "^│.*PID [0-9]" "$H9/r3.log" >/dev/null; then
+    ok "S9h one-liner com launchd e verificação reais: instala (0) · reexecuta (100) · programa alheio (3) com o status humano"
+else
+    erro "S9h one-liner real: rc1=$RH1 rc2=$RH2 rc3=$RH3 — caudas:"; tail -4 "$H9/r1.log"; tail -3 "$H9/r3.log"
+fi
+
+# S9i — falha de MUTAÇÃO com frase humana (revisão fria B3, 2026-09-03): um
+# `brew install` que falha (rede, Homebrew quebrado) tem de sair 1 com a linha
+# `✖` para a pessoa e o motivo no registro — não morrer mudo pelo set -e.
+I9="$(mktemp -d)"; mkdir -p "$I9/bin" "$I9/prefix" "$I9/ld" "$I9/state"
+printf '#!/bin/bash\ncase "$1" in list) exit 1;; install) echo "Error: rede" >&2; exit 1;; --prefix) echo "%s/brewprefix";; esac; exit 0\n' "$I9" > "$I9/bin/brew"; chmod +x "$I9/bin/brew"
+cp "$INST/bin/launchctl" "$I9/bin/launchctl" 2>/dev/null || true
+env PATH="$I9/bin:/usr/bin:/bin" RUB_BREW="$I9/bin/brew" RUB_PREFIX="$I9/prefix" RUB_LAUNCHD_DIR="$I9/ld" RUB_SERVICE_USER="$(id -un)" RUB_STATE_DIR="$I9/state" RUB_SKIP_HEALTH=1 \
+  "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9i.log 2>&1; RC9I=$?
+if [ "$RC9I" = "1" ] && grep -q "^✖ o Homebrew não conseguiu instalar nut" /tmp/gate_inst_9i.log && grep -q "^#  brew install nut falhou" /tmp/gate_inst_9i.log && [ ! -d "$I9/prefix/src" ]; then
+    ok "S9i brew install falhando → código 1, frase humana, motivo no registro, nada instalado depois"
+else
+    erro "S9i brew install falhando: rc=$RC9I — cauda:"; tail -3 /tmp/gate_inst_9i.log
 fi
 
 # S10 — uninstall (a CÓPIA INSTALADA, o caminho do README) remove o criado,

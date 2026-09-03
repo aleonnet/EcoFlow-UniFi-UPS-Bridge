@@ -26,6 +26,17 @@ release https://github.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/releases/tag/v0.3.1
 pré-voo no canal release. Gate: 46 cenas verdes (S9e, S9f novas; S15/B17 vermelha). Neste
 MacBook o processo intruso (PID 84834) ainda precisa ser encerrado pelo dono.
 
+**0.3.2 (mesmo dia, revisão inteira dos instaladores — dono: "trate TUDO, de forma humana"):**
+os dois scripts foram lidos de ponta a ponta e reescritos no contrato "duas vozes" (`│` para a
+pessoa, `#` para o registro; `✖` é a frase que o one-liner mostra). Toda checagem que pode
+recusar roda antes da primeira mutação; uma cópia do nosso serviço fora do launchd é encerrada
+pelo instalador; um programa alheio na porta é recusado nomeando o programa; toda mutação que
+falha vira frase humana; ao final de qualquer falha: *Feito até aqui / Faltou / O que fazer
+agora*. Provado com launchd **real** no domínio do usuário (seam `RUB_LAUNCHD_DOMAIN`): cenas
+S9g (3 provas), S9h (one-liner inteiro: 0, 100, 3), S9i (brew falhando), S9j (dry-run sem
+sudo com o serviço instalado na porta). Duas rodadas de leitor frio (3 BLOCKERs → 1 → 0);
+cada cerca nova refutada por mutação.
+
 ## Onde o estado real mora
 
 - Plano aprovado (com banca): `~/.claude/plans/este-foi-o-prompt-binary-sedgewick.md`.

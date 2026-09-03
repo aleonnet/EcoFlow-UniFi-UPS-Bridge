@@ -12,21 +12,49 @@
 # Domínio (decisão do dono 2026-08-31, spec §7A.6/§16): LaunchDaemon (system),
 # plists com UserName — o serviço sobe no boot SEM login. Requer sudo.
 #
+# DUAS VOZES na saída (2026-09-03, dono: "isso para usuário final que merda é
+# essa"): as linhas `│ …` são para a PESSOA — o que aconteceu, o que foi feito
+# por ela, o que falta — sem PID, sem caminho interno, sem sigla. As linhas
+# `#  …` são o REGISTRO técnico (PIDs, comandos, códigos), lidas por quem
+# depura. O one-liner mostra à pessoa só as linhas `│` e, numa falha, a linha
+# `✖`; tudo vai para install-service.log.
+#
+# TODA checagem que pode recusar a instalação roda ANTES da primeira mutação
+# (código, venv, config, plist): recusar no meio deixava metade da atualização
+# em disco (medido em 2026-09-03). Cenários tratados, na ordem em que rodam:
+#   1. não é macOS → 3 · 2. sem root no domínio system → 3 · 3. sem Homebrew → 4
+#   4. um dispositivo protegido ARMADO com o serviço carregado → 3 (desarme no app)
+#   5. a porta da API está com OUTRO processo:
+#      a) o nosso próprio serviço rodando fora do launchd (resto de sessão de
+#         desenvolvimento, ou serviço de outra instalação) → o instalador o
+#         ENCERRA e segue (é o nosso daemon; o dono da porta é o job do launchd);
+#      b) um programa alheio → 3, nomeando o programa e a saída (fechar ou
+#         trocar UI_API_PORT no bridge.env).
+#   6. nut abaixo de 2.8.4 → 4.
+# Depois da mutação, o serviço só é declarado NO AR quando o PID que escuta a
+# porta da API é o PID do job (15 s de espera) — `launchctl print` prova job
+# carregado, não serviço vivo: um daemon que parou de propósito sai 0 e o
+# KeepAlive não o relança (service.py, parada_deliberada).
+#
 # Seams de teste (gate.sh, documentados de propósito): RUB_PREFIX,
-# RUB_LAUNCHD_DIR, RUB_SERVICE_USER, RUB_PYTHON, RUB_STATE_DIR, RUB_SKIP_HEALTH=1
-# (pula a prova "serviço na porta da API") e stubs de brew/launchctl no PATH.
+# RUB_LAUNCHD_DIR, RUB_LAUNCHD_DOMAIN (system | gui/<uid>: o gate prova o ciclo
+# real do launchd no domínio do usuário, sem root), RUB_SERVICE_USER,
+# RUB_PYTHON, RUB_STATE_DIR, RUB_LOG_FILE, RUB_SKIP_HEALTH=1 (pula a prova
+# "serviço na porta"; só com stubs) e stubs de brew/launchctl no PATH.
 # Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.3.1"
+VERSAO="0.3.2"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
+DOMINIO="${RUB_LAUNCHD_DOMAIN:-system}"
 SERVICE_USER="${RUB_SERVICE_USER:-${SUDO_USER:-$(id -un)}}"
 USER_HOME="$(eval echo "~$SERVICE_USER")"
 MANIFESTO="$PREFIX/manifest.tsv"
 LABEL_BRIDGE="com.river.unifi-bridge"
-LOG_AGENTE="$USER_HOME/Library/Logs/river-unifi-bridge.log"
+ALVO_LAUNCHD="$DOMINIO/$LABEL_BRIDGE"
+LOG_AGENTE="${RUB_LOG_FILE:-$USER_HOME/Library/Logs/river-unifi-bridge.log}"
 STATE_DIR="${RUB_STATE_DIR:-$USER_HOME/Library/Application Support/river-unifi-bridge}"
 
 DRYRUN=0; JSONPROG=0; CONSENT_BREW=0; FEZ=0
@@ -52,7 +80,17 @@ for arg in "$@"; do
   esac
 done
 
-diga() { printf '│ %s\n' "$1"; }
+# ── as duas vozes ────────────────────────────────────────────────────────────
+diga() { printf '│ %s\n' "$1"; }                      # para a pessoa
+nota() { printf '#  %s\n' "$1"; }                     # registro técnico
+# falha <código> <frase para a pessoa> [detalhe técnico…]: a última linha `✖` é
+# a que o one-liner mostra; os detalhes vão só ao registro.
+falha() {
+  local rc="$1" humano="$2"; shift 2
+  local d; for d in "$@"; do nota "$d"; done
+  printf '✖ %s\n' "$humano"
+  exit "$rc"
+}
 jp() { [ "$JSONPROG" = "1" ] && printf '@PROGRESS {"step":"%s","status":"%s"}\n' "$1" "$2" || true; }
 passo() { PASSOS="$PASSOS$1=$2\n"; }
 
@@ -84,16 +122,16 @@ man_set() {
   printf '%s\t%s\n' "$1" "$2" >> "$MANIFESTO"
 }
 
-# ── validações ───────────────────────────────────────────────────────────────
-[ "$(uname -s)" = "Darwin" ] || { echo "só macOS (validação)"; exit 3; }
-if [ "$DRYRUN" = "0" ] && [ "$LDIR" = "/Library/LaunchDaemons" ] && [ "$(id -u)" != "0" ]; then
-  echo "LaunchDaemon exige root: rode com sudo (validação)"; exit 3
+# ── validações (cenários 1 e 2) ──────────────────────────────────────────────
+[ "$(uname -s)" = "Darwin" ] || falha 3 "este instalador é para macOS."
+if [ "$DRYRUN" = "0" ] && [ "$DOMINIO" = "system" ] && [ "$LDIR" = "/Library/LaunchDaemons" ] && [ "$(id -u)" != "0" ]; then
+  falha 3 "o serviço sobe no boot da máquina e por isso a instalação precisa de sudo." "id -u = $(id -u); domínio $DOMINIO"
 fi
 
 diga "river-unifi-bridge install v$VERSAO  (usuário de serviço: $SERVICE_USER)"
 [ "$DRYRUN" = "1" ] && diga "DRY-RUN: nada será escrito"
 
-# ── fase: Homebrew + pacote ──────────────────────────────────────────────────
+# ── Homebrew (cenário 3) ─────────────────────────────────────────────────────
 # O PATH do root NÃO contém o Homebrew (defeito real de 2026-08-31 17:14 no
 # mini: morte em 0 s com 'brew: command not found') — resolver o binário
 # explicitamente, nunca confiar no PATH do chamador.
@@ -105,84 +143,150 @@ if [ -z "$BREW" ]; then
   [ -z "$BREW" ] && BREW="$(command -v brew 2>/dev/null || true)"
 fi
 [ -n "$BREW" ] && [ -x "$BREW" ] \
-  || { echo "Homebrew não encontrado (procurei /opt/homebrew e /usr/local) — instale-o primeiro (dependência)"; exit 4; }
+  || falha 4 "o Homebrew não está instalado — instale-o (https://brew.sh) e rode de novo." "procurei /opt/homebrew/bin/brew, /usr/local/bin/brew e o PATH"
 
 brew_do_usuario() {
   # -H: brew exige HOME do usuário real, não o do root.
   if [ "$(id -u)" = "0" ]; then sudo -H -u "$SERVICE_USER" "$BREW" "$@"; else "$BREW" "$@"; fi
 }
 
-garantir_brew_pacote() {  # $1=formula  $2=rotulo
+# ── o job do launchd e a porta da API (helpers das checagens) ────────────────
+# Todos devolvem 0 SEMPRE (saída vazia quando não há o que dizer): sob `set -e`
+# + `pipefail`, um `lsof` sem ouvinte (1) ou um `launchctl print` sem job (113)
+# numa atribuição derrubava o script — medido no extrato do gate, 2026-09-03.
+# A porta lida como o daemon a lê (config.py: strip da chave e do valor).
+porta_api() { { sed -n 's/^[[:space:]]*UI_API_PORT[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1 | grep . ; } || echo 35493; }
+job_carregado() { launchctl print "$ALVO_LAUNCHD" >/dev/null 2>&1; }
+pid_do_job() { { launchctl print "$ALVO_LAUNCHD" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1; } || true; }
+ouvinte_da_porta() { { /usr/sbin/lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1; } || true; }
+comando_do_pid() { { ps -o command= -p "$1" 2>/dev/null | head -1; } || true; }   # inteiro: as comparações precisam do fim (--env …)
+comando_curto() { comando_do_pid "$1" | cut -c1-160; }                            # só para as notas do registro
+nome_do_pid() { local c; c="$(ps -o comm= -p "$1" 2>/dev/null | head -1)"; printf '%s' "${c##*/}"; }
+e_nosso_daemon() { comando_do_pid "$1" | grep -q "river_unifi_bridge.service"; }
+# O serviço INSTALADO (o que o plist lança): o python do venv do prefixo com o
+# bridge.env do prefixo. Sem ver o launchd (dry-run sem sudo → rc 113; ou o PID
+# do job trocando num relançamento), é por este comando que se reconhece que
+# quem está na porta é o próprio serviço, e não uma cópia de outro lugar.
+e_o_servico_instalado() { comando_do_pid "$1" | grep -qF "$PREFIX/venv/bin/python" && comando_do_pid "$1" | grep -qF -- "--env $PREFIX/etc/bridge.env"; }
+# A resposta do launchd só é confiável com privilégio: sem root, `launchctl
+# print system/…` pode devolver 113 sem distinguir "sem permissão" de "não
+# existe" (medido em 2026-09-03 para alguns serviços). Com root, ou fora do
+# domínio system, ela é a verdade.
+launchd_visivel() { [ "$(id -u)" = "0" ] || [ "$DOMINIO" != "system" ]; }
+
+# ── guarda: dispositivo armado (cenário 4) ───────────────────────────────────
+# Com o serviço carregado e uma instância ARMADA (<id>_armed.json no estado do
+# usuário do serviço), NADA desta instalação acontece: nem código, nem venv,
+# nem plist, nem reinício. O POST /v1/service/restart já recusa reinício armado
+# e o instalador contornava esse veto. Sai 3; no dry-run só informa. O dry-run
+# corre sem sudo, e sem sudo o `launchctl print system/…` pode falhar por
+# privilégio (rc 113 medido para alguns serviços em 2026-09-03; para outros
+# responde): a informação não depende dele.
+guarda_armado() {
+  local armado carregado=0 nome
+  job_carregado && carregado=1
+  for armado in "$STATE_DIR"/*_armed.json; do
+    [ -e "$armado" ] || continue
+    nome="$(basename "$armado" _armed.json)"
+    if [ "$DRYRUN" = "1" ]; then diga "atenção: o dispositivo protegido \"$nome\" está ARMADO — fora do dry-run, a atualização seria recusada até você ligar o modo ensaio no app"; return 0; fi
+    [ "$carregado" = "1" ] || return 0
+    falha 3 "o dispositivo protegido \"$nome\" está ARMADO. Abra o app, ligue o modo ensaio dele e rode a instalação de novo — atualizar com a proteção armada é recusado de propósito." "arquivo: $armado"
+  done
+}
+guarda_armado
+
+# ── guarda: quem está na porta da API (cenário 5) ────────────────────────────
+# Antes de qualquer mutação. Só o job do launchd pode ser dono da porta:
+#  - ninguém, ou o próprio job → segue;
+#  - o NOSSO daemon fora do launchd → é encerrado aqui (TERM, até 5 s, depois
+#    KILL) — sem isso o job novo morre de porta ocupada e o KeepAlive não o
+#    relança (medido em 2026-09-03: um daemon de desenvolvimento em 35493);
+#  - um programa alheio → recusa (3), com o nome do programa e a saída.
+guarda_porta() {
+  local porta ouvinte jobpid nome i
+  porta="$(porta_api)"
+  ouvinte="$(ouvinte_da_porta "$porta")"
+  [ -n "$ouvinte" ] || return 0
+  jobpid="$(pid_do_job)"
+  [ "$ouvinte" = "$jobpid" ] && return 0
+  if [ -z "$jobpid" ] && ! launchd_visivel && e_o_servico_instalado "$ouvinte"; then
+    # Sem privilégio não enxergo o job (dry-run sem sudo), mas quem escuta é o
+    # próprio serviço instalado — é ele o dono da porta. Com o launchd visível
+    # e sem job, uma cópia do mesmo caminho é só uma cópia: cai no encerramento.
+    nota "porta $porta: PID $ouvinte é o serviço instalado (launchd não consultável com segurança sem sudo)"; return 0
+  fi
+  if e_nosso_daemon "$ouvinte"; then
+    if [ "$DRYRUN" = "1" ]; then
+      diga "atenção: uma cópia antiga do serviço está rodando por fora — fora do dry-run ela seria encerrada para o serviço instalado assumir"
+      nota "porta $porta: PID $ouvinte ($(comando_curto "$ouvinte"))"; return 0
+    fi
+    nota "porta $porta ocupada pelo nosso daemon fora do launchd: PID $ouvinte ($(comando_curto "$ouvinte")) — encerrando"
+    kill "$ouvinte" 2>/dev/null || true
+    for i in 1 2 3 4 5; do kill -0 "$ouvinte" 2>/dev/null || break; sleep 1; done
+    kill -0 "$ouvinte" 2>/dev/null && { kill -9 "$ouvinte" 2>/dev/null || true; sleep 1; }
+    if kill -0 "$ouvinte" 2>/dev/null; then
+      falha 1 "uma cópia antiga do serviço estava rodando por fora e não conseguiu ser encerrada. Reinicie o Mac e rode a instalação de novo." "PID $ouvinte sobreviveu a TERM e KILL"
+    fi
+    diga "uma cópia antiga do serviço estava rodando por fora — foi encerrada; o serviço instalado assume a porta"
+    return 0
+  fi
+  nome="$(nome_do_pid "$ouvinte")"
+  if [ "$DRYRUN" = "1" ]; then
+    diga "atenção: a porta $porta já está em uso por outro programa (${nome:-desconhecido}) — fora do dry-run a instalação pararia aqui"
+    nota "porta $porta: PID $ouvinte ($(comando_curto "$ouvinte"))"; return 0
+  fi
+  falha 3 "a porta $porta já está em uso por outro programa (${nome:-desconhecido}). Feche esse programa, ou troque a porta do serviço (UI_API_PORT no arquivo de configuração $PREFIX/etc/bridge.env), e rode a instalação de novo." "porta $porta: PID $ouvinte ($(comando_curto "$ouvinte")); job do launchd: PID ${jobpid:-nenhum}"
+}
+guarda_porta
+
+# ── fase: Homebrew + pacotes (cenário 6) ─────────────────────────────────────
+garantir_brew_pacote() {  # $1=formula  $2=rotulo(registro)  $3=nome para a pessoa
   jp "$2" "checando"
   if brew_do_usuario list --versions "$1" >/dev/null 2>&1; then
-    diga "$2: já instalado"; jp "$2" "ja_estava"; passo "$2" 100; return 100
+    diga "$3: já instalado"; jp "$2" "ja_estava"; passo "$2" 100; return 100
   fi
-  if [ "$DRYRUN" = "1" ]; then diga "$2: instalaria via brew ($1)"; passo "$2" plano; return 0; fi
+  if [ "$DRYRUN" = "1" ]; then diga "$3: seria instalado pelo Homebrew"; passo "$2" plano; return 0; fi
   if [ "$CONSENT_BREW" != "1" ]; then
-    echo "$2: exige consentimento explícito (--consent-homebrew) para: brew install $1"
-    jp "$2" "sem_consentimento"; exit 4
+    jp "$2" "sem_consentimento"
+    falha 4 "instalar $1 pelo Homebrew exige o seu consentimento (--consent-homebrew)."
   fi
   man_set "brew:$1" pending
-  diga "$2: brew install $1 (consentido)"
-  brew_do_usuario install -q "$1"
+  diga "$3: instalando pelo Homebrew"
+  brew_do_usuario install -q "$1" >"$PREFIX/brew-$1.log" 2>&1 \
+    || falha 1 "o Homebrew não conseguiu instalar $1 (sem internet, ou o próprio Homebrew com problema). Rode 'brew install $1' num terminal para ver o motivo e depois rode a instalação de novo." "brew install $1 falhou; saída em $PREFIX/brew-$1.log"
   man_set "brew:$1" created
   jp "$2" "ok"; passo "$2" 0; FEZ=1; return 0
 }
 
-garantir_brew_pacote nut "nut" || true
+garantir_brew_pacote nut "nut" "NUT (o programa que conversa com o River)" || true
 if [ "$DRYRUN" = "0" ]; then
-  UPSD_BIN="$(brew_do_usuario --prefix 2>/dev/null)/sbin/upsd"
+  UPSD_BIN="$({ brew_do_usuario --prefix 2>/dev/null || true; })/sbin/upsd"
   if [ -x "$UPSD_BIN" ]; then
-    NUT_VER=$("$UPSD_BIN" -V 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
-    diga "nut versão: ${NUT_VER:-desconhecida} (piso 2.8.4 — spec §3.2)"
+    NUT_VER=$({ "$UPSD_BIN" -V 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1; } || true)
+    nota "nut versão: ${NUT_VER:-desconhecida} (piso 2.8.4 — spec §3.2)"
     # Piso do suporte EcoFlow (networkupstools/nut#2735).
     [ -n "$NUT_VER" ] && [ "$(printf '%s\n2.8.4\n' "$NUT_VER" | sort -V | head -1)" != "2.8.4" ] \
-      && { echo "nut $NUT_VER < 2.8.4 (dependência)"; exit 4; }
+      && falha 4 "o NUT instalado ($NUT_VER) é anterior ao 2.8.4, o primeiro que conhece o River — atualize com 'brew upgrade nut' e rode de novo."
   fi
 fi
-garantir_brew_pacote python@3.13 "python313" || true
-
-# ── guarda pré-atualização (D12, 2026-09-03) ─────────────────────────────────
-# Com o serviço carregado e uma instância ARMADA (<id>_armed.json no estado do
-# usuário do serviço), NADA desta instalação acontece: nem código, nem venv,
-# nem plist, nem reinício. O POST /v1/service/restart já recusa reinício armado
-# e o instalador contornava esse veto. A guarda fica ANTES da primeira mutação
-# de propósito: na fase do plist (1ª versão, revisão fria de 2026-09-03) o
-# código já tinha sido substituído, e a rodada seguinte, já "igual", não
-# reiniciava o serviço — metade da atualização em disco, serviço no código
-# velho. Sai 3 (validação); no dry-run só informa.
-guarda_armado() {
-  local armado carregado=0
-  launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 && carregado=1
-  for armado in "$STATE_DIR"/*_armed.json; do
-    [ -e "$armado" ] || continue
-    # O dry-run corre sem sudo, e sem sudo o `launchctl print system/…` falha
-    # por privilégio (rc 113, medido em 2026-09-03): a informação não pode
-    # depender dele — o arquivo basta para avisar.
-    if [ "$DRYRUN" = "1" ]; then diga "guarda: $armado existe — com o serviço carregado, fora do dry-run, a atualização seria recusada (3)"; return 0; fi
-    [ "$carregado" = "1" ] || return 0
-    echo "instância ARMADA ($armado): desarme pelo app (ligar modo ensaio) antes de atualizar (validação)"; exit 3
-  done
-}
-guarda_armado
+garantir_brew_pacote python@3.13 "python313" "Python 3.13" || true
 
 # ── fase: código + venv ──────────────────────────────────────────────────────
 CODIGO_MUDOU=0
 instalar_codigo() {
   jp codigo checando
-  if [ "$DRYRUN" = "1" ]; then diga "código: copiaria src/ para $PREFIX/src"; passo codigo plano; return 0; fi
+  if [ "$DRYRUN" = "1" ]; then diga "programa do serviço: seria instalado"; nota "src/ → $PREFIX/src"; passo codigo plano; return 0; fi
   if [ -d "$PREFIX/src/river_unifi_bridge" ] \
      && diff -rq -x '__pycache__' "$RAIZ/src/river_unifi_bridge" "$PREFIX/src/river_unifi_bridge" >/dev/null 2>&1; then
-    diga "código: já está atual"; jp codigo ja_estava; passo codigo 100; return 100
+    diga "programa do serviço: já está atual"; jp codigo ja_estava; passo codigo 100; return 100
   fi
   man_set "dir:$PREFIX/src" pending
-  mkdir -p "$PREFIX/src"
-  rm -rf "$PREFIX/src/river_unifi_bridge"
-  cp -R "$RAIZ/src/river_unifi_bridge" "$PREFIX/src/"
+  { mkdir -p "$PREFIX/src" && rm -rf "$PREFIX/src/river_unifi_bridge" && cp -R "$RAIZ/src/river_unifi_bridge" "$PREFIX/src/"; } \
+    || falha 1 "não consegui copiar o programa do serviço para $PREFIX (disco cheio, ou pasta sem permissão). Veja o registro e rode a instalação de novo." "cp -R $RAIZ/src/river_unifi_bridge → $PREFIX/src falhou"
   find "$PREFIX/src" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
   man_set "dir:$PREFIX/src" created
   CODIGO_MUDOU=1
-  diga "código: instalado em $PREFIX/src"; jp codigo ok; passo codigo 0; FEZ=1
+  diga "programa do serviço: instalado"; nota "código em $PREFIX/src"; jp codigo ok; passo codigo 0; FEZ=1
 }
 instalar_codigo || true
 
@@ -193,52 +297,55 @@ instalar_codigo || true
 instalar_desinstalador() {
   jp desinstalador checando
   local alvo="$PREFIX/scripts/uninstall.sh"
-  if [ "$DRYRUN" = "1" ]; then diga "desinstalador: copiaria scripts/uninstall.sh para $alvo"; passo desinstalador plano; return 0; fi
+  if [ "$DRYRUN" = "1" ]; then diga "desinstalador: seria instalado"; nota "scripts/uninstall.sh → $alvo"; passo desinstalador plano; return 0; fi
   if [ -f "$alvo" ] && cmp -s "$RAIZ/scripts/uninstall.sh" "$alvo"; then
     diga "desinstalador: já está atual"; jp desinstalador ja_estava; passo desinstalador 100; return 100
   fi
   man_set "file:$alvo" pending
-  mkdir -p "$PREFIX/scripts"
-  install -m 0755 "$RAIZ/scripts/uninstall.sh" "$alvo"
+  { mkdir -p "$PREFIX/scripts" && install -m 0755 "$RAIZ/scripts/uninstall.sh" "$alvo"; } \
+    || falha 1 "não consegui gravar o desinstalador em $PREFIX. Veja o registro e rode a instalação de novo." "install -m 0755 → $alvo falhou"
   man_set "file:$alvo" created
-  diga "desinstalador: instalado em $alvo"; jp desinstalador ok; passo desinstalador 0; FEZ=1
+  diga "desinstalador: instalado"; nota "em $alvo"; jp desinstalador ok; passo desinstalador 0; FEZ=1
 }
 instalar_desinstalador || true
 
 criar_venv() {
   jp venv checando
-  if [ "$DRYRUN" = "1" ]; then diga "venv: criaria em $PREFIX/venv (python3.13 + aiohttp)"; passo venv plano; return 0; fi
+  if [ "$DRYRUN" = "1" ]; then diga "ambiente Python do serviço: seria criado"; nota "$PREFIX/venv (python3.13 + aiohttp)"; passo venv plano; return 0; fi
   if [ -x "$PREFIX/venv/bin/python" ] \
      && "$PREFIX/venv/bin/python" -c "import aiohttp" >/dev/null 2>&1; then
-    diga "venv: já está pronto"; jp venv ja_estava; passo venv 100; return 100
+    diga "ambiente Python do serviço: já está pronto"; jp venv ja_estava; passo venv 100; return 100
   fi
   local py="${RUB_PYTHON:-$(brew_do_usuario --prefix python@3.13 2>/dev/null)/bin/python3.13}"
-  [ -x "$py" ] || { echo "python3.13 não encontrado ($py) (dependência)"; exit 4; }
+  [ -x "$py" ] || falha 4 "o Python 3.13 do Homebrew não foi encontrado — rode 'brew install python@3.13' e tente de novo." "procurado em $py"
   man_set "dir:$PREFIX/venv" pending
-  "$py" -m venv "$PREFIX/venv"
-  "$PREFIX/venv/bin/pip" -q install "aiohttp>=3.12"
+  "$py" -m venv "$PREFIX/venv" >"$PREFIX/venv.log" 2>&1 \
+    || falha 1 "não consegui criar o ambiente Python do serviço. Veja o registro e rode a instalação de novo." "$py -m venv $PREFIX/venv falhou; saída em $PREFIX/venv.log"
+  "$PREFIX/venv/bin/pip" -q install "aiohttp>=3.12" >>"$PREFIX/venv.log" 2>&1 \
+    || falha 1 "não consegui baixar as dependências do serviço (aiohttp) — confira a conexão com a internet e rode de novo." "pip install aiohttp falhou; saída em $PREFIX/venv.log"
   man_set "dir:$PREFIX/venv" created
   CODIGO_MUDOU=1
-  diga "venv: criado"; jp venv ok; passo venv 0; FEZ=1
+  diga "ambiente Python do serviço: criado"; jp venv ok; passo venv 0; FEZ=1
 }
 criar_venv || true
 
 gerar_env() {
   jp config checando
   local alvo="$PREFIX/etc/bridge.env"
-  if [ "$DRYRUN" = "1" ]; then diga "config: geraria $alvo (0600, dono $SERVICE_USER; etc/ do mesmo dono)"; passo config plano; return 0; fi
+  if [ "$DRYRUN" = "1" ]; then diga "configuração: seria criada"; nota "$alvo (0600, dono $SERVICE_USER; etc/ do mesmo dono)"; passo config plano; return 0; fi
   # A pasta etc/ tem de ser do usuário do serviço, não do root: o daemon grava
   # bridge.env.bak e troca o arquivo ao salvar Ajustes pelo app. Com a pasta do
   # root, todo PUT /v1/config morria em 500 (medido no Mac mini em 2026-09-02).
   # Corrigido também na reexecução, para consertar instalações antigas.
   mkdir -p "$PREFIX/etc"
   chown "$SERVICE_USER" "$PREFIX/etc" 2>/dev/null || true
-  if [ -f "$alvo" ]; then diga "config: já existe (preservado)"; jp config ja_estava; passo config 100; return 100; fi
+  if [ -f "$alvo" ]; then diga "configuração: já existe (preservada)"; jp config ja_estava; passo config 100; return 100; fi
   man_set "file:$alvo" pending
-  cp "$RAIZ/config/river-unifi-bridge.env.example" "$alvo"
+  cp "$RAIZ/config/river-unifi-bridge.env.example" "$alvo" \
+    || falha 1 "não consegui criar a configuração do serviço em $PREFIX. Veja o registro e rode a instalação de novo." "cp env.example → $alvo falhou"
   chmod 600 "$alvo"; chown "$SERVICE_USER" "$alvo" 2>/dev/null || true
   man_set "file:$alvo" created
-  diga "config: gerado ($alvo)"; jp config ok; passo config 0; FEZ=1
+  diga "configuração: criada"; nota "em $alvo"; jp config ok; passo config 0; FEZ=1
 }
 gerar_env || true
 
@@ -246,10 +353,12 @@ gerar_env || true
 detectar_river() {
   jp river checando
   if system_profiler SPUSBDataType 2>/dev/null | grep -qi "ecoflow\|river 3"; then
-    diga "RIVER: detectado no USB — configure o NUT (fase driver, próxima execução com hardware validado)"
+    diga "River: detectado no USB"
+    nota "fase driver do NUT: próxima execução com hardware validado"
     jp river detectado; passo river 0
   else
-    diga "RIVER: não conectado — serviços NUT ficam PENDENTES no manifesto (o bridge sobe e reporta COMM_LOST honesto)"
+    diga "River: ainda não ligado no USB — o serviço sobe assim mesmo e passa a monitorar quando o aparelho for conectado"
+    nota "svc:nut-driver fica pending no manifesto; o daemon reporta COMM_LOST até o NUT responder"
     [ "$DRYRUN" = "1" ] || man_set "svc:nut-driver" pending
     jp river ausente; passo river 100
   fi
@@ -257,43 +366,48 @@ detectar_river() {
 detectar_river || true
 
 # ── fase: LaunchDaemon do bridge (molde haos-install: cmp + print prova) ────
-# Prova que o serviço INSTALADO é quem está na porta da API (2026-09-03).
-# `launchctl print` só prova job carregado: hoje um processo alheio na porta
-# matava o daemon novo ("API local não subiu após 3 tentativas") e o instalador
-# declarava "reiniciado e provado". Sucesso = o PID que escuta a porta é o PID
-# do job. RUB_SKIP_HEALTH=1 pula (gate com stubs; sem daemon real).
-porta_api() { sed -n 's/^UI_API_PORT=\([0-9]*\)$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1 | grep . || echo 35493; }
-pid_do_job() { launchctl print "system/$LABEL_BRIDGE" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1; }
-ouvinte_da_porta() { /usr/sbin/lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1; }
 # 0 quando o PID do job é quem escuta a porta AGORA (sem espera). Com
-# RUB_SKIP_HEALTH=1 responde 0 (gate com stubs).
+# RUB_SKIP_HEALTH=1 responde 0 (gate com stubs, sem daemon real).
 servico_na_porta() {
   [ "${RUB_SKIP_HEALTH:-0}" = "1" ] && return 0
   local porta jobpid ouvinte; porta="$(porta_api)"; jobpid="$(pid_do_job)"; ouvinte="$(ouvinte_da_porta "$porta")"
   [ -n "$ouvinte" ] && [ "$ouvinte" = "$jobpid" ]
 }
+# Só declara "no ar" quando o PID que escuta a porta é o PID do job (15 s).
+# Um ouvinte que não é o job a esta altura é um programa alheio que entrou
+# depois da guarda — recusa nomeando-o. Ninguém na porta em 15 s: o daemon
+# não subiu; a causa está no registro dele.
 provar_servico_no_ar() {
   [ "${RUB_SKIP_HEALTH:-0}" = "1" ] && return 0
-  local porta jobpid="" ouvinte="" i cmd
+  local porta jobpid="" ouvinte="" i
   porta="$(porta_api)"
   for i in $(seq 1 15); do
     jobpid="$(pid_do_job)"
     ouvinte="$(ouvinte_da_porta "$porta")"
     if [ -n "$ouvinte" ]; then
       [ "$ouvinte" = "$jobpid" ] && return 0
-      cmd="$(ps -o command= -p "$ouvinte" 2>/dev/null | cut -c1-120)"
-      echo "bridge: a porta $porta está ocupada pelo PID $ouvinte ($cmd), não pelo serviço (PID ${jobpid:-?}) — o daemon instalado não consegue subir; encerre esse processo e rode de novo (falha)"; exit 1
+      # PID diferente mas é o serviço instalado: o launchd o relançou entre as
+      # duas leituras (KeepAlive). Espera a próxima volta, não acusa ninguém.
+      if e_o_servico_instalado "$ouvinte"; then sleep 1; continue; fi
+      falha 1 "a porta $porta foi tomada por outro programa ($(nome_do_pid "$ouvinte")) enquanto o serviço subia. Feche esse programa e rode a instalação de novo." \
+        "porta $porta: PID $ouvinte ($(comando_curto "$ouvinte")); job: PID ${jobpid:-nenhum}"
     fi
     sleep 1
   done
-  echo "bridge: o serviço (PID ${jobpid:-?}) não abriu a porta $porta em 15 s — veja $LOG_AGENTE (falha)"; exit 1
+  falha 1 "o serviço foi instalado, mas não respondeu na porta $porta em 15 segundos. O registro dele está em $LOG_AGENTE — rode a instalação de novo depois de olhar as últimas linhas." \
+    "job: PID ${jobpid:-nenhum}; últimas linhas de $LOG_AGENTE:" "$(tail -3 "$LOG_AGENTE" 2>/dev/null | tr '\n' ' ' | cut -c1-400)"
 }
 
 instalar_plist_bridge() {
   jp plist checando
   local plist="$LDIR/$LABEL_BRIDGE.plist"
   local tmp; tmp=$(mktemp)
-  cat > "$tmp" <<EOF
+  # UserName só existe no domínio system (LaunchDaemon); num agente do usuário
+  # (seam do gate) o launchd o recusa.
+  local username_xml=""
+  [ "$DOMINIO" = "system" ] && username_xml="    <key>UserName</key><string>$SERVICE_USER</string>"
+  {
+    cat <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -305,7 +419,9 @@ instalar_plist_bridge() {
         <string>-m</string><string>river_unifi_bridge.service</string>
         <string>--env</string><string>$PREFIX/etc/bridge.env</string>
     </array>
-    <key>UserName</key><string>$SERVICE_USER</string>
+EOF
+    [ -n "$username_xml" ] && printf '%s\n' "$username_xml"
+    cat <<EOF
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
     <key>ExitTimeOut</key><integer>30</integer>
@@ -322,61 +438,59 @@ instalar_plist_bridge() {
 </dict>
 </plist>
 EOF
-  if [ "$DRYRUN" = "1" ]; then diga "plist: escreveria $plist e faria bootstrap system/$LABEL_BRIDGE"; rm -f "$tmp"; passo plist plano; return 0; fi
+  } > "$tmp"
+  if [ "$DRYRUN" = "1" ]; then diga "serviço do sistema: seria registrado e iniciado"; nota "$plist → $ALVO_LAUNCHD"; rm -f "$tmp"; passo plist plano; return 0; fi
 
   local mudou=1
   if [ -f "$plist" ] && cmp -s "$tmp" "$plist"; then mudou=0; fi
   if [ "$mudou" = "1" ]; then
     man_set "plist:$plist" pending
-    install -m 0644 "$tmp" "$plist"
+    install -m 0644 "$tmp" "$plist" \
+      || { rm -f "$tmp"; falha 1 "não consegui gravar o registro do serviço do sistema. Veja o registro e rode a instalação de novo." "install → $plist falhou"; }
     [ "$(id -u)" = "0" ] && chown root:wheel "$plist" || true
     man_set "plist:$plist" created
   fi
   rm -f "$tmp"
 
   # Arquivo igual NÃO prova job carregado (lição da casa) — provar com print.
-  if launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1; then
+  if job_carregado; then
     if [ "$mudou" = "1" ]; then
-      launchctl bootout "system/$LABEL_BRIDGE" 2>/dev/null || true
+      launchctl bootout "$ALVO_LAUNCHD" 2>/dev/null || true
       # Corrida real medida (mini, 17:22): bootstrap logo após bootout pode
       # falhar com "5: Input/output error" enquanto o job antigo morre —
       # tentar 3x. E NUNCA declarar sucesso sem o print provar (o set -e
       # fica suprimido dentro desta função; checagem explícita obrigatória).
       local tent=0
-      until launchctl bootstrap system "$plist" 2>/dev/null; do
+      until launchctl bootstrap "$DOMINIO" "$plist" 2>/dev/null; do
         tent=$((tent + 1))
         [ "$tent" -ge 3 ] && break
         sleep 1
       done
-      launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
-        || { echo "bridge: recarga NÃO provada por launchctl print após $tent tentativas (falha)"; exit 1; }
+      job_carregado || falha 1 "o sistema não aceitou recarregar o serviço. Reinicie o Mac e rode a instalação de novo." "launchctl bootstrap $DOMINIO $plist falhou $tent vez(es)"
       provar_servico_no_ar
-      diga "plist: atualizado, recarregado e provado (launchctl print + porta da API)"; jp plist ok; passo plist 0; FEZ=1
+      diga "serviço: configuração atualizada, recarregado e no ar"; nota "plist mudou; bootout+bootstrap; PID do job na porta"; jp plist ok; passo plist 0; FEZ=1
     elif [ "$CODIGO_MUDOU" = "1" ]; then
       # Plist igual mas código/venv novos: o job carregado ainda roda o código
-      # antigo (medido no mini, 2026-09-01). kickstart -k reinicia no ato; o
-      # print prova que voltou.
-      launchctl kickstart -k "system/$LABEL_BRIDGE" 2>/dev/null || true
-      launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
-        || { echo "bridge: job não provado após kickstart (falha)"; exit 1; }
+      # antigo (medido no mini, 2026-09-01). kickstart -k reinicia no ato.
+      launchctl kickstart -k "$ALVO_LAUNCHD" 2>/dev/null || true
+      job_carregado || falha 1 "o sistema perdeu o serviço ao reiniciá-lo. Reinicie o Mac e rode a instalação de novo." "kickstart -k $ALVO_LAUNCHD; launchctl print falhou depois"
       provar_servico_no_ar
-      diga "plist: igual; código novo → serviço reiniciado (kickstart) e provado (porta da API)"; jp plist ok; passo plist 0; FEZ=1
+      diga "serviço: código novo → reiniciado e no ar"; nota "plist igual; kickstart -k; PID do job na porta"; jp plist ok; passo plist 0; FEZ=1
     elif servico_na_porta; then
-      diga "plist: já instalado, carregado e no ar (porta da API)"; jp plist ja_estava; passo plist 100; return 100
+      diga "serviço: já instalado e no ar"; jp plist ja_estava; passo plist 100; return 100
     else
       # Nada mudou, mas o serviço NÃO está na porta: um daemon que parou de
       # propósito (sai 0 sob launchd; KeepAlive não o relança) ficaria morto
-      # com "já instalado e carregado" (revisão fria, 2026-09-03). Relança e prova.
-      launchctl kickstart -k "system/$LABEL_BRIDGE" 2>/dev/null || true
+      # com "já instalado" (revisão fria, 2026-09-03). Relança e prova.
+      launchctl kickstart -k "$ALVO_LAUNCHD" 2>/dev/null || true
       provar_servico_no_ar
-      diga "plist: igual; serviço estava fora da porta → reiniciado (kickstart) e provado (porta da API)"; jp plist ok; passo plist 0; FEZ=1
+      diga "serviço: estava parado → reiniciado e no ar"; nota "plist e código iguais; job carregado sem ouvinte na porta; kickstart -k"; jp plist ok; passo plist 0; FEZ=1
     fi
   else
-    launchctl bootstrap system "$plist" 2>/dev/null || launchctl load -w "$plist" 2>/dev/null || true
-    launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
-      || { echo "bridge: launchctl print NÃO prova o job carregado (falha)"; exit 1; }
+    launchctl bootstrap "$DOMINIO" "$plist" 2>/dev/null || launchctl load -w "$plist" 2>/dev/null || true
+    job_carregado || falha 1 "o sistema não aceitou iniciar o serviço. Reinicie o Mac e rode a instalação de novo." "launchctl bootstrap $DOMINIO $plist e load -w falharam"
     provar_servico_no_ar
-    diga "plist: instalado e job provado carregado (launchctl print + porta da API)"; jp plist ok; passo plist 0; FEZ=1
+    diga "serviço: instalado, carregado e no ar"; nota "bootstrap $DOMINIO; PID do job na porta"; jp plist ok; passo plist 0; FEZ=1
   fi
 }
 instalar_plist_bridge || true
