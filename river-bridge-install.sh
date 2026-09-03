@@ -19,7 +19,7 @@
 #   --lang pt|en     idioma (default: locale do Mac)
 #
 # Canal (desde 2026-09-02): por default o instalador lê o SHA256SUMS da release
-# (releases/latest/download, só curl; a tag vem do redirect) e baixa dali o
+# (releases/latest/download, só curl; a tag vem do prefixo do tarball) e baixa dali o
 # tarball do código e o River Bridge.app pronto, cada um conferido pelo sha.
 # Se a release não for alcançável, cai para o tarball de main com aviso, e o
 # relatório e o last-run dizem de onde veio o código (fonte=). RUB_SRC_URL
@@ -109,7 +109,7 @@ MSG_DB=(
 "rel_buscando|release: %s|release: %s"
 "rel_indisponivel|release indisponível (curl %s) — usando o tarball de main|release unavailable (curl %s) — using the main tarball"
 "rel_sem_tarball|SHA256SUMS da release sem o tarball do código — usando o tarball de main|release SHA256SUMS lacks the source tarball — using the main tarball"
-"rel_ok|release %s: tarball e app pinados pelo SHA256SUMS|release %s: tarball and app pinned by SHA256SUMS"
+"rel_ok|release: tarball e app pinados pelo SHA256SUMS|release: tarball and app pinned by SHA256SUMS"
 "rel_fonte|código: %s|code: %s"
 "app_baixando|baixando o app pronto de %s|downloading the prebuilt app from %s"
 "app_download_falhou|download do app falhou (%s) — compilando localmente, se houver Swift|app download failed (%s) — building locally, if Swift is available"
@@ -690,18 +690,18 @@ obter_release() { # canal release: lê o SHA256SUMS; deriva URL e pinos do tarba
   elif [ "$RUB_RELEASE" = "latest" ]; then base="https://github.com/$REPO_SLUG/releases/latest/download"
   else base="https://github.com/$REPO_SLUG/releases/download/$RUB_RELEASE"; fi
   ui_info "$(msg rel_buscando "$base")"
-  efetiva="$(curl -fsSL --retry 2 --max-time 60 -o "$sums.parcial" -w '%{url_effective}' "$base/SHA256SUMS" 2>"$CACHE_DIR/curl.err")" || rc=$?
+  curl -fsSL --retry 2 --max-time 60 -o "$sums.parcial" "$base/SHA256SUMS" 2>"$CACHE_DIR/curl.err" || rc=$?
   if [ "$rc" != "0" ]; then rm -f "$sums.parcial"; ui_warn "$(msg rel_indisponivel "$rc")"; RUB_CANAL=main; return 1; fi
   mv "$sums.parcial" "$sums"
-  # A tag vem do redirect de latest/download → download/<tag>/…; por file:// não há redirect.
-  RELEASE_TAG="$(printf '%s' "$efetiva" | sed -n 's|.*/releases/download/\([^/]*\)/.*|\1|p')"
+  # A tag NÃO vem do redirect: medido em 2026-09-02, latest/download redireciona para a CDN
+  # de assets (release-assets.githubusercontent.com/…), sem a tag no caminho. Ela vem do
+  # prefixo do próprio tarball (river-unifi-bridge-<tag>/), lido em fase_fonte após o download.
   RUB_SRC_SHA256="$(awk '$2=="river-unifi-bridge-src.tar.gz"{print $1}' "$sums")"
   APP_SHA256="$(awk '$2=="River-Bridge.app.zip"{print $1}' "$sums")"
   [ -n "$RUB_SRC_SHA256" ] || { ui_warn "$(msg rel_sem_tarball)"; RUB_CANAL=main; return 1; }
   RUB_SRC_URL="$base/river-unifi-bridge-src.tar.gz"
   APP_URL="$base/River-Bridge.app.zip"
-  FONTE="release ${RELEASE_TAG:-(local)}"
-  ok "$(msg rel_ok "${RELEASE_TAG:-(local)}")"
+  ok "$(msg rel_ok)"
   return 0
 }
 
@@ -723,7 +723,12 @@ fase_fonte() { # define SRC_DIR (árvore com scripts/install.sh)
   mv "$tgz.parcial" "$tgz"
   sha="$(shasum -a 256 "$tgz" | cut -d' ' -f1)"
   if [ -n "$RUB_SRC_SHA256" ] && [ "$sha" != "$RUB_SRC_SHA256" ]; then rm -f "$tgz"; morrer "$E_VALID" "$(msg fonte_sha_div)"; fi
-  [ "$RUB_CANAL" = "release" ] || FONTE="main ${sha:0:12}"
+  if [ "$RUB_CANAL" = "release" ]; then
+    # Primeira entrada que casa com o prefixo — não a primeira do tarball: um tar feito de "."
+    # lista "./" antes (medido no gate), e o git archive lista a pasta do prefixo.
+    RELEASE_TAG="$(tar -tzf "$tgz" 2>/dev/null | sed -n 's|^river-unifi-bridge-\(v[^/]*\)/.*|\1|p' | head -1)"
+    FONTE="release ${RELEASE_TAG:-?}"
+  else FONTE="main ${sha:0:12}"; fi
   ok "$(msg fonte_sha "$(du -h "$tgz" | cut -f1 | tr -d ' ')" "${sha:0:12}")"
   dest="$CACHE_DIR/src-${sha:0:12}"
   if [ -x "$dest/scripts/install.sh" ]; then
@@ -784,7 +789,7 @@ baixar_app_release() { # define APP_NOVO com o River Bridge.app extraído do zip
   fi
   codesign --verify --deep --strict "$dest/River Bridge.app" >/dev/null 2>&1 || ui_warn "$(msg app_assinatura)"
   APP_NOVO="$dest/River Bridge.app"
-  ok "$(msg app_da_release "${RELEASE_TAG:-(local)}")"
+  ok "$(msg app_da_release "${RELEASE_TAG:-?}")"
   return 0
 }
 

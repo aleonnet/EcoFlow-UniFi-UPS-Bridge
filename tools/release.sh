@@ -9,7 +9,8 @@
 #
 # Assets com nome SEM versão, para o instalador baixar por
 #   https://github.com/<slug>/releases/latest/download/<asset>
-# só com curl (a tag vem do redirect). O SHA256SUMS prova integridade e que os
+# só com curl (a tag vem do prefixo do tarball: o redirect do GitHub vai para a CDN
+# de assets, sem a tag no caminho — medido em 2026-09-02). O SHA256SUMS prova integridade e que os
 # dois assets são da MESMA release; não protege contra um GitHub comprometido
 # (mesma origem TLS) — dizer isso nos docs, não fingir mais.
 #

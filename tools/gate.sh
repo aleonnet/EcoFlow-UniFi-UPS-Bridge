@@ -408,7 +408,7 @@ S18_E="$(s18_env d)"
 env $S18_E RUB_RELEASE_BASE="file://$OL3/rel-src-ruim" "$ONE" --yes --no-anim --no-app >"$OL3/r5.log" 2>&1; S18_RC5=$?
 S18_DET=""
 [ "$S18_RC1" = "0" ] && cmp -s "$OL3/a/apps/app/Contents/MacOS/RiverBridge" "$OL3/fake/River Bridge.app/Contents/MacOS/RiverBridge" \
-    && grep -q "^fonte=release" "$OL3/a/state/installer-last-run.log" || S18_DET="$S18_DET r1(rc=$S18_RC1)"
+    && grep -q "^fonte=release vtest$" "$OL3/a/state/installer-last-run.log" || S18_DET="$S18_DET r1(rc=$S18_RC1)"
 [ "$S18_RC2" = "100" ] || S18_DET="$S18_DET r2(rc=$S18_RC2)"
 [ "$S18_RC3" = "3" ] && [ ! -e "$OL3/b/apps/app" ] || S18_DET="$S18_DET r3(rc=$S18_RC3)"
 [ "$S18_RC4" = "0" ] && grep -qE "release indisponível|release unavailable" "$OL3/r4.log" \

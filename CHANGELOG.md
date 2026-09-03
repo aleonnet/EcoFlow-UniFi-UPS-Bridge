@@ -19,7 +19,7 @@ depois da última versão está em `[Unreleased]`.
   CHANGELOG; `--dry-run` monta os assets sem taguear. Sem CI: não há `.github/`, e o runner
   com macOS 26 não foi verificado.
 - **O one-liner passa a consumir a release** (canal `release`, default): lê o `SHA256SUMS` em
-  `releases/latest/download` só com `curl` (a tag vem do redirect), pina o tarball e o app,
+  `releases/latest/download` só com `curl` (a tag vem do prefixo do tarball), pina o tarball e o app,
   baixa o app pronto (sha divergente = exit 3, nada instalado; sem Swift o app continua
   chegando) e cai para o tarball de `main` com aviso quando a release não é alcançável. O
   relatório e o `installer-last-run.log` dizem de onde veio o código (`fonte=`). Flags
