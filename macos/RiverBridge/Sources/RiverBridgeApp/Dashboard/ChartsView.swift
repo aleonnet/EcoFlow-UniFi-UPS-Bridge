@@ -10,7 +10,7 @@ struct ChartsView: View {
     var store: TelemetryStore
     /// Type chips shared with the events list (owner): in Events mode the
     /// histogram honours the same filter; empty = everything.
-    var chips: Set<EventChip> = []
+    var chips: [EventChip] = []
 
     @State private var metric: Metric = ChartsView.initialMetric()
     @State private var rows: [HistoryRow] = []
@@ -105,8 +105,9 @@ struct ChartsView: View {
 
     private var filteredEventRows: [EventLogRow] {
         guard !chips.isEmpty else { return eventRows }
-        let types = Set(chips.flatMap(\.types))
-        return eventRows.filter { types.contains($0.type) }
+        return eventRows.filter { row in
+            chips.contains { $0.matches(type: row.type, device: row.device, devices: store.devices) }
+        }
     }
 
     private var eyebrowText: String {
@@ -356,13 +357,17 @@ struct ChartsView: View {
         .padding(.trailing, 6)
     }
 
-    /// Chart legend label per type — distinct hues so the stacked histogram
-    /// separates types that share a color in the list (Queda × Bateria baixa).
-    private func shortLabel(_ type: String) -> String {
-        // Eventos de dispositivo: o nome do usuário + o sufixo do registro. O
-        // domínio da escala de cor É este texto, então tem de ser único por tipo.
-        if let kind = DevicePluginRegistry.eventKind(type) {
-            return kind.short(name: store.deviceNames.name(forEventType: type))
+    /// Chart legend label per (instance, type) — distinct hues so the stacked
+    /// histogram separates types that share a color in the list (Queda × Bateria
+    /// baixa). The colour scale's DOMAIN is this text, so it has to be unique per
+    /// instance AND type: the instance goes in by its unique label (ordinal when
+    /// two share a name), and an event without an owner falls to the only
+    /// instance of its type.
+    private func legendLabel(type: String, device: String?) -> String {
+        if let kind = DeviceTypeRegistry.eventKind(type) {
+            let dono = device.flatMap { uniqueLabels[$0] }
+                ?? store.deviceNames.name(forEvent: type, device: device, devices: store.devices)
+            return kind.short(name: dono)
         }
         return switch type {
         case "POWER_LOSS": L10n.t("Queda", "Loss")
@@ -383,13 +388,32 @@ struct ChartsView: View {
         }
     }
 
-    private static let eventTypes = ["POWER_LOSS", "POWER_RESTORED", "LOW_BATTERY", "COMM_LOST", "COMM_RESTORED"]
-        + DevicePluginRegistry.allEventTypes
+    private static let bridgeTypes = ["POWER_LOSS", "POWER_RESTORED", "LOW_BATTERY", "COMM_LOST", "COMM_RESTORED"]
+
+    private var uniqueLabels: [String: String] { DeviceNames.uniqueLabels(instances: store.devices) }
+
+    /// The legend and the colour domain: one entry per (instance, type) that is
+    /// PRESENT in the filtered rows, in a stable order (bridge first, then each
+    /// instance's vocabulary). Absent keys never take a hue nor a legend slot.
+    private var legendKeys: [(label: String, color: Color)] {
+        let present = Set(filteredEventRows.map { legendLabel(type: $0.type, device: $0.device) })
+        var ordered: [(String, String?)] = Self.bridgeTypes.map { ($0, nil) }
+        for device in store.devices {
+            for kind in DeviceTypeRegistry.type(id: device.type)?.events ?? [] { ordered.append((kind.type, device.id)) }
+        }
+        var seen = Set<String>()
+        var out: [(label: String, color: Color)] = []
+        for (type, device) in ordered {
+            let label = legendLabel(type: type, device: device)
+            if present.contains(label), seen.insert(label).inserted { out.append((label, legendColor(type))) }
+        }
+        return out
+    }
 
     /// Protection events share one family (purple, with red/orange for the
     /// outcomes that matter) instead of falling into the teal default.
     private func legendColor(_ type: String) -> Color {
-        if let kind = DevicePluginRegistry.eventKind(type) { return kind.tone.color }
+        if let kind = DeviceTypeRegistry.eventKind(type) { return kind.tone.color }
         return switch type {
         case "POWER_LOSS": .orange
         case "POWER_RESTORED": .green
@@ -405,10 +429,10 @@ struct ChartsView: View {
     private var legendRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
-                ForEach(Self.eventTypes, id: \.self) { type in
+                ForEach(legendKeys, id: \.label) { key in
                     HStack(spacing: 5) {
-                        Circle().fill(legendColor(type)).frame(width: 7, height: 7)
-                        Text(shortLabel(type))
+                        Circle().fill(key.color).frame(width: 7, height: 7)
+                        Text(key.label)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize()
@@ -423,11 +447,11 @@ struct ChartsView: View {
     private func bucketBreakdown(_ bucket: Int) -> String {
         var counts: [String: Int] = [:]
         for row in filteredEventRows where row.ts / eventsBucket * eventsBucket == bucket {
-            counts[row.type, default: 0] += 1
+            counts[legendLabel(type: row.type, device: row.device), default: 0] += 1
         }
-        let parts = Self.eventTypes.compactMap { type -> String? in
-            guard let n = counts[type], n > 0 else { return nil }
-            return "\(n) \(shortLabel(type))"
+        let parts = legendKeys.compactMap { key -> String? in
+            guard let n = counts[key.label], n > 0 else { return nil }
+            return "\(n) \(key.label)"
         }
         return parts.joined(separator: " · ")
     }
@@ -440,7 +464,7 @@ struct ChartsView: View {
                     y: .value("Eventos", 1),
                     width: .fixed(7)
                 )
-                .foregroundStyle(by: .value("Tipo", shortLabel(row.type)))
+                .foregroundStyle(by: .value("Tipo", legendLabel(type: row.type, device: row.device)))
             }
             if let scrubTS {
                 let bucket = scrubTS / eventsBucket * eventsBucket
@@ -465,8 +489,8 @@ struct ChartsView: View {
         .simultaneousGesture(magnify)
         .onTapGesture(count: 2) { zoomOut() }
         .chartForegroundStyleScale(
-            domain: Self.eventTypes.map { shortLabel($0) },
-            range: Self.eventTypes.map { legendColor($0) }
+            domain: legendKeys.map(\.label),
+            range: legendKeys.map(\.color)
         )
         .chartLegend(.hidden)
         .chartXAxis {

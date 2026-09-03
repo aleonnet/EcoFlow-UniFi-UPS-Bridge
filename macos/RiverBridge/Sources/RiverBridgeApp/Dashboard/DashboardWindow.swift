@@ -167,9 +167,12 @@ struct EnergiaSection: View {
     var store: TelemetryStore
     @State private var scrollOffset: CGFloat = 0
     @State private var headerMinY: CGFloat = 1000
-    @State private var eventChips: Set<EventChip> =
-        ProcessInfo.processInfo.arguments.contains("--seam-chip-queda") ? [.queda]
-        : ProcessInfo.processInfo.arguments.contains("--seam-chip-protecao") ? [.protecao] : []
+    /// Ids dos chips ligados (4 do bridge + 1 por instância; vazio = tudo).
+    /// `--seam-chip-queda` liga o de queda; `--seam-chip-protecao` liga o chip da
+    /// PRIMEIRA instância assim que a lista chega (a captura do chip de proteção).
+    @State private var chipIDs: Set<String> =
+        ProcessInfo.processInfo.arguments.contains("--seam-chip-queda") ? ["queda"] : []
+    @State private var seamProtecao = ProcessInfo.processInfo.arguments.contains("--seam-chip-protecao")
     // Dev seam (screenshot runs): --periodo-datas opens with Datas active.
     @State private var eventPeriod: EventPeriod =
         ProcessInfo.processInfo.arguments.contains("--periodo-datas") ? .personalizado : .tudo
@@ -191,13 +194,13 @@ struct EnergiaSection: View {
                         ConnectionBanner(reason: reason)
                     }
                     FlowScene(store: store)
-                    ChartsView(store: store, chips: eventChips)
+                    ChartsView(store: store, chips: selectedChips)
                 }
                 Section {
-                    EventsTimeline(store: store, chips: eventChips, period: eventPeriod,
+                    EventsTimeline(store: store, chips: selectedChips, period: eventPeriod,
                                    customFrom: customFrom, customTo: customTo)
                 } header: {
-                    EventsFilterBar(chips: $eventChips, names: store.deviceNames,
+                    EventsFilterBar(chipIDs: $chipIDs, all: EventChip.all(devices: store.devices),
                                     period: $eventPeriod,
                                     customFrom: $customFrom, customTo: $customTo)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,6 +229,17 @@ struct EnergiaSection: View {
         } action: { _, offset in
             scrollOffset = offset
         }
+        .onChange(of: store.devices, initial: true) { applyChipSeam() }
+    }
+
+    private var selectedChips: [EventChip] {
+        EventChip.selected(ids: chipIDs, devices: store.devices)
+    }
+
+    private func applyChipSeam() {
+        guard seamProtecao, let first = EventChip.all(devices: store.devices).first(where: { $0.spec.deviceID != nil }) else { return }
+        chipIDs = [first.id]
+        seamProtecao = false
     }
 }
 

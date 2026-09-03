@@ -39,13 +39,17 @@ public struct HealthPlugin: Codable, Equatable, Sendable {
 }
 
 extension HealthChain {
+    /// The id of the instance migrated from the flat `.env` (the daemon's
+    /// LEGACY_INSTANCE_ID): the only one the `udr7`/`udr7_detail` alias mirrors.
+    public static let legacyInstanceID = "udr7"
+
     /// The user's name for a plugin, or nil when the daemon doesn't publish one.
     /// Reads the `plugins` list first and falls back to the `udr7_detail` alias,
     /// so a daemon from before P6 still yields a name. Blank (or spaces only)
     /// counts as absent — the caller decides the default.
     public func pluginName(id: String) -> String? {
         let fromList = plugins?.first(where: { $0.id == id })?.name
-        let fromAlias = id == DevicePluginDescriptor.udr7.id ? udr7Detail?.name : nil
+        let fromAlias = id == HealthChain.legacyInstanceID ? udr7Detail?.name : nil
         for candidate in [fromList, fromAlias] {
             if let value = candidate?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
                 return value
@@ -58,7 +62,7 @@ extension HealthChain {
     /// separate `pluginState` would have no consumer.
     public func pluginDetail(id: String) -> Udr7Detail? {
         if let fromList = plugins?.first(where: { $0.id == id })?.detail { return fromList }
-        return id == DevicePluginDescriptor.udr7.id ? udr7Detail : nil
+        return id == HealthChain.legacyInstanceID ? udr7Detail : nil
     }
 }
 
@@ -105,49 +109,12 @@ public struct DeviceEventKind: Equatable, Sendable {
     }
 }
 
-// MARK: - The plugin descriptor and the registry
+// MARK: - The SSH engine's event vocabulary
 
-public struct DevicePluginDescriptor: Identifiable, Equatable, Sendable {
-    public let id: String
-    public let symbol: String
-    public let defaultName: String
-    /// The key that turns the protection on and off.
-    public let enableKey: String
-    /// The key that holds the user's name for the device.
-    public let nameKey: String
-    /// The keys the settings SHEET edits. Deliberately a different name from the
-    /// daemon's `config_keys` (17): the sheet does not edit `UDR7_ARM_ALLOWED`
-    /// (file-only) nor `UDR7_RETRY_MAX`, and `PROTECT_DRY_RUN` travels on its own
-    /// in the arming dialog. Consumed by the sheet that builds the PUT (P8).
-    public let sheetKeys: [String]
-    public let events: [DeviceEventKind]
-
-    public init(id: String, symbol: String, defaultName: String, enableKey: String,
-                nameKey: String, sheetKeys: [String], events: [DeviceEventKind]) {
-        self.id = id
-        self.symbol = symbol
-        self.defaultName = defaultName
-        self.enableKey = enableKey
-        self.nameKey = nameKey
-        self.sheetKeys = sheetKeys
-        self.events = events
-    }
-}
-
-extension DevicePluginDescriptor {
-    public static let udr7 = DevicePluginDescriptor(
-        id: "udr7",
-        symbol: "shield.lefthalf.filled",
-        defaultName: "UDR7",
-        enableKey: "PROTECT_UDR7",
-        nameKey: "UDR7_NAME",
-        sheetKeys: [
-            "UDR7_SSH_HOST", "UDR7_SSH_PORT", "UDR7_SSH_USER", "UDR7_SSH_KEY",
-            "UDR7_EXPECTED_SERIAL", "UDR7_CUTOFF_PERCENT", "UDR7_SHUTDOWN_PERCENT",
-            "UDR7_DISCHARGE_SECONDS_PER_PCT", "UDR7_RUNTIME_MINUTES",
-            "UDR7_MIN_OUTAGE_SECONDS", "UDR7_CONFIRM_SECONDS", "UDR7_WOL_MAC",
-        ],
-        events: [
+extension DeviceEventKind {
+    /// The ten events of the daemon's SSH engine, in the UDR7 prefix. Every
+    /// type built on the engine reuses this list and renames the prefix.
+    public static let sshEngine: [DeviceEventKind] = [
             DeviceEventKind(type: "UDR7_SHUTDOWN_DRYRUN", symbol: "shield.lefthalf.filled",
                             tone: .family, shortPT: "ensaio", shortEN: "rehearsal",
                             longPT: "ensaio: desligaria agora", longEN: "rehearsal: would shut down now"),
@@ -178,39 +145,7 @@ extension DevicePluginDescriptor {
             DeviceEventKind(type: "UDR7_WOL_DRYRUN", symbol: "wake",
                             tone: .wake, shortPT: "WoL ensaio", shortEN: "WoL rehearsal",
                             longPT: "ensaio: religaria agora", longEN: "rehearsal: would wake now"),
-        ]
-    )
-}
-
-public enum DevicePluginRegistry {
-    /// Static, like Stats. A second plugin is one line here.
-    public static let all: [DevicePluginDescriptor] = [.udr7]
-
-    public static func plugin(id: String) -> DevicePluginDescriptor? {
-        all.first { $0.id == id }
-    }
-
-    public static func plugin(forEventType type: String) -> DevicePluginDescriptor? {
-        all.first { $0.events.contains { $0.type == type } }
-    }
-
-    public static func eventKind(_ type: String) -> DeviceEventKind? {
-        for plugin in all {
-            if let kind = plugin.events.first(where: { $0.type == type }) { return kind }
-        }
-        return nil
-    }
-
-    public static var allEventTypes: [String] {
-        all.flatMap { $0.events.map(\.type) }
-    }
-
-    /// Turning the protection ON while the rehearsal is OFF arms the device for
-    /// real, so it needs a confirmation. UNKNOWN also asks: `nil` must never open
-    /// the hole. Turning it off is a pure disarm — always accepted, no dialog.
-    public static func toggleNeedsConfirmation(on: Bool, dryRun: Bool?) -> Bool {
-        on && dryRun != true
-    }
+    ]
 }
 
 // MARK: - The names the user gave
@@ -222,33 +157,6 @@ public struct DeviceNames: Equatable, Sendable {
 
     public init(byPluginID: [String: String] = [:]) {
         self.byPluginID = byPluginID
-    }
-
-    public func name(for descriptor: DevicePluginDescriptor) -> String {
-        byPluginID[descriptor.id] ?? descriptor.defaultName
-    }
-
-    public func name(forEventType type: String) -> String {
-        guard let plugin = DevicePluginRegistry.plugin(forEventType: type) else { return "" }
-        return name(for: plugin)
-    }
-
-    /// seam > health > default. `health` is optional because the store resolves
-    /// once at init, before any GET has happened.
-    public static func resolve(
-        health: HealthChain?,
-        seams: [String: String] = [:],
-        registry: [DevicePluginDescriptor] = DevicePluginRegistry.all
-    ) -> DeviceNames {
-        var names: [String: String] = [:]
-        for plugin in registry {
-            if let seam = seams[plugin.id], !seam.isEmpty {
-                names[plugin.id] = seam
-            } else if let published = health?.pluginName(id: plugin.id) {
-                names[plugin.id] = published
-            }
-        }
-        return DeviceNames(byPluginID: names)
     }
 
     /// `--seam-nome-plugin "udr7=Meu UDR"` (repeatable). Launch only — it exists
@@ -356,7 +264,7 @@ extension DeviceTypeDescriptor {
         blurbPT: "Desliga o console pela chave SSH antes de a bateria acabar.",
         blurbEN: "Shuts the console down over SSH before the battery runs out.",
         fieldKeys: sshFieldKeys + ["wol_mac"],
-        events: DevicePluginDescriptor.udr7.events
+        events: DeviceEventKind.sshEngine
     )
 
     public static let sshHost = DeviceTypeDescriptor(
@@ -368,7 +276,7 @@ extension DeviceTypeDescriptor {
         blurbEN: "Runs a shutdown command over SSH on any machine.",
         fieldKeys: sshFieldKeys + ["shutdown_command"],
         // The engine's vocabulary without WoL (the type has no wake MAC).
-        events: DevicePluginDescriptor.udr7.events
+        events: DeviceEventKind.sshEngine
             .filter { !$0.type.contains("WOL") }
             .map { $0.renamed(from: "UDR7_", to: "SSH_HOST_") }
     )
@@ -395,6 +303,13 @@ public enum DeviceTypeRegistry {
 
     public static var allEventTypes: [String] {
         all.flatMap { $0.events.map(\.type) }
+    }
+
+    /// Turning the protection ON while the rehearsal is OFF arms the device for
+    /// real, so it needs a confirmation. UNKNOWN also asks: `nil` must never open
+    /// the hole. Turning it off is a pure disarm — always accepted, no dialog.
+    public static func toggleNeedsConfirmation(on: Bool, dryRun: Bool?) -> Bool {
+        on && dryRun != true
     }
 }
 
@@ -528,6 +443,19 @@ public struct EventChipSpec: Identifiable, Hashable, Sendable {
     public var deviceID: String? {
         if case .device(let id, _) = kind { return id }
         return nil
+    }
+
+    /// Whether an event belongs under this chip. A device chip claims the
+    /// events that carry its id; an event WITHOUT an owner (recorded before
+    /// instances existed) belongs to the only instance of its type, and to
+    /// nobody when there are two — the same rule as `DeviceNames.name(forEvent:)`.
+    public func matches(eventType: String, device: String?, devices: [DeviceInstance]) -> Bool {
+        guard types.contains(eventType) else { return false }
+        guard let mine = deviceID else { return true }
+        if let device { return device == mine }
+        guard let kind = DeviceTypeRegistry.type(forEventType: eventType) else { return false }
+        let ofType = devices.filter { $0.type == kind.id }
+        return ofType.count == 1 && ofType[0].id == mine
     }
 
     public static func all(devices: [DeviceInstance]) -> [EventChipSpec] {

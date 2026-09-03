@@ -443,7 +443,7 @@ struct SettingsView: View {
     /// sempre aceito pelo daemon — e vai direto, de forma otimista.
     private func toggleDevice(_ instance: DeviceInstance, on: Bool) async {
         let dryRun = store.health?.pluginDetail(id: instance.id)?.dryRun ?? instance.dryRun
-        if DevicePluginRegistry.toggleNeedsConfirmation(on: on, dryRun: dryRun) {
+        if DeviceTypeRegistry.toggleNeedsConfirmation(on: on, dryRun: dryRun) {
             pendingArm = instance
             return
         }

@@ -162,3 +162,32 @@ private let tres = [
     #expect(store.health?.plugins?.count == 3)
     #expect(store.deviceNames.name(forDevice: "sshhost_7b2e4d10") == "Servidor")
 }
+
+// MARK: - Um chip por instância filtra pelo DONO do evento
+
+/// O serviço filtra o histórico por TIPO; o dono (instância) é filtrado no app.
+/// Um evento gravado antes de existirem instâncias não carrega dono: ele cai na
+/// ÚNICA instância do seu tipo, e em nenhuma quando há duas — a mesma regra de
+/// `DeviceNames.name(forEvent:)`. Refutação: trocar o `return device == mine`
+/// por `return true` faz o chip do NAS reclamar o evento do Servidor.
+@Test func chipMatchesEventsByOwnerAndFallsBackToTheOnlyOneOfItsType() {
+    let chips = EventChipSpec.all(devices: tres)
+    let udr7 = chips.first { $0.deviceID == "udr7" }!
+    let nas = chips.first { $0.deviceID == "sshhost_3fa9c1d2" }!
+    let servidor = chips.first { $0.deviceID == "sshhost_7b2e4d10" }!
+    let queda = chips.first { $0.deviceID == nil }!
+
+    // Com dono: só o chip do dono.
+    #expect(servidor.matches(eventType: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_7b2e4d10", devices: tres))
+    #expect(!nas.matches(eventType: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_7b2e4d10", devices: tres))
+    // Sem dono, tipo com UMA instância: ela.
+    #expect(udr7.matches(eventType: "UDR7_SHUTDOWN_DRYRUN", device: nil, devices: tres))
+    // Sem dono, tipo com DUAS instâncias: nenhuma reclama.
+    #expect(!nas.matches(eventType: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: tres))
+    #expect(!servidor.matches(eventType: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: tres))
+    // Vocabulário de OUTRO tipo nunca entra, mesmo com o dono certo.
+    #expect(!udr7.matches(eventType: "SSH_HOST_SHUTDOWN_SENT", device: "udr7", devices: tres))
+    // Chips do bridge ignoram o dono.
+    #expect(queda.matches(eventType: "POWER_LOSS", device: nil, devices: tres))
+    #expect(!queda.matches(eventType: "UDR7_SHUTDOWN_SENT", device: nil, devices: tres))
+}

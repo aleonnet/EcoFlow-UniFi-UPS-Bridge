@@ -5,48 +5,47 @@ import RiverBridgeCore
 import SwiftUI
 
 /// Type filter chips: each chip covers the event types a person thinks of
-/// as one subject (Comunicação = lost + restored).
-enum EventChip: String, CaseIterable, Identifiable {
-    case queda, restaurada, bateria, comunicacao, protecao
+/// as one subject (Comunicação = lost + restored). Quatro assuntos do próprio
+/// bridge mais UM chip por instância protegida — a lista vem do Core
+/// (EventChipSpec), esta camada só põe cor e voz.
+struct EventChip: Identifiable, Hashable {
+    let spec: EventChipSpec
 
-    var id: String { rawValue }
-    /// O chip de proteção leva o NOME que o usuário deu ao dispositivo; os demais
-    /// são assuntos do próprio bridge e não pertencem a plugin nenhum.
-    func label(names: DeviceNames) -> String {
-        switch self {
+    var id: String { spec.id }
+    var symbol: String { spec.symbol }
+    var types: [String] { spec.types }
+
+    var label: String {
+        switch spec.kind {
         case .queda: L10n.t("Queda", "Loss")
         case .restaurada: L10n.t("Restaurada", "Restored")
         case .bateria: L10n.t("Bateria baixa", "Low battery")
         case .comunicacao: L10n.t("Comunicação", "Comm")
-        case .protecao: names.name(for: .udr7)
-        }
-    }
-    var symbol: String {
-        switch self {
-        case .queda: "bolt.slash.fill"
-        case .restaurada: "bolt.badge.checkmark.fill"
-        case .bateria: "battery.25percent"
-        case .comunicacao: "antenna.radiowaves.left.and.right"
-        case .protecao: "shield.lefthalf.filled"
+        case .device: spec.name ?? ""
         }
     }
     var color: Color {
-        switch self {
+        switch spec.kind {
         case .queda: .orange
         case .bateria: .yellow   // matches the chart legend (owner 2026-08-31)
         case .restaurada: .green
         case .comunicacao: .red
-        case .protecao: .purple  // protection family (chart legend uses the same hue)
+        case .device: .purple    // protection family (chart legend uses the same hue)
         }
     }
-    var types: [String] {
-        switch self {
-        case .queda: ["POWER_LOSS"]
-        case .restaurada: ["POWER_RESTORED"]
-        case .bateria: ["LOW_BATTERY"]
-        case .comunicacao: ["COMM_LOST", "COMM_RESTORED"]
-        case .protecao: DevicePluginRegistry.allEventTypes
-        }
+
+    static func all(devices: [DeviceInstance]) -> [EventChip] {
+        EventChipSpec.all(devices: devices).map { EventChip(spec: $0) }
+    }
+
+    /// Os chips LIGADOS, na ordem da barra: a seleção guarda ids (sobrevive a
+    /// uma instância renomeada), a lista vem das instâncias correntes.
+    static func selected(ids: Set<String>, devices: [DeviceInstance]) -> [EventChip] {
+        all(devices: devices).filter { ids.contains($0.id) }
+    }
+
+    func matches(type: String, device: String?, devices: [DeviceInstance]) -> Bool {
+        spec.matches(eventType: type, device: device, devices: devices)
     }
 }
 
@@ -83,7 +82,8 @@ enum EventPeriod: String, CaseIterable, Identifiable {
 
 struct EventsTimeline: View {
     var store: TelemetryStore
-    var chips: Set<EventChip>
+    /// Os chips ligados (vazio = tudo).
+    var chips: [EventChip]
     var period: EventPeriod
     var customFrom: Date
     var customTo: Date
@@ -94,7 +94,7 @@ struct EventsTimeline: View {
     @State private var narrow = false
 
     private var filterKey: String {
-        chips.map(\.rawValue).sorted().joined(separator: ",")
+        chips.map(\.id).sorted().joined(separator: ",")
             + "|\(period.rawValue)|\(Int(customFrom.timeIntervalSince1970))"
             + "|\(Int(customTo.timeIntervalSince1970))"
     }
@@ -117,7 +117,7 @@ struct EventsTimeline: View {
             } else {
                 ForEach(rows) { event in
                     EventRow(event: event, selected: $selected, narrow: narrow,
-                             names: store.deviceNames)
+                             names: store.deviceNames, devices: store.devices)
                 }
             }
         }
@@ -152,18 +152,24 @@ struct EventsTimeline: View {
         do {
             let result = try await APIClient(endpoint: endpoint)
                 .eventsLog(from: fromTS, to: toTS, types: types)
-            rows = result.map(\.asBridgeEvent)
+            // O serviço filtra por TIPO; o dono do evento (instância) é filtrado
+            // aqui, porque dois chips de instância pedem dois donos de uma vez.
+            let todos = result.map(\.asBridgeEvent)
+            rows = chips.isEmpty ? todos : todos.filter { e in
+                chips.contains { $0.matches(type: e.event, device: e.device, devices: store.devices) }
+            }
             loadFailed = false
         } catch {
             loadFailed = true
         }
     }
 
-    static func label(for event: String, names: DeviceNames) -> String {
-        // Os eventos de DISPOSITIVO saem do registro, com o nome do usuário; só os
-        // do próprio bridge ficam escritos aqui.
-        if let kind = DevicePluginRegistry.eventKind(event) {
-            return kind.long(name: names.name(forEventType: event))
+    static func label(for event: String, device: String?, names: DeviceNames,
+                      devices: [DeviceInstance]) -> String {
+        // Os eventos de DISPOSITIVO saem do registro de tipos, com o nome da
+        // INSTÂNCIA dona; só os do próprio bridge ficam escritos aqui.
+        if let kind = DeviceTypeRegistry.eventKind(event) {
+            return kind.long(name: names.name(forEvent: event, device: device, devices: devices))
         }
         switch event {
         case "POWER_LOSS": return L10n.t("Queda de energia — na bateria", "Power loss — on battery")
@@ -176,7 +182,7 @@ struct EventsTimeline: View {
     }
 
     static func symbol(for event: String) -> String {
-        if let kind = DevicePluginRegistry.eventKind(event) { return kind.symbol }
+        if let kind = DeviceTypeRegistry.eventKind(event) { return kind.symbol }
         switch event {
         case "POWER_LOSS": return "bolt.slash.fill"
         case "POWER_RESTORED": return "bolt.badge.checkmark.fill"
@@ -188,7 +194,7 @@ struct EventsTimeline: View {
     }
 
     static func color(for event: String) -> Color {
-        if let kind = DevicePluginRegistry.eventKind(event) { return kind.tone.color }
+        if let kind = DeviceTypeRegistry.eventKind(event) { return kind.tone.color }
         switch event {
         case "POWER_LOSS": return .orange
         case "LOW_BATTERY": return .yellow   // matches the chart legend
@@ -207,6 +213,7 @@ private struct EventRow: View {
     @Binding var selected: BridgeEvent?
     var narrow = false
     var names: DeviceNames
+    var devices: [DeviceInstance]
 
     @State private var hovering = false
 
@@ -229,7 +236,7 @@ private struct EventRow: View {
                     Image(systemName: EventsTimeline.symbol(for: event.event))
                         .foregroundStyle(color)
                         .frame(width: 18)
-                    Text(EventsTimeline.label(for: event.event, names: names))
+                    Text(EventsTimeline.label(for: event.event, device: event.device, names: names, devices: devices))
                         .font(.system(.callout, design: .rounded).weight(.medium))
                     Spacer()
                     Text(event.dayTimeText)
@@ -320,8 +327,10 @@ struct EventDetailInline: View {
 /// type chips (token/scope pattern — Mail/Finder). Multi-select; empty
 /// selection = everything.
 struct EventsFilterBar: View {
-    @Binding var chips: Set<EventChip>
-    var names: DeviceNames
+    /// Ids dos chips ligados; a lista de chips (4 do bridge + 1 por instância)
+    /// vem de fora, das instâncias correntes.
+    @Binding var chipIDs: Set<String>
+    var all: [EventChip]
     @Binding var period: EventPeriod
     @Binding var customFrom: Date
     @Binding var customTo: Date
@@ -389,7 +398,7 @@ struct EventsFilterBar: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(EventChip.allCases) { chip in
+                    ForEach(all) { chip in
                         chipButton(chip)
                     }
                 }
@@ -405,14 +414,14 @@ struct EventsFilterBar: View {
     }
 
     private func chipButton(_ chip: EventChip) -> some View {
-        let isOn = chips.contains(chip)
+        let isOn = chipIDs.contains(chip.id)
         return Button {
-            if isOn { chips.remove(chip) } else { chips.insert(chip) }
+            if isOn { chipIDs.remove(chip.id) } else { chipIDs.insert(chip.id) }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: chip.symbol)
                     .foregroundStyle(chip.color)
-                Text(chip.label(names: names)).fixedSize()
+                Text(chip.label).fixedSize()
             }
             .font(.system(.callout, design: .rounded).weight(isOn ? .semibold : .regular))
             .foregroundStyle(isOn ? .primary : .secondary)
