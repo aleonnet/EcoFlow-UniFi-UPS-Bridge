@@ -254,14 +254,15 @@ EOF
 cat > "$INST/bin/launchctl" <<EOF
 #!/bin/bash
 case "\$1" in
-  print) [ -f "$INST/ld/.carregado" ] && exit 0 || exit 1 ;;
+  print) [ -f "$INST/ld/.carregado" ] && { printf '\tpid = 4242\n'; exit 0; } || exit 1 ;;
   bootstrap) touch "$INST/ld/.carregado"; exit 0 ;;
   bootout) rm -f "$INST/ld/.carregado"; exit 0 ;;
+  kickstart) echo kick >> "$INST/ld/.kicks"; exit 0 ;;
 esac
 exit 0
 EOF
 chmod +x "$INST/bin/brew" "$INST/bin/launchctl"
-INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python"
+INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1"
 
 # S8 — dry-run não escreve nada
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_dry.log 2>&1
@@ -326,6 +327,40 @@ if [ "$RC9D" = "0" ] && grep -q "^│ guarda: .*seria recusada (3)" /tmp/gate_in
     ok "S9d dry-run sem serviço visível informa a instância armada"
 else
     erro "S9d dry-run: rc=$RC9D — cauda:"; tail -3 /tmp/gate_inst_9d.log
+fi
+
+# S9e — a prova "serviço no ar" nomeia um processo ALHEIO na porta da API
+# (2026-09-03: um daemon de desenvolvimento em 35493 matava o instalado e o
+# instalador dizia "provado"). Porta livre 35997 no bridge.env do prefixo, um
+# ouvinte de mentira nela, código com marca (força reinício) e a prova ligada:
+# rc 1 e a mensagem com o PID do ouvinte. O caso positivo (o job abre a porta)
+# não é provável com stubs — fica para a medição no mini (RUB_SKIP_HEALTH=1
+# nas demais cenas).
+sed -i '' 's/^UI_API_PORT=.*/UI_API_PORT=35997/' "$INST/prefix/etc/bridge.env"
+python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35997)); s.listen(1); time.sleep(90)' &
+OUVINTE_PID=$!
+sleep 1
+echo "# marca S9e" >> "$MARCA"
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e.log 2>&1
+RC9E=$?
+kill "$OUVINTE_PID" 2>/dev/null; wait "$OUVINTE_PID" 2>/dev/null
+if [ "$RC9E" = "1" ] && grep -q "ocupada pelo PID $OUVINTE_PID" /tmp/gate_inst_9e.log; then
+    ok "S9e prova do serviço no ar: processo alheio na porta → rc 1 nomeando o PID"
+else
+    erro "S9e prova do serviço no ar: rc=$RC9E — cauda:"; tail -3 /tmp/gate_inst_9e.log
+fi
+
+# S9f — nada mudou, job "carregado" (stub) mas NINGUÉM na porta: o instalador
+# relança (kickstart) e, sem daemon real, a prova falha em 15 s nomeando a
+# porta — nunca "já instalado e carregado" com o serviço morto (revisão fria,
+# 2026-09-03: a parada deliberada sai 0 e o KeepAlive não relança).
+rm -f "$INST/ld/.kicks"
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9f.log 2>&1
+RC9F=$?
+if [ "$RC9F" = "1" ] && [ -f "$INST/ld/.kicks" ] && grep -q "não abriu a porta 35997" /tmp/gate_inst_9f.log && ! grep -q "plist: já instalado" /tmp/gate_inst_9f.log; then
+    ok "S9f serviço fora da porta com código igual → kickstart e falha nomeando a porta (nunca 'já instalado')"
+else
+    erro "S9f serviço fora da porta: rc=$RC9F kicks=$([ -f "$INST/ld/.kicks" ] && echo sim || echo nao) — cauda:"; tail -3 /tmp/gate_inst_9f.log
 fi
 
 # S10 — uninstall (a CÓPIA INSTALADA, o caminho do README) remove o criado,

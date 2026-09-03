@@ -28,11 +28,11 @@ O mesmo arquivo, o mesmo fluxo; `--src` só troca o download pela árvore indica
 
 | Fase | Faz | "já estava" |
 |---|---|---|
-| 01 Pré-voo | macOS, `curl/tar/shasum`, Homebrew (portão; `--install-deps` instala o oficial em `NONINTERACTIVE`), Swift (no canal release, sem Swift é só informação: o app vem pronto) | — |
+| 01 Pré-voo | macOS, `curl/tar/shasum`, Homebrew (portão; `--install-deps` instala o oficial em `NONINTERACTIVE`), Swift **só no canal `main`** (no canal release o app vem pronto; a fase do app checa o Swift na hora se a release não o trouxer) | — |
 | 02 Código-fonte | **canal release (default, desde 2026-09-02):** lê `SHA256SUMS` em `releases/latest/download` (a tag vem do prefixo do tarball, `river-unifi-bridge-<tag>/`; medido em 2026-09-02 que o redirect do GitHub vai para a CDN de assets, sem a tag no caminho), pina o tarball e o app; **qualquer falha → canal main com aviso**. Depois: baixa o tarball (`.parcial` → `mv`), `sha256` contra o pino (`RUB_SRC_SHA256` ou o `SHA256SUMS`), extrai em `~/Library/Caches/river-unifi-bridge/src-<sha>` | cache com o mesmo sha |
 | 03 Serviço | **`sudo scripts/install.sh --consent-homebrew`** — brew `nut` + `python@3.13`, código, **desinstalador em `$PREFIX/scripts`**, venv, `bridge.env` (preservado), LaunchDaemon; **código novo com plist igual → `kickstart`** | `install.sh` devolve 100 |
 | 04 App | canal release e arm64: baixa `River-Bridge.app.zip`, confere o sha (**divergente = exit 3, nada instalado**), extrai com `ditto -xk` em `app-<sha>`; senão `tools/build-app.sh` (Swift, no alvo). Instala em `~/Applications/River Bridge.app` se o binário mudou (fecha/reabre se estava aberto) | binário idêntico (`cmp`) |
-| 05 Verificação | espera a API local, lê `/v1/version` e `/v1/health` (NUT, UDR7, UniFi) | — |
+| 05 Verificação | espera a API local, lê `/v1/version` e `/v1/health` (NUT, UDR7, UniFi, dispositivos); **falha (código 1)** se a versão que responde não é a do código instalado, nomeando o PID que ocupa a porta (2026-09-03: um daemon alheio na porta passava com ✔) | — |
 
 Saída: 0 (fez algo) · 100 (nada a fazer) · 2 uso · 3 validação · 4 dependência · 10 rede ·
 130 cancelado · 1 falha. Relatório em `~/Library/Application Support/river-unifi-bridge/installer-last-run.log`,

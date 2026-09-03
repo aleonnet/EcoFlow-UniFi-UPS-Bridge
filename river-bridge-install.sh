@@ -38,7 +38,7 @@
 # =============================================================================
 # shellcheck disable=SC2034  # paleta e glifos são globais da camada visual
 set -Eeuo pipefail
-RBI_VERSION="0.3.0"
+RBI_VERSION="0.3.1"
 E_USO=2; E_VALID=3; E_DEP=4; E_CONEXAO=10; E_FALHA=1; E_CANCEL=130
 _src="${BASH_SOURCE[0]:-$0}"
 REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
@@ -104,9 +104,7 @@ MSG_DB=(
 "brew_instalando|instalando o Homebrew (instalador oficial, NONINTERACTIVE)|installing Homebrew (official installer, NONINTERACTIVE)"
 "brew_falhou|o instalador do Homebrew falhou|the Homebrew installer failed"
 "swift_ok|Swift %s — o app será compilado aqui|Swift %s — the app will be built here"
-"swift_ok_release|Swift %s — usado só se a release não trouxer o app pronto|Swift %s — used only if the release ships no prebuilt app"
 "swift_falta|sem Swift/Xcode: o app não será compilado (o serviço instala normalmente); --no-app silencia|no Swift/Xcode: the app will not be built (the service installs normally); --no-app silences this"
-"swift_falta_release|sem Swift/Xcode: o app virá pronto da release (se ela o trouxer)|no Swift/Xcode: the app comes prebuilt from the release (if it ships one)"
 "rel_buscando|release: %s|release: %s"
 "rel_indisponivel|release indisponível (curl %s) — usando o tarball de main|release unavailable (curl %s) — using the main tarball"
 "rel_sem_tarball|SHA256SUMS da release sem o tarball do código — usando o tarball de main|release SHA256SUMS lacks the source tarball — using the main tarball"
@@ -118,7 +116,8 @@ MSG_DB=(
 "app_zip_invalido|o zip da release não trouxe River Bridge.app — compilando localmente, se houver Swift|the release zip has no River Bridge.app — building locally, if Swift is available"
 "app_assinatura|a assinatura do app baixado não verifica (codesign) — seguindo, ad-hoc|the downloaded app signature does not verify (codesign) — continuing, ad-hoc"
 "app_da_release|app pronto da release %s|prebuilt app from release %s"
-"verif_versao_div|o serviço responde v%s, mas a release é %s — o daemon pode não ter reiniciado no código novo|the service answers v%s but the release is %s — the daemon may not have restarted on the new code"
+"verif_sem_versao|não li a versão do código instalado em %s/src/river_unifi_bridge/__init__.py — sem ela a verificação não prova nada|could not read the installed code version at %s/src/river_unifi_bridge/__init__.py — without it the check proves nothing"
+"verif_outro_processo|o código instalado é v%s, mas quem responde em 127.0.0.1:%s é v%s (%s) — o serviço instalado não está no ar; encerre esse processo e rode de novo|the installed code is v%s, but what answers on 127.0.0.1:%s is v%s (%s) — the installed service is not up; stop that process and run again"
 "sudo_pede|o sudo vai pedir sua senha UMA vez (quem pergunta é o sudo; o instalador não guarda nem repassa)|sudo will ask for your password ONCE (sudo asks; the installer never stores or forwards it)"
 "sudo_sem_tty|sem terminal para o sudo — rode num terminal interativo, ou 'sudo -v' antes|no terminal for sudo — run in an interactive terminal, or 'sudo -v' first"
 "sudo_recusado|sudo recusado|sudo refused"
@@ -702,15 +701,18 @@ fase_prevoo() {
   else
     ui_warn "$(msg brew_falta)"; portao "$(msg brew_dica)"
   fi
-  if [ "$OP_NOAPP" = "0" ]; then
-    if command -v swift >/dev/null 2>&1 && swift --version >/dev/null 2>&1; then
-      SWIFT_OK=1
-      local sv; sv="$(swift --version 2>&1 | head -1 | grep -Eo 'Swift version [0-9.]+' | cut -d' ' -f3)"
-      if [ "$RUB_CANAL" = "release" ]; then ok "$(msg swift_ok_release "$sv")"; else ok "$(msg swift_ok "$sv")"; fi
-    elif [ "$RUB_CANAL" = "release" ]; then ui_info "$(msg swift_falta_release)"
-    else ui_warn "$(msg swift_falta)"; fi
-  fi
+  # Swift só entra no pré-voo quando o app vai ser COMPILADO aqui (canal main).
+  # No canal release o app vem pronto; se a release não o trouxer, a fase do app
+  # checa o Swift na hora (dono, 2026-09-03: "não deveria precisar mais de swift").
+  if [ "$OP_NOAPP" = "0" ] && [ "$RUB_CANAL" != "release" ]; then checar_swift || ui_warn "$(msg swift_falta)"; fi
   return 0
+}
+
+checar_swift() { # SWIFT_OK=1 e a linha do pré-voo quando há Swift utilizável; 1 quando não há
+  command -v swift >/dev/null 2>&1 && swift --version >/dev/null 2>&1 || return 1
+  SWIFT_OK=1
+  local sv; sv="$(swift --version 2>&1 | head -1 | grep -Eo 'Swift version [0-9.]+' | cut -d' ' -f3)"
+  ok "$(msg swift_ok "$sv")"
 }
 
 obter_release() { # canal release: lê o SHA256SUMS; deriva URL e pinos do tarball e do app.
@@ -848,7 +850,7 @@ fase_app() {
   APP_NOVO=""
   if [ -n "$APP_SHA256" ] && [ "$(uname -m)" = "arm64" ]; then baixar_app_release || APP_NOVO=""; fi
   if [ -z "$APP_NOVO" ]; then
-    [ "$SWIFT_OK" = "1" ] || { ui_skip "$(msg swift_falta)"; return 100; }
+    if [ "$SWIFT_OK" != "1" ]; then checar_swift || { ui_skip "$(msg swift_falta)"; return 100; }; fi
     local log="$CACHE_DIR/build-app.log" rc=0
     ( cd "$SRC_DIR" && ./tools/build-app.sh ) >"$log" 2>&1 &
     ui_spin "$(msg app_compilando)" $! || rc=$?
@@ -874,7 +876,16 @@ fase_verificacao() {
   [ -n "$ver" ] || { ui_warn "$(msg verif_sem_api 30 "$HOME/Library/Logs/river-unifi-bridge.log")"; return 100; }
   health="$(curl -sf -m 2 -H "Authorization: Bearer $T" "http://127.0.0.1:$API_PORT/v1/health" 2>/dev/null || true)"
   SERVICO_VERSAO="$(printf '%s' "$ver" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
-  if [ -n "$RELEASE_TAG" ] && [ "v$SERVICO_VERSAO" != "$RELEASE_TAG" ]; then ui_warn "$(msg verif_versao_div "$SERVICO_VERSAO" "$RELEASE_TAG")"; fi
+  # Quem responde tem de ser o serviço que acabou de ser instalado — versão do
+  # CÓDIGO instalado, nos dois canais. Em 2026-09-03 um daemon alheio na porta
+  # respondia v0.1.0, o instalado morria ("API local não subiu") e isto era só
+  # um aviso seguido de ✔. Agora é falha, nomeando quem ocupa a porta.
+  local instalada; instalada="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' "$SRC_DIR/src/river_unifi_bridge/__init__.py" 2>/dev/null | head -1)"
+  [ -n "$instalada" ] || morrer "$E_FALHA" "$(msg verif_sem_versao "$SRC_DIR")"
+  if [ "$SERVICO_VERSAO" != "$instalada" ]; then
+    local ouvinte; ouvinte="$(/usr/sbin/lsof -nP -iTCP:"$API_PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print "PID " $2 " " $1}')"
+    morrer "$E_FALHA" "$(msg verif_outro_processo "$instalada" "$API_PORT" "$SERVICO_VERSAO" "${ouvinte:-?}")"
+  fi
   ok "$(msg verif_ok \
       "$SERVICO_VERSAO" \
       "$(printf '%s' "$health" | sed -n 's/.*"nut": *"\([^"]*\)".*/\1/p')" \

@@ -9,6 +9,20 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-09-03
+
+### Instalação
+- **Conserto de produção:** o instalador declarava "serviço reiniciado e provado" olhando só o
+  `launchctl print` (job carregado), e a verificação final aceitava com aviso e ✔ uma versão que
+  não era a instalada. Medido em 2026-09-03: um daemon de desenvolvimento ocupava a porta
+  35493, o serviço novo morria ("API local não subiu após 3 tentativas") e o relatório dizia
+  "service v0.1.0" com ✔. Agora `scripts/install.sh` só declara "provado" quando o PID que
+  escuta a porta da API é o PID do job do launchd (15 s de espera; falha nomeando o PID e o
+  comando que ocupa a porta), e o one-liner falha (código 1) quando a versão que responde não é
+  a do código instalado, nomeando quem escuta. Cena nova **S9e** no gate (processo alheio na porta).
+- O pré-voo deixa de anunciar o Swift no canal release: o app vem pronto; o Swift só é
+  checado se a compilação local for necessária (canal `main`, ou release sem app).
+
 ## [0.3.0] — 2026-09-03
 
 ### Dispositivos protegidos por instância

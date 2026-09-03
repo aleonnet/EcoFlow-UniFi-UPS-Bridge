@@ -13,11 +13,12 @@
 # plists com UserName — o serviço sobe no boot SEM login. Requer sudo.
 #
 # Seams de teste (gate.sh, documentados de propósito): RUB_PREFIX,
-# RUB_LAUNCHD_DIR, RUB_SERVICE_USER, RUB_PYTHON e stubs de brew/launchctl no
-# PATH. Fora do gate, os defaults valem.
+# RUB_LAUNCHD_DIR, RUB_SERVICE_USER, RUB_PYTHON, RUB_STATE_DIR, RUB_SKIP_HEALTH=1
+# (pula a prova "serviço na porta da API") e stubs de brew/launchctl no PATH.
+# Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.3.0"
+VERSAO="0.3.1"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
@@ -256,6 +257,38 @@ detectar_river() {
 detectar_river || true
 
 # ── fase: LaunchDaemon do bridge (molde haos-install: cmp + print prova) ────
+# Prova que o serviço INSTALADO é quem está na porta da API (2026-09-03).
+# `launchctl print` só prova job carregado: hoje um processo alheio na porta
+# matava o daemon novo ("API local não subiu após 3 tentativas") e o instalador
+# declarava "reiniciado e provado". Sucesso = o PID que escuta a porta é o PID
+# do job. RUB_SKIP_HEALTH=1 pula (gate com stubs; sem daemon real).
+porta_api() { sed -n 's/^UI_API_PORT=\([0-9]*\)$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1 | grep . || echo 35493; }
+pid_do_job() { launchctl print "system/$LABEL_BRIDGE" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1; }
+ouvinte_da_porta() { /usr/sbin/lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1; }
+# 0 quando o PID do job é quem escuta a porta AGORA (sem espera). Com
+# RUB_SKIP_HEALTH=1 responde 0 (gate com stubs).
+servico_na_porta() {
+  [ "${RUB_SKIP_HEALTH:-0}" = "1" ] && return 0
+  local porta jobpid ouvinte; porta="$(porta_api)"; jobpid="$(pid_do_job)"; ouvinte="$(ouvinte_da_porta "$porta")"
+  [ -n "$ouvinte" ] && [ "$ouvinte" = "$jobpid" ]
+}
+provar_servico_no_ar() {
+  [ "${RUB_SKIP_HEALTH:-0}" = "1" ] && return 0
+  local porta jobpid="" ouvinte="" i cmd
+  porta="$(porta_api)"
+  for i in $(seq 1 15); do
+    jobpid="$(pid_do_job)"
+    ouvinte="$(ouvinte_da_porta "$porta")"
+    if [ -n "$ouvinte" ]; then
+      [ "$ouvinte" = "$jobpid" ] && return 0
+      cmd="$(ps -o command= -p "$ouvinte" 2>/dev/null | cut -c1-120)"
+      echo "bridge: a porta $porta está ocupada pelo PID $ouvinte ($cmd), não pelo serviço (PID ${jobpid:-?}) — o daemon instalado não consegue subir; encerre esse processo e rode de novo (falha)"; exit 1
+    fi
+    sleep 1
+  done
+  echo "bridge: o serviço (PID ${jobpid:-?}) não abriu a porta $porta em 15 s — veja $LOG_AGENTE (falha)"; exit 1
+}
+
 instalar_plist_bridge() {
   jp plist checando
   local plist="$LDIR/$LABEL_BRIDGE.plist"
@@ -317,7 +350,8 @@ EOF
       done
       launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
         || { echo "bridge: recarga NÃO provada por launchctl print após $tent tentativas (falha)"; exit 1; }
-      diga "plist: atualizado, recarregado e provado (launchctl print)"; jp plist ok; passo plist 0; FEZ=1
+      provar_servico_no_ar
+      diga "plist: atualizado, recarregado e provado (launchctl print + porta da API)"; jp plist ok; passo plist 0; FEZ=1
     elif [ "$CODIGO_MUDOU" = "1" ]; then
       # Plist igual mas código/venv novos: o job carregado ainda roda o código
       # antigo (medido no mini, 2026-09-01). kickstart -k reinicia no ato; o
@@ -325,15 +359,24 @@ EOF
       launchctl kickstart -k "system/$LABEL_BRIDGE" 2>/dev/null || true
       launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
         || { echo "bridge: job não provado após kickstart (falha)"; exit 1; }
-      diga "plist: igual; código novo → serviço reiniciado (kickstart) e provado"; jp plist ok; passo plist 0; FEZ=1
+      provar_servico_no_ar
+      diga "plist: igual; código novo → serviço reiniciado (kickstart) e provado (porta da API)"; jp plist ok; passo plist 0; FEZ=1
+    elif servico_na_porta; then
+      diga "plist: já instalado, carregado e no ar (porta da API)"; jp plist ja_estava; passo plist 100; return 100
     else
-      diga "plist: já instalado e carregado"; jp plist ja_estava; passo plist 100; return 100
+      # Nada mudou, mas o serviço NÃO está na porta: um daemon que parou de
+      # propósito (sai 0 sob launchd; KeepAlive não o relança) ficaria morto
+      # com "já instalado e carregado" (revisão fria, 2026-09-03). Relança e prova.
+      launchctl kickstart -k "system/$LABEL_BRIDGE" 2>/dev/null || true
+      provar_servico_no_ar
+      diga "plist: igual; serviço estava fora da porta → reiniciado (kickstart) e provado (porta da API)"; jp plist ok; passo plist 0; FEZ=1
     fi
   else
     launchctl bootstrap system "$plist" 2>/dev/null || launchctl load -w "$plist" 2>/dev/null || true
     launchctl print "system/$LABEL_BRIDGE" >/dev/null 2>&1 \
       || { echo "bridge: launchctl print NÃO prova o job carregado (falha)"; exit 1; }
-    diga "plist: instalado e job provado carregado (launchctl print)"; jp plist ok; passo plist 0; FEZ=1
+    provar_servico_no_ar
+    diga "plist: instalado e job provado carregado (launchctl print + porta da API)"; jp plist ok; passo plist 0; FEZ=1
   fi
 }
 instalar_plist_bridge || true
