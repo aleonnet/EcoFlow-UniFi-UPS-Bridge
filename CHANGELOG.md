@@ -9,6 +9,19 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+### Instalação
+- **Conserto de produção:** ao salvar Ajustes pelo app, o daemon respondia 500 ("Server got
+  itself in trouble"): `$PREFIX/etc` era do root e o daemon, rodando como o usuário do
+  serviço, não conseguia criar o `bridge.env.bak`. O instalador passa a deixar a pasta com o
+  dono do serviço, também na reexecução (medido no Mac mini em 2026-09-02).
+- **Conserto de produção:** numa janela mais estreita que o rótulo, o spinner deixava um rastro
+  a cada quadro (`│ ⠋ sudo scripts/install.sh…│ ⠙ sudo…`). O rótulo animado agora é cortado na
+  largura da janela, o rótulo da fase do serviço ficou curto, e a causa de fundo foi
+  consertada na classe: `tput cols` dentro de `$( )` com o stderr redirecionado devolvia sempre
+  80, para o spinner, a régua, os cabeçalhos e a guarda de tamanho da abertura; todos passam a
+  ler a janela real por `/dev/tty`. Nova cena **S20** (pty de 40 colunas), refutada.
+- O pré-voo deixa de dizer "o app será compilado aqui" quando o app vem pronto da release.
+
 ## [0.2.0] — 2026-09-02
 
 ### Instalação e release

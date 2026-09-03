@@ -348,6 +348,55 @@ else
     erro "S17 reexecução num pty: o ambiente de stubs da S12 não existe"
 fi
 
+# S20 — spinner num terminal ESTREITO (40 colunas), com animação: cada quadro do
+# spinner tem de caber na largura, senão a linha quebra e o \r deixa rastro
+# ("│ ⠋ sudo scripts/install.sh…│ ⠙ sudo…", visto no Terminal do Mac mini em
+# 2026-09-02, janela menor que o rótulo). A S17 roda em 100 colunas e era cega a isso.
+# O pty não quebra bytes — a asserção é sobre o comprimento de cada quadro.
+# Refutado em 2026-09-02 removendo o corte do rótulo em ui_spin.
+if [ -d "$OL/state" ]; then
+    if OL_ENV_PTY="$OL_ENV" ONE_PTY="$ONE" RAIZ_PTY="$RAIZ" "$PY" - <<'EOF'
+import os, pty, re, sys, fcntl, termios, struct
+env = dict(p.split("=", 1) for p in os.environ["OL_ENV_PTY"].split() if "=" in p)
+env.pop("NO_COLOR", None)
+script, raiz = os.environ["ONE_PTY"], os.environ["RAIZ_PTY"]
+lar = os.environ.get("HOME", "/tmp")
+COLS = 40
+pid, fd = pty.fork()
+if pid == 0:
+    base = {"TERM": "xterm-256color", "COLORTERM": "truecolor", "LC_ALL": "en_US.UTF-8",
+            "LANG": "en_US.UTF-8", "HOME": lar}
+    base.update(env)
+    os.environ.clear(); os.environ.update(base)
+    os.execv("/bin/bash", ["/bin/bash", script, "--yes", "--no-app", "--src", raiz])
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, COLS, 0, 0))
+out = b""
+while True:
+    try:
+        chunk = os.read(fd, 65536)
+    except OSError:
+        break
+    if not chunk:
+        break
+    out += chunk
+_, st = os.waitpid(pid, 0)
+texto = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", out).decode("utf-8", "replace")
+rc = os.waitstatus_to_exitcode(st)
+assert rc == 100, f"reexecução devia sair 100, saiu {rc}"
+quadros = [q for q in re.split(r"[\r\n]", texto) if re.match(r"│ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] ", q)]
+assert quadros, "nenhum quadro de spinner capturado"
+longo = max(quadros, key=len)
+assert len(longo) <= COLS, f"quadro do spinner com {len(longo)} colunas em terminal de {COLS}: {longo!r}"
+EOF
+    then
+        ok "S20 spinner em terminal de 40 colunas: todo quadro cabe na largura (sem rastro)"
+    else
+        erro "S20 spinner em terminal estreito: um quadro ultrapassou a largura (rastro na tela)"
+    fi
+else
+    erro "S20 spinner em terminal estreito: o ambiente de stubs da S12 não existe"
+fi
+
 # S13 — dry-run pelo cano não escreve NADA (nem estado, nem cache)
 OL2="$(mktemp -d)"
 cat "$ONE" | env RUB_STATE_DIR="$OL2/state" RUB_CACHE_DIR="$OL2/cache" NO_COLOR=1 LC_ALL=C /bin/bash -s -- --dry-run --src "$RAIZ" >"$OL2/dry.log" 2>&1; OL_RC5=$?

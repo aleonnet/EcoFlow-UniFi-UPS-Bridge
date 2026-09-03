@@ -104,6 +104,7 @@ MSG_DB=(
 "brew_instalando|instalando o Homebrew (instalador oficial, NONINTERACTIVE)|installing Homebrew (official installer, NONINTERACTIVE)"
 "brew_falhou|o instalador do Homebrew falhou|the Homebrew installer failed"
 "swift_ok|Swift %s — o app será compilado aqui|Swift %s — the app will be built here"
+"swift_ok_release|Swift %s — usado só se a release não trouxer o app pronto|Swift %s — used only if the release ships no prebuilt app"
 "swift_falta|sem Swift/Xcode: o app não será compilado (o serviço instala normalmente); --no-app silencia|no Swift/Xcode: the app will not be built (the service installs normally); --no-app silences this"
 "swift_falta_release|sem Swift/Xcode: o app virá pronto da release (se ela o trouxer)|no Swift/Xcode: the app comes prebuilt from the release (if it ships one)"
 "rel_buscando|release: %s|release: %s"
@@ -135,6 +136,7 @@ MSG_DB=(
 "servico_dry|(dry-run) plano do instalador do serviço:|(dry-run) service installer plan:"
 "servico_dry_remoto|scripts/install.sh --dry-run (após baixar o código-fonte)|scripts/install.sh --dry-run (after downloading the source)"
 "servico_rodando|sudo scripts/install.sh --consent-homebrew (brew nut + python, código, venv, config, LaunchDaemon)|sudo scripts/install.sh --consent-homebrew (brew nut + python, code, venv, config, LaunchDaemon)"
+"servico_spin|instalando o serviço (sudo scripts/install.sh)|installing the service (sudo scripts/install.sh)"
 "servico_ok|serviço instalado/atualizado|service installed/updated"
 "servico_ja|serviço já estava atual|service already up to date"
 "servico_falhou|scripts/install.sh falhou (exit %s) — cauda:|scripts/install.sh failed (exit %s) — tail:"
@@ -256,8 +258,27 @@ ui_shimmer() { # brilho que varre uma vez e assenta no gradiente
   printf '\r%s%s\n' "$BOLD" "$(ui_gradient "$s")"
   _ui_show
 }
+# Largura REAL da janela. `tput cols` dentro de $( ) com 2>/dev/null não tem terminal
+# nenhum para consultar e devolve o padrão da terminfo (80) — medido em 2026-09-02 num
+# pty de 40 colunas: era por isso que o corte do spinner nunca agia. Lê pelo terminal de
+# controle (/dev/tty, que existe também sob `curl | bash`), com tput sem redirecionar
+# o stderr como segunda opção, e 80 quando não há terminal.
+ui_cols() { # [fallback sem terminal, default 80]
+  local c=""
+  c=$( (stty size </dev/tty) 2>/dev/null | awk '{print $2}')
+  [ -n "$c" ] || c=$(tput cols 2>/dev/null)
+  case "$c" in ''|*[!0-9]*|0) c="${1:-80}" ;; esac
+  printf '%s' "$c"
+}
+ui_lines() { # [fallback sem terminal, default 24] — mesma leitura, para a altura
+  local l=""
+  l=$( (stty size </dev/tty) 2>/dev/null | awk '{print $1}')
+  [ -n "$l" ] || l=$(tput lines 2>/dev/null)
+  case "$l" in ''|*[!0-9]*|0) l="${1:-24}" ;; esac
+  printf '%s' "$l"
+}
 ui_rule() {
-  local w; w=$(tput cols 2>/dev/null || echo 72); case "$w" in ''|*[!0-9]*) w=72 ;; esac
+  local w; w=$(ui_cols)
   [ "$w" -gt 78 ] && w=78
   local line=''; printf -v line '%*s' "$w" ''; line=${line// /$UI_G_REGUA}
   printf '%s\n' "$(ui_gradient "$line")"
@@ -283,7 +304,7 @@ ui_phase() {
   ui_bar_limpa
   UI_PHASE_N=$(( UI_PHASE_N + 1 ))
   local w cab pad n
-  w=$(tput cols 2>/dev/null || echo 72); case "$w" in ''|*[!0-9]*) w=72 ;; esac
+  w=$(ui_cols)
   [ "$w" -gt 78 ] && w=78
   printf '%s\n' "$UI_GUT"
   cab="$(printf '%02d %s ' "$UI_PHASE_N" "$1")"
@@ -307,8 +328,16 @@ ui_spin() { # ui_spin "rótulo" <pid>
     return "$rc"
   fi
   ui_bar_limpa; _ui_hide
+  # O quadro é redesenhado com \r. Se ultrapassar a largura da janela ele quebra em duas
+  # linhas e o \r só volta ao início da segunda: cada quadro deixa um rastro na primeira
+  # ("│ ⠋ sudo scripts/install.sh…│ ⠙ sudo…" — visto no Terminal do Mac mini em 2026-09-02).
+  # Por isso o rótulo animado é cortado para caber: calha (2) + spinner (1) + espaço (1).
+  local w max quadro="$label"
+  w=$(ui_cols)
+  max=$(( w - 5 )); [ "$max" -lt 10 ] && max=10
+  [ ${#quadro} -gt "$max" ] && quadro="${quadro:0:$(( max - 1 ))}${UI_G_DOTS}"
   while kill -0 "$pid" 2>/dev/null; do
-    printf '\r%s%s%s%s %s' "$UI_GUT" "${C_CYAN}" "${UI_SPIN_F:$(( i % UI_SPIN_N )):1}" "$NC" "$label"; i=$(( i + 1 ))
+    printf '\r%s%s%s%s %s' "$UI_GUT" "${C_CYAN}" "${UI_SPIN_F:$(( i % UI_SPIN_N )):1}" "$NC" "$quadro"; i=$(( i + 1 ))
     sleep 0.07
   done
   wait "$pid" || rc=$?
@@ -552,8 +581,8 @@ lg_quadro() {
 }
 ui_banner() {
   local t="${1:-River Bridge}" s="${2:-}" cols linhas n
-  cols="$(tput cols 2>/dev/null || echo 0)"; case "$cols" in ''|*[!0-9]*) cols=0 ;; esac
-  linhas="$(tput lines 2>/dev/null || echo 0)"; case "$linhas" in ''|*[!0-9]*) linhas=0 ;; esac
+  # Tamanho REAL da janela (ui_cols/ui_lines); sem terminal, 0 = um quadro só.
+  cols="$(ui_cols 0)"; linhas="$(ui_lines 0)"
   # Sem UTF-8 os glifos sairiam partidos; sem cor o escudo vira mancha.
   if [ "$UI_UTF8" = "0" ] || [ "$UI_DEPTH" = "0" ]; then printf '  %s\n' "$t"; [ -n "$s" ] && printf '  %s\n' "$s"; printf '\n'; return 0; fi
   # Terminal estreito ou sem animação: UM quadro, tudo assentado. Nunca meia
@@ -675,7 +704,9 @@ fase_prevoo() {
   fi
   if [ "$OP_NOAPP" = "0" ]; then
     if command -v swift >/dev/null 2>&1 && swift --version >/dev/null 2>&1; then
-      SWIFT_OK=1; ok "$(msg swift_ok "$(swift --version 2>&1 | head -1 | grep -Eo 'Swift version [0-9.]+' | cut -d' ' -f3)")"
+      SWIFT_OK=1
+      local sv; sv="$(swift --version 2>&1 | head -1 | grep -Eo 'Swift version [0-9.]+' | cut -d' ' -f3)"
+      if [ "$RUB_CANAL" = "release" ]; then ok "$(msg swift_ok_release "$sv")"; else ok "$(msg swift_ok "$sv")"; fi
     elif [ "$RUB_CANAL" = "release" ]; then ui_info "$(msg swift_falta_release)"
     else ui_warn "$(msg swift_falta)"; fi
   fi
@@ -757,7 +788,7 @@ fase_servico() {
   # Tudo que exige root vive aqui dentro (brew como o usuário, /usr/local, plist,
   # kickstart). O sudo foi primado agora mesmo: nenhum prompt cai no meio.
   ( cd "$SRC_DIR" && ${SUDO_CMD:+$SUDO_CMD} "./scripts/install.sh" --consent-homebrew ) >"$log" 2>&1 &
-  ui_spin "$(msg servico_rodando)" $! || rc=$?
+  ui_spin "$(msg servico_spin)" $! || rc=$?
   case "$rc" in
     0)   ok "$(msg servico_ok)"; FEZ=1; return 0 ;;
     100) ui_skip "$(msg servico_ja)"; return 100 ;;

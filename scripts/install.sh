@@ -201,10 +201,15 @@ criar_venv || true
 gerar_env() {
   jp config checando
   local alvo="$PREFIX/etc/bridge.env"
-  if [ "$DRYRUN" = "1" ]; then diga "config: geraria $alvo (0600, dono $SERVICE_USER)"; passo config plano; return 0; fi
+  if [ "$DRYRUN" = "1" ]; then diga "config: geraria $alvo (0600, dono $SERVICE_USER; etc/ do mesmo dono)"; passo config plano; return 0; fi
+  # A pasta etc/ tem de ser do usuário do serviço, não do root: o daemon grava
+  # bridge.env.bak e troca o arquivo ao salvar Ajustes pelo app. Com a pasta do
+  # root, todo PUT /v1/config morria em 500 (medido no Mac mini em 2026-09-02).
+  # Corrigido também na reexecução, para consertar instalações antigas.
+  mkdir -p "$PREFIX/etc"
+  chown "$SERVICE_USER" "$PREFIX/etc" 2>/dev/null || true
   if [ -f "$alvo" ]; then diga "config: já existe (preservado)"; jp config ja_estava; passo config 100; return 100; fi
   man_set "file:$alvo" pending
-  mkdir -p "$PREFIX/etc"
   cp "$RAIZ/config/river-unifi-bridge.env.example" "$alvo"
   chmod 600 "$alvo"; chown "$SERVICE_USER" "$alvo" 2>/dev/null || true
   man_set "file:$alvo" created

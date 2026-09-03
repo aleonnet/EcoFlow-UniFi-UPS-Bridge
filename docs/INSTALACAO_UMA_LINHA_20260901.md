@@ -151,4 +151,15 @@ desligado; sha do zip não conferido; fallback trocado por morte; `cmp` do app r
 mentindo `main`) · **S19** `tools/release.sh --check` sai 0 na árvore e 3 citando `pyproject.toml`
 num mutante em 9.9.9 (refutada trocando o `pyproject` da lista pelo `CHANGELOG`) · **S9/S10** o
 desinstalador sai instalado em `$PREFIX/scripts` e a cópia instalada remove tudo, inclusive a si
-(refutadas em 2026-09-02).
+(refutadas em 2026-09-02) · **S20** reexecução num pty de **40 colunas** com animação: todo
+quadro do spinner cabe na largura (refutada removendo o corte do rótulo em `ui_spin`). Nasceu do
+rastro `│ ⠋ sudo scripts/install.sh…│ ⠙ sudo…` visto no Terminal do Mac mini em 2026-09-02: a
+S17 roda em 100 colunas e era cega a janelas estreitas. A causa de fundo era `tput cols` dentro
+de `$( )` com o stderr redirecionado — sem terminal para consultar, devolve o padrão 80 — e o
+mesmo padrão alimentava a régua, os cabeçalhos de fase e a guarda de tamanho da abertura; agora
+todos leem por `ui_cols`/`ui_lines` (via `/dev/tty`).
+
+Também de 2026-09-02, sem cena refutável sem root: `scripts/install.sh` passa a deixar
+`$PREFIX/etc` com o dono do serviço (antes era do root, e o daemon não conseguia gravar o
+`bridge.env.bak` ao salvar Ajustes — todo PUT de configuração morria em 500 no mini), inclusive
+na reexecução, para consertar instalações antigas.
