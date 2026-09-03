@@ -78,12 +78,20 @@ _NAME_PATTERN = rf"(?=.{{1,32}}\Z)[^{_NAME_BAD}](?: ?[^{_NAME_BAD}])*"
 # Fase 3'-EXP — shape of string keys that end up in an ssh argv or in a file path.
 # Structure fences (first char alphanumeric/letter, no whitespace) so a value can
 # never be parsed as an ssh option; sources/marks in docs/2026-09-01-0817-runbook-protecao-udr7-ssh.md.
+# Nomeadas porque os campos de uma INSTÂNCIA de dispositivo (devices.json, desde
+# 2026-09-03) usam as mesmas formas — uma regex, dois consumidores.
+HOST_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}")
+USER_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}")
+KEY_PATH_PATTERN = re.compile(r"/[^\s~]+")
+SERIAL_PATTERN = re.compile(r"[A-Za-z0-9-]{1,64}")
+MAC_PATTERN = re.compile(r"[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}")
+NAME_PATTERN = re.compile(_NAME_PATTERN)
 _PATTERNS: dict[str, re.Pattern[str]] = {
-    "UDR7_SSH_HOST": re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}"),
-    "UDR7_SSH_USER": re.compile(r"[A-Za-z][A-Za-z0-9._-]{0,31}"),
-    "UDR7_SSH_KEY": re.compile(r"/[^\s~]+"),
-    "UDR7_EXPECTED_SERIAL": re.compile(r"[A-Za-z0-9-]{1,64}"),
-    "UDR7_WOL_MAC": re.compile(r"[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}"),
+    "UDR7_SSH_HOST": HOST_PATTERN,
+    "UDR7_SSH_USER": USER_PATTERN,
+    "UDR7_SSH_KEY": KEY_PATH_PATTERN,
+    "UDR7_EXPECTED_SERIAL": SERIAL_PATTERN,
+    "UDR7_WOL_MAC": MAC_PATTERN,
     # UDR7_NAME é texto que o usuário escolhe, então a regra é de FORMA, não de
     # conteúdo: 1 a 32 caracteres (o lookahead conta o total — sem ele o {0,30}
     # limitaria só os não-brancos e "aaa…" com 61 passaria), espaço apenas U+0020 e
@@ -95,7 +103,7 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
     # caracteres de verdade já corrompeu a classe uma vez, criando um range acidental
     # que rejeitava "Meu UDR". Homóglifos (cirílico) e combinantes ficam de fora por
     # natureza — lacuna declarada.
-    "UDR7_NAME": re.compile(_NAME_PATTERN),
+    "UDR7_NAME": NAME_PATTERN,
 }
 # Values that are syntactically fine but must never be accepted: the simulator's
 # serial would make synthetic telemetry look "registered" (fence M1).
@@ -263,10 +271,17 @@ FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED"})
 # O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção: pode
 # ser trocado com o daemon armado. Sem o `- DEVICE_NAME_KEYS` o prefixo o engoliria.
 DEVICE_NAME_KEYS = frozenset({"UDR7_NAME"})
+# Chaves do NÚCLEO que toda instância de dispositivo protegido congela enquanto
+# armada: as três do NUT (decidem QUAL fonte alimenta a política) e as duas do
+# River que as cercas de tempo de execução leem para qualquer instância — o
+# número de série esperado e o corte físico da saída (decisão D16, 2026-09-03).
+CORE_FROZEN_KEYS = frozenset({
+    "NUT_HOST", "NUT_PORT", "NUT_UPS", "UDR7_EXPECTED_SERIAL", "UDR7_CUTOFF_PERCENT",
+})
 PROTECTION_KEYS = (
     frozenset(
         {k for k in _ALLOWLIST if k.startswith(("PROTECT_", "UDR7_"))}
-        | {"NUT_HOST", "NUT_PORT", "NUT_UPS"}
+        | CORE_FROZEN_KEYS
     )
     - DEVICE_NAME_KEYS
 )

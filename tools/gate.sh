@@ -148,6 +148,20 @@ cena_mutacao S4m src/river_unifi_bridge/config.py "    - DEVICE_NAME_KEYS" "    
 cena_mutacao S4o src/river_unifi_bridge/protect.py '"read_only", "udr7_name")' '"read_only")' \
     tests/unit/test_protect.py::test_rename_while_armed_keeps_pins
 
+# Dispositivos por instância (2026-09-03).
+# S4p — o comando de desligamento fora dos pinos: trocar o comando de uma instância
+# armada deixaria de virar config_trocada e o envio divergiria do pinado.
+cena_mutacao S4p src/river_unifi_bridge/protect.py \
+    'return {k: v for k, v in asdict(self).items() if k not in _PIN_EXCLUDED}' \
+    'return {k: v for k, v in asdict(self).items() if k not in _PIN_EXCLUDED and k != "shutdown_command"}' \
+    tests/unit/test_protect.py::test_shutdown_command_is_pinned
+# S4w — o spawn do ssh passa por shell: o comando de um host genérico viraria
+# superfície de injeção. O argv tem de chegar ao runner como LISTA, sem `shell`.
+cena_mutacao S4w src/river_unifi_bridge/protect.py \
+    'argv, capture_output=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False,' \
+    '" ".join(argv), shell=True, capture_output=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False,' \
+    tests/unit/test_protect.py::test_ssh_spawn_is_argv_list_without_shell
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

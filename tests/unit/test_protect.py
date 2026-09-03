@@ -814,3 +814,86 @@ def test_ssh_G_reflects_argv(paths, key_file):
                 f"sem linha `proxycommand` com `ProxyCommand=none`; destino malicioso após `--` "
                 f"→ rc 255 ({version}). Comando: `{' '.join(argv)}` (tests/unit/test_protect.py).\n"
             )
+
+
+# --- motor para N instâncias (2026-09-03) -------------------------------------------
+class KwSpy(Spy):
+    """Spy que também guarda os kwargs: a cerca S4w exige argv em LISTA e sem `shell`."""
+
+    def __init__(self):
+        super().__init__()
+        self.kwargs: list[dict] = []
+
+    def __call__(self, argv, **kwargs):
+        self.kwargs.append(dict(kwargs))
+        return super().__call__(argv, **kwargs)
+
+
+class FakeInstance:
+    def __init__(self, **over):
+        self.enabled = over.pop("enabled", True)
+        self.dry_run = over.pop("dry_run", False)
+        self.name = over.pop("name", "Servidor SSH")
+        self.fields = over
+
+
+def test_ssh_spawn_is_argv_list_without_shell(paths, key_file):
+    spy = KwSpy()
+    rig = Rig(paths, armed_overrides(key_file), spy=spy)
+    rig.arm_file()
+    assert events_of(rig.outage()) == [EV_SENT]
+    assert len(spy.calls) == 1 and isinstance(spy.calls[0], list)
+    assert "shell" not in spy.kwargs[0]
+    assert spy.calls[0][-1] == POWEROFF_COMMAND and spy.calls[0][-3] == "--"
+
+
+def test_policy_fires_the_pinned_shutdown_command(paths, key_file):
+    """Um comando pinado na ProtectionConfig tem precedência sobre o do construtor."""
+    rig = Rig(paths, armed_overrides(key_file))
+    rig.holder.replace(replace(rig.holder.get(), shutdown_command="shutdown -h now"))
+    rig.arm_file()
+    assert events_of(rig.outage()) == [EV_SENT]
+    assert rig.spy.calls[0][-1] == "shutdown -h now"
+
+
+def test_shutdown_command_is_pinned(paths, key_file):
+    """Trocar o comando de uma instância ARMADA vira config_trocada (S4p): o envio
+    nunca difere do que foi pinado no <id>_armed.json."""
+    rig = Rig(paths, armed_overrides(key_file))
+    rig.holder.replace(replace(rig.holder.get(), shutdown_command="shutdown -h now"))
+    rig.arm_file()
+    assert "shutdown_command" in rig.holder.get().pins()
+    new = replace(rig.holder.get(), shutdown_command="poweroff")
+    rig.holder.replace(new)                      # fora do caminho de armar/desarmar
+    actions = rig.outage()
+    assert events_of(actions) == [EV_BLOCKED]
+    assert actions[0].payload["detail"] == "config_trocada"
+    assert rig.spy.calls == []
+
+
+def test_from_instance_maps_fields_and_reads_river_keys_from_core(key_file):
+    cfg = make_cfg(udr7_expected_serial=REAL_SERIAL, udr7_cutoff_percent=12,
+                   udr7_arm_allowed=True)
+    inst = FakeInstance(ssh_host="192.0.2.9", ssh_user="admin", ssh_key=key_file,
+                        shutdown_percent=30, dry_run=True)
+    pc = ProtectionConfig.from_instance(inst, cfg, shutdown_command="sudo -n poweroff")
+    assert (pc.protect_udr7, pc.protect_dry_run, pc.armed) == (True, True, False)
+    assert (pc.udr7_ssh_host, pc.udr7_ssh_user, pc.udr7_ssh_key) == ("192.0.2.9", "admin", key_file)
+    assert pc.udr7_ssh_port == 22 and pc.udr7_retry_max == 3 and pc.udr7_confirm_seconds == 6
+    # D16: série esperada e corte são do River (núcleo), nunca da instância.
+    assert (pc.udr7_expected_serial, pc.udr7_cutoff_percent) == (REAL_SERIAL, 12)
+    assert pc.udr7_arm_allowed is True and pc.udr7_name == "Servidor SSH"
+    assert pc.shutdown_command == "sudo -n poweroff" and pc.ssh_binary == protect.SSH_BINARY
+    assert (pc.nut_host, pc.nut_port, pc.nut_ups) == ("127.0.0.1", 3493, "r")
+
+
+def test_from_cfg_still_serves_the_legacy_instance(key_file):
+    pc = make_pc(**armed_overrides(key_file))
+    assert pc.shutdown_command == "" and pc.udr7_name == "UDR7"
+
+
+def test_status_name_falls_back_to_the_policy_default_name(paths, key_file):
+    holder = ConfigHolder(make_pc(**armed_overrides(key_file, udr7_name="")))
+    policy = ProtectionPolicy(holder, runner=Spy(), keygen_runner=FakeKeygen(0),
+                              default_name="Servidor SSH", **paths)
+    assert policy.status()["name"] == "Servidor SSH"

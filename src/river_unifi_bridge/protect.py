@@ -117,6 +117,14 @@ def _is_loopback(host: str) -> bool:
 
 
 # --- configuration snapshot (single runtime source of truth) ----------------------
+# Defaults dos campos de uma INSTÂNCIA (os mesmos da allowlist do .env para o UDR7,
+# config.py: porta 22 = ssh_config(5); 6 s = ANALOGIA apcupsd; 3 = PROVISÓRIO).
+# Fonte única: devices.py (FieldSpec) e from_instance leem daqui.
+INSTANCE_FIELD_DEFAULTS: dict[str, object] = {
+    "ssh_host": "", "ssh_port": 22, "ssh_user": "root", "ssh_key": "",
+    "shutdown_percent": 0, "discharge_seconds_per_pct": 0, "runtime_minutes": 0,
+    "min_outage_seconds": 0, "confirm_seconds": 6, "retry_max": 3, "wol_mac": "",
+}
 _PIN_EXCLUDED = ("protect_udr7", "protect_dry_run", "udr7_arm_allowed", "read_only", "udr7_name")
 
 
@@ -144,11 +152,60 @@ class ProtectionConfig:
     nut_ups: str
     read_only: bool
     ssh_binary: str
+    # O comando que a política manda ao aparelho. Vazio = o `shutdown_command` do
+    # construtor da política (o tipo UDR7 passa a sua tabela). Está no dataclass —
+    # e portanto nos PINOS do armamento — para que trocar o comando de uma
+    # instância armada vire `config_trocada`, nunca um envio diferente do pinado.
+    shutdown_command: str = ""
+
+    # Os campos `udr7_*` são os nomes INTERNOS do motor ("os campos ssh do
+    # dispositivo"), herdados do primeiro aparelho. Desde 2026-09-03 o motor serve
+    # N instâncias (`from_instance`); renomear os campos quebraria as âncoras do
+    # gate (S4d/S4k/S4o) e os pinos gravados em cada `<id>_armed.json`.
+    _ENGINE_OWNED = ("ssh_binary", "shutdown_command")
 
     @classmethod
     def from_cfg(cls, cfg) -> "ProtectionConfig":
-        values = {f.name: getattr(cfg, f.name) for f in fields(cls) if f.name != "ssh_binary"}
+        """A instância legada: todos os campos vêm do BridgeConfig plano."""
+        values = {f.name: getattr(cfg, f.name) for f in fields(cls) if f.name not in cls._ENGINE_OWNED}
         return cls(ssh_binary=SSH_BINARY, **values)
+
+    @classmethod
+    def from_instance(cls, inst, cfg, *, shutdown_command: str = "") -> "ProtectionConfig":
+        """Uma instância de dispositivo (devices.json) + o núcleo (BridgeConfig).
+
+        `inst` expõe `enabled`, `dry_run`, `name` e `fields` (dict). Série esperada
+        e corte físico NÃO são da instância: são do River, lidos do núcleo para
+        toda instância (D16) — sem isso um host SSH ficaria bloqueado para sempre
+        em `fonte_nao_real`/`corte_nao_configurado`.
+        """
+        f = inst.fields
+        d = INSTANCE_FIELD_DEFAULTS
+        return cls(
+            protect_udr7=bool(inst.enabled),
+            protect_dry_run=bool(inst.dry_run),
+            udr7_arm_allowed=cfg.udr7_arm_allowed,
+            udr7_ssh_host=f.get("ssh_host", d["ssh_host"]),
+            udr7_ssh_port=int(f.get("ssh_port", d["ssh_port"])),
+            udr7_ssh_user=f.get("ssh_user", d["ssh_user"]),
+            udr7_ssh_key=f.get("ssh_key", d["ssh_key"]),
+            udr7_expected_serial=cfg.udr7_expected_serial,
+            udr7_cutoff_percent=cfg.udr7_cutoff_percent,
+            udr7_shutdown_percent=int(f.get("shutdown_percent", d["shutdown_percent"])),
+            udr7_discharge_seconds_per_pct=int(f.get("discharge_seconds_per_pct", d["discharge_seconds_per_pct"])),
+            udr7_runtime_minutes=int(f.get("runtime_minutes", d["runtime_minutes"])),
+            udr7_min_outage_seconds=int(f.get("min_outage_seconds", d["min_outage_seconds"])),
+            udr7_confirm_seconds=int(f.get("confirm_seconds", d["confirm_seconds"])),
+            udr7_retry_max=int(f.get("retry_max", d["retry_max"])),
+            udr7_wol_mac=f.get("wol_mac", d["wol_mac"]),
+            udr7_name=inst.name,
+            nut_host=cfg.nut_host,
+            nut_port=cfg.nut_port,
+            nut_ups=cfg.nut_ups,
+            read_only=cfg.read_only,
+            ssh_binary=SSH_BINARY,
+            shutdown_command=shutdown_command,
+        )
 
     @property
     def armed(self) -> bool:
@@ -312,12 +369,15 @@ class ProtectionPolicy:
         armed_path: str,
         runtime_path: str,
         shutdown_command: str = POWEROFF_COMMAND,
+        default_name: str = "UDR7",
     ) -> None:
         # O QUE se manda ao aparelho vem do PLUGIN dele; esta classe é o
         # transporte (monta o ssh isolado e executa). O default existe só para
         # não quebrar quem constrói a política direto — o plugin do UDR7 passa
-        # o comando da sua própria tabela, com fonte verificada.
+        # o comando da sua própria tabela, com fonte verificada. Um comando
+        # PINADO na ProtectionConfig (`shutdown_command`) tem precedência.
         self._shutdown_command = shutdown_command
+        self._default_name = default_name
         self._holder = holder
         self._clock = clock
         self._runner = runner
@@ -597,7 +657,7 @@ class ProtectionPolicy:
                     else:
                         self._attempts += 1
                         self._last_attempt_at = now
-                        argv = ssh_argv(pc, self._known_hosts_path, self._shutdown_command)
+                        argv = ssh_argv(pc, self._known_hosts_path, pc.shutdown_command or self._shutdown_command)
                         fire_real = True
             elif not self._outage:
                 self._cond_since = None
@@ -689,7 +749,7 @@ class ProtectionPolicy:
                 "state": state,
                 # O nome que o usuário deu ao dispositivo. Vazio (PUT "") grava vazio
                 # a quente; o fallback mora AQUI, num lugar só, e não no app.
-                "name": pc.udr7_name or "UDR7",
+                "name": pc.udr7_name or self._default_name,
                 "dry_run": pc.protect_dry_run,
                 "enabled": pc.protect_udr7,
                 "source": (
