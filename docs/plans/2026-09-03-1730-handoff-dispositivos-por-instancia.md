@@ -6,15 +6,17 @@ status: aceito
 
 Substitui `2026-09-02-2150-handoff-programa-de-frentes.md`.
 
-## Estado (medido ao escrever)
+## Estado (medido ao escrever, atualizado após a publicação)
 
-| Repositório | Branch | O que está feito | Não publicado |
+| Repositório | Branch | O que está feito | Publicado |
 |---|---|---|---|
-| `EcoFlow-UniFi-UPS-Bridge` | `main` | C1–C13 do plano (daemon, app, instalador, docs, versão 0.3.0) | tudo desde `28d2644` (`origin/main`) — o push é do dono |
+| `EcoFlow-UniFi-UPS-Bridge` | `main` | C1–C13 do plano + correções da revisão fria (`2d932ae`) | `origin/main` = `2d932ae`; tag `v0.3.0`; release https://github.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/releases/tag/v0.3.0 (assets `River-Bridge.app.zip`, `river-unifi-bridge-src.tar.gz`, `SHA256SUMS`, conferidos pelo `release.sh`) |
 
-Gate: 42 cenas verdes em cada rodada desta frente; a S15 do logo fica vermelha por render não
-determinístico do ícone (B17), presente também antes da frente. Suíte Python `274 passed`;
-Swift `53 tests passed`. Release **não** produzida ainda.
+Gate: 43 cenas verdes na última rodada completa (`dist/gate-v0.3.0-rodada-completa.log`); a S15
+do logo fica vermelha por render não determinístico do ícone (B17), presente também antes da
+frente — a release foi produzida com `--no-gate` sobre essa rodada, declarado aqui. Suíte Python
+`274 passed`; Swift `53 tests passed`. Revisão fria do diff C9–C13: 1 BLOCKER e 3 avisos
+corrigidos em `2d932ae`; segunda rodada APPROVED.
 
 ## Onde o estado real mora
 
@@ -27,14 +29,13 @@ Swift `53 tests passed`. Release **não** produzida ainda.
 
 1. Este arquivo. 2. A seção 5 da decisão (o bloco a medir no mini). 3. `git log --oneline 28d2644..HEAD`.
 
-## Próximo passo concreto (C14)
+## Próximo passo concreto (C14 — o que falta é seu)
 
-1. `git push` (prompt de permissão da sessão — trava do dono).
-2. `tools/release.sh v0.3.0` (gate, build do app, tag, tarball, zip, SHA256SUMS, `gh release create`).
-3. **No Mac mini, pelo dono**: bloco "antes" (cópia do `.env` e do estado, `shasum`, `GET
-   /v1/version|health|config`), o one-liner do README, bloco "depois" (seção 5 da decisão).
-   Se `*_armed.json` existir, o instalador sai 3 — desarme pelo app antes.
-4. Colar as medições na decisão, marcar `aceito`, `close.sh`.
+1. **No Mac mini, pelo dono**: bloco "antes" (cópia do `.env` e do estado, `shasum -a 256` de
+   `bridge.env` e dos `udr7_*`, `GET /v1/version|health|config` guardados), o one-liner do README,
+   bloco "depois" (seção 5 da decisão). Se `*_armed.json` existir no estado, o instalador sai 3
+   sem tocar em nada — desarme pelo app antes.
+2. Colar as medições na decisão, marcar `aceito`, `close.sh`.
 
 ## Prompts para colar
 
