@@ -1,5 +1,5 @@
 ---
-status: aceito
+status: superado por 2026-09-03-1413-handoff-0-3-3-folhas-na-janela.md
 ---
 
 # Handoff — dispositivos protegidos por instância (0.3.0) — 2026-09-03 17:30

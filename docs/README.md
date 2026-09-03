@@ -53,7 +53,8 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | `guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md` | aceito | **Runbook** da proteção do UDR7 como instância: preparar, medir, armar em 3 passos, desarmar, recuperar, reverter para a 0.2.0 |
 | `guides/2026-09-03-1720-runbook-host-ssh.md` | aceito | **Runbook** do tipo "Computador ou servidor via SSH": chave por instância, `known_hosts`, `sudoers`, ensaio e armamento |
 | `reference/api-local.md` | — | **Contrato vivo** da API local daemon ↔ app: todas as rotas, inclusive `/v1/devices` e `/v1/device-types` |
-| `plans/2026-09-03-1730-handoff-dispositivos-por-instancia.md` | aceito | **Handoff vivo**: C1–C13 executados, o que falta (publicar e medir no mini), o próximo passo e o prompt para colar |
+| `plans/2026-09-03-1730-handoff-dispositivos-por-instancia.md` | superado por `plans/2026-09-03-1413-…` | Handoff da 0.3.0–0.3.2 (dispositivos por instância, instaladores revistos) |
+| `plans/2026-09-03-1413-handoff-0-3-3-folhas-na-janela.md` | aceito | **Handoff vivo**: 0.3.3 publicada (folhas contidas na janela, medido), lacunas declaradas, próximo passo (medição no mini) e o prompt para colar |
 | `API_LOCAL_20260831.md` | superado por `reference/api-local.md` | Contrato da API local até a 0.2.0 (sem as rotas de dispositivos) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
