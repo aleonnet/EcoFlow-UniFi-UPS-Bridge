@@ -358,6 +358,70 @@ else
 fi
 rm -rf "$OL" "$OL2"
 
+# S18 — canal release por file:// (stubs, sem root, sem rede). Cinco rodadas:
+#   r1 instala o app PRONTO do zip da release (sha conferido) e registra fonte=release;
+#   r2 reexecuta em 100; r3 sha do zip adulterado → rc 3 e nenhum app instalado;
+#   r4 release inexistente → aviso e fallback para o tarball de main (fonte=main);
+#   r5 sha do tarball adulterado → rc 3 e nenhum cache/src-* extraído.
+# Refutado em 2026-09-02 com cinco mutações (uma por rodada), ver o doc da release.
+OL3="$(mktemp -d)"
+mkdir -p "$OL3/bin" "$OL3/rel" "$OL3/rel-app-ruim" "$OL3/rel-src-ruim" "$OL3/vazio" "$OL3/fake/River Bridge.app/Contents/MacOS"
+cat > "$OL3/bin/brew" <<EOF
+#!/bin/bash
+case "\$1" in list) exit 0 ;; --prefix) echo "$OL3/brewprefix" ;; esac
+exit 0
+EOF
+cat > "$OL3/bin/launchctl" <<'EOF'
+#!/bin/bash
+case "$1" in
+  print) [ -f "$RUB_LAUNCHD_DIR/.carregado" ] && exit 0 || exit 1 ;;
+  bootstrap) touch "$RUB_LAUNCHD_DIR/.carregado"; exit 0 ;;
+  bootout) rm -f "$RUB_LAUNCHD_DIR/.carregado"; exit 0 ;;
+  kickstart) exit 0 ;;
+esac
+exit 0
+EOF
+chmod +x "$OL3/bin/brew" "$OL3/bin/launchctl"
+printf '#!/bin/sh\nexit 0\n' > "$OL3/fake/River Bridge.app/Contents/MacOS/RiverBridge"
+chmod +x "$OL3/fake/River Bridge.app/Contents/MacOS/RiverBridge"
+printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>RiverBridge</string></dict></plist>\n' > "$OL3/fake/River Bridge.app/Contents/Info.plist"
+(cd "$OL3/fake" && ditto -c -k --keepParent "River Bridge.app" "$OL3/rel/River-Bridge.app.zip")
+(cd "$RAIZ" && tar -czf "$OL3/rel/river-unifi-bridge-src.tar.gz" --exclude .git --exclude .venv --exclude .build --exclude __pycache__ --exclude 'macos/RiverBridge/dist' --exclude dist -s '|^\./|river-unifi-bridge-vtest/|' . 2>/dev/null)
+(cd "$OL3/rel" && shasum -a 256 River-Bridge.app.zip river-unifi-bridge-src.tar.gz > SHA256SUMS)
+cp "$OL3/rel/"* "$OL3/rel-app-ruim/"; cp "$OL3/rel/"* "$OL3/rel-src-ruim/"
+S18_ZERO="0000000000000000000000000000000000000000000000000000000000000000"
+sed -i '' "/River-Bridge.app.zip\$/s/^[0-9a-f]*/$S18_ZERO/" "$OL3/rel-app-ruim/SHA256SUMS"
+sed -i '' "/river-unifi-bridge-src.tar.gz\$/s/^[0-9a-f]*/$S18_ZERO/" "$OL3/rel-src-ruim/SHA256SUMS"
+s18_env() { # <rodada> — prefixo, launchd, estado, cache e apps novos por rodada
+    mkdir -p "$OL3/$1/ld" "$OL3/$1/prefix" "$OL3/$1/state" "$OL3/$1/cache" "$OL3/$1/apps"
+    printf 'PATH=%s/bin:/usr/bin:/bin RUB_BREW=%s/bin/brew RUB_PREFIX=%s/%s/prefix RUB_LAUNCHD_DIR=%s/%s/ld RUB_SERVICE_USER=%s RUB_PYTHON=%s RUB_SUDO= RUB_STATE_DIR=%s/%s/state RUB_CACHE_DIR=%s/%s/cache RUB_APP_DEST=%s/%s/apps/app RUB_SKIP_HEALTH=1 NO_COLOR=1' \
+        "$OL3" "$OL3" "$OL3" "$1" "$OL3" "$1" "$(id -un)" "$PY" "$OL3" "$1" "$OL3" "$1" "$OL3" "$1"
+}
+S18_E="$(s18_env a)"
+env $S18_E RUB_RELEASE_BASE="file://$OL3/rel" "$ONE" --yes --no-anim >"$OL3/r1.log" 2>&1; S18_RC1=$?
+env $S18_E RUB_RELEASE_BASE="file://$OL3/rel" "$ONE" --yes --no-anim >"$OL3/r2.log" 2>&1; S18_RC2=$?
+S18_E="$(s18_env b)"
+env $S18_E RUB_RELEASE_BASE="file://$OL3/rel-app-ruim" "$ONE" --yes --no-anim >"$OL3/r3.log" 2>&1; S18_RC3=$?
+S18_E="$(s18_env c)"
+env $S18_E RUB_CANAL=release RUB_RELEASE_BASE="file://$OL3/vazio" RUB_SRC_URL="file://$OL3/rel/river-unifi-bridge-src.tar.gz" "$ONE" --yes --no-anim --no-app >"$OL3/r4.log" 2>&1; S18_RC4=$?
+S18_E="$(s18_env d)"
+env $S18_E RUB_RELEASE_BASE="file://$OL3/rel-src-ruim" "$ONE" --yes --no-anim --no-app >"$OL3/r5.log" 2>&1; S18_RC5=$?
+S18_DET=""
+[ "$S18_RC1" = "0" ] && cmp -s "$OL3/a/apps/app/Contents/MacOS/RiverBridge" "$OL3/fake/River Bridge.app/Contents/MacOS/RiverBridge" \
+    && grep -q "^fonte=release" "$OL3/a/state/installer-last-run.log" || S18_DET="$S18_DET r1(rc=$S18_RC1)"
+[ "$S18_RC2" = "100" ] || S18_DET="$S18_DET r2(rc=$S18_RC2)"
+[ "$S18_RC3" = "3" ] && [ ! -e "$OL3/b/apps/app" ] || S18_DET="$S18_DET r3(rc=$S18_RC3)"
+[ "$S18_RC4" = "0" ] && grep -qE "release indisponível|release unavailable" "$OL3/r4.log" \
+    && [ -x "$OL3"/c/cache/src-*/scripts/install.sh ] && grep -q "^fonte=main" "$OL3/c/state/installer-last-run.log" || S18_DET="$S18_DET r4(rc=$S18_RC4)"
+[ "$S18_RC5" = "3" ] && [ -z "$(ls -d "$OL3"/d/cache/src-* 2>/dev/null)" ] || S18_DET="$S18_DET r5(rc=$S18_RC5)"
+if [ -z "$S18_DET" ]; then
+    ok "S18 one-liner canal release: app pronto do zip (sha) → 100 → sha do zip ruim rc 3 sem app → fallback main com aviso → sha do tarball ruim rc 3 sem extração"
+else
+    erro "S18 one-liner canal release — rodadas com defeito:$S18_DET — caudas:"
+    tail -4 "$OL3"/r?.log 2>/dev/null
+fi
+rm -rf "$OL3"
+
 # S19 — tools/release.sh --check: a tag amarra as 6 declarações de versão + CHANGELOG.
 # Na árvore: rc 0. Numa cópia com pyproject.toml em 9.9.9, conferida contra a
 # versão de scripts/install.sh: rc 3 E a saída cita pyproject.toml (não "qualquer rc≠0").

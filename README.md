@@ -26,8 +26,9 @@ segredo entra no repositório.
 - macOS 26 em Apple Silicon (medido em 26.6.2 / arm64); o app tem alvo `macOS 26.0`.
 - [Homebrew](https://brew.sh) — o instalador instala `nut` e `python@3.13` por ele
   (ou instala o próprio Homebrew com `--install-deps`).
-- Para compilar o app: Xcode ou Command Line Tools (`swift`). Sem Swift, o instalador
-  instala só o serviço e avisa.
+- Swift é **opcional**: o instalador baixa o app pronto da release do GitHub (arm64,
+  assinatura ad-hoc). Só precisa de Xcode ou Command Line Tools (`swift`) quem instala
+  `--from-main` ou quando a release não está alcançável.
 - Senha de administrador **uma vez** (o serviço é um LaunchDaemon).
 
 ## Instalar
@@ -36,17 +37,22 @@ segredo entra no repositório.
 curl -fsSL https://raw.githubusercontent.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/main/river-bridge-install.sh | bash -s --
 ```
 
-Em cinco fases: pré-voo → baixa o código (tarball do `main`, sha256 conferido) → serviço
-(`sudo scripts/install.sh`: brew, código em `/usr/local/river-unifi-bridge`, venv, config,
-LaunchDaemon) → app em `~/Applications/River Bridge.app` → verificação pela API local.
-Reexecutar é seguro: sai `0` quando fez algo, `100` quando já estava tudo no lugar.
+Em cinco fases: pré-voo → baixa o código da **release** mais recente (tarball da tag e
+`River-Bridge.app.zip`, cada um conferido pelo `SHA256SUMS` dela; sem release alcançável, cai
+para o tarball do `main` e avisa) → serviço (`sudo scripts/install.sh`: brew, código em
+`/usr/local/river-unifi-bridge`, venv, config, LaunchDaemon) → app em
+`~/Applications/River Bridge.app` (pronto da release, ou compilado aqui) → verificação pela
+API local. Reexecutar é seguro: sai `0` quando fez algo, `100` quando já estava tudo no lugar.
+O relatório diz de onde veio o código (`fonte=release vX.Y.Z` ou `fonte=main`).
 
 Flags úteis: `--dry-run` (só mostra o plano), `--no-app`, `--no-open`, `--install-deps`,
-`--yes`, `--src DIR` (usar uma árvore local em vez de baixar), `--lang pt|en`, `--no-anim`.
+`--yes`, `--release TAG`, `--from-main`, `--src DIR` (usar uma árvore local em vez de
+baixar), `--lang pt|en`, `--no-anim`.
 Detalhes em [docs/INSTALACAO_UMA_LINHA_20260901.md](docs/INSTALACAO_UMA_LINHA_20260901.md).
 
 Já tem o repositório clonado? `sudo scripts/install.sh --consent-homebrew` e
-`tools/build-app.sh` fazem o mesmo, por partes.
+`tools/build-app.sh` fazem o mesmo, por partes. Publicar uma release: `tools/release.sh vX.Y.Z`
+(confere as seis declarações de versão, roda o gate, compila, tagueia e sobe os três assets).
 
 ## Configurar
 

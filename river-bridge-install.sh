@@ -11,9 +11,20 @@
 #   --yes            não pergunta [s/N] (a senha do sudo continua sendo do sudo)
 #   --install-deps   autoriza instalar o Homebrew (oficial, NONINTERACTIVE) se faltar
 #   --no-app         não compila/instala o River Bridge.app
+#   --no-open        não abre o app ao terminar
+#   --release TAG    instala a release TAG do GitHub (default: latest)
+#   --from-main      baixa o tarball do branch main e compila o app (como até a v0.1.0)
 #   --src DIR        usa uma árvore local do repo em vez de baixar (bancada/gate)
 #   --no-anim        sem abertura animada · --demo  só a abertura
 #   --lang pt|en     idioma (default: locale do Mac)
+#
+# Canal (desde 2026-09-02): por default o instalador lê o SHA256SUMS da release
+# (releases/latest/download, só curl; a tag vem do redirect) e baixa dali o
+# tarball do código e o River Bridge.app pronto, cada um conferido pelo sha.
+# Se a release não for alcançável, cai para o tarball de main com aviso, e o
+# relatório e o last-run dizem de onde veio o código (fonte=). RUB_SRC_URL
+# explícito no ambiente implica canal main (a cena S12 do gate aponta para um
+# file:// e não pode ir à rede); RUB_RELEASE_BASE=file://… é o seam da S18.
 #
 # Distribuição: um arquivo só. A camada visual (calha + motor de meio-bloco) é a
 # dos instaladores irmãos da casa (ont-stick-setup/lib/ont-ui.sh, copiada em
@@ -32,8 +43,14 @@ E_USO=2; E_VALID=3; E_DEP=4; E_CONEXAO=10; E_FALHA=1; E_CANCEL=130
 _src="${BASH_SOURCE[0]:-$0}"
 REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
 RUB_RAW_URL="${RUB_RAW_URL:-https://raw.githubusercontent.com/$REPO_SLUG/main/river-bridge-install.sh}"
+# "Explícito" é detectado com ${VAR+x} ANTES do default de RUB_SRC_URL abaixo (que usa :-).
+RUB_SRC_URL_DADO="${RUB_SRC_URL+x}"
+RUB_CANAL="${RUB_CANAL:-${RUB_SRC_URL_DADO:+main}}"; RUB_CANAL="${RUB_CANAL:-release}"
+RUB_RELEASE="${RUB_RELEASE:-latest}"            # latest | vX.Y.Z
+RUB_RELEASE_BASE="${RUB_RELEASE_BASE:-}"        # seam (file://…); default montado em obter_release
 RUB_SRC_URL="${RUB_SRC_URL:-https://github.com/$REPO_SLUG/archive/refs/heads/main.tar.gz}"
-RUB_SRC_SHA256="${RUB_SRC_SHA256:-}"          # pino opcional do tarball (release)
+RUB_SRC_SHA256="${RUB_SRC_SHA256:-}"          # pino do tarball: dado no ambiente ou lido do SHA256SUMS
+APP_SHA256=""; APP_URL=""; APP_NOVO=""; RELEASE_TAG=""; FONTE=""
 SRC_DIR="${RUB_SRC_DIR:-}"                      # árvore local (seam do gate / bancada)
 CACHE_DIR="${RUB_CACHE_DIR:-$HOME/Library/Caches/river-unifi-bridge}"
 STATE_DIR="${RUB_STATE_DIR:-$HOME/Library/Application Support/river-unifi-bridge}"
@@ -88,6 +105,19 @@ MSG_DB=(
 "brew_falhou|o instalador do Homebrew falhou|the Homebrew installer failed"
 "swift_ok|Swift %s — o app será compilado aqui|Swift %s — the app will be built here"
 "swift_falta|sem Swift/Xcode: o app não será compilado (o serviço instala normalmente); --no-app silencia|no Swift/Xcode: the app will not be built (the service installs normally); --no-app silences this"
+"swift_falta_release|sem Swift/Xcode: o app virá pronto da release (se ela o trouxer)|no Swift/Xcode: the app comes prebuilt from the release (if it ships one)"
+"rel_buscando|release: %s|release: %s"
+"rel_indisponivel|release indisponível (curl %s) — usando o tarball de main|release unavailable (curl %s) — using the main tarball"
+"rel_sem_tarball|SHA256SUMS da release sem o tarball do código — usando o tarball de main|release SHA256SUMS lacks the source tarball — using the main tarball"
+"rel_ok|release %s: tarball e app pinados pelo SHA256SUMS|release %s: tarball and app pinned by SHA256SUMS"
+"rel_fonte|código: %s|code: %s"
+"app_baixando|baixando o app pronto de %s|downloading the prebuilt app from %s"
+"app_download_falhou|download do app falhou (%s) — compilando localmente, se houver Swift|app download failed (%s) — building locally, if Swift is available"
+"app_sha_div|SHA-256 do River-Bridge.app.zip diverge do SHA256SUMS da release — recusado|River-Bridge.app.zip SHA-256 differs from the release SHA256SUMS — refused"
+"app_zip_invalido|o zip da release não trouxe River Bridge.app — compilando localmente, se houver Swift|the release zip has no River Bridge.app — building locally, if Swift is available"
+"app_assinatura|a assinatura do app baixado não verifica (codesign) — seguindo, ad-hoc|the downloaded app signature does not verify (codesign) — continuing, ad-hoc"
+"app_da_release|app pronto da release %s|prebuilt app from release %s"
+"verif_versao_div|o serviço responde v%s, mas a release é %s — o daemon pode não ter reiniciado no código novo|the service answers v%s but the release is %s — the daemon may not have restarted on the new code"
 "sudo_pede|o sudo vai pedir sua senha UMA vez (quem pergunta é o sudo; o instalador não guarda nem repassa)|sudo will ask for your password ONCE (sudo asks; the installer never stores or forwards it)"
 "sudo_sem_tty|sem terminal para o sudo — rode num terminal interativo, ou 'sudo -v' antes|no terminal for sudo — run in an interactive terminal, or 'sudo -v' first"
 "sudo_recusado|sudo recusado|sudo refused"
@@ -97,7 +127,7 @@ MSG_DB=(
 "fonte_baixando|baixando o código de %s|downloading the code from %s"
 "fonte_dry|(dry-run) baixaria %s para %s e extrairia em %s|(dry-run) would download %s to %s and extract it under %s"
 "fonte_falhou|download falhou (%s) — repositório privado, sem rede ou URL errada; use --src DIR ou RUB_SRC_URL|download failed (%s) — private repository, no network or wrong URL; use --src DIR or RUB_SRC_URL"
-"fonte_sha_div|SHA-256 do tarball diverge do pino RUB_SRC_SHA256 — recusado|tarball SHA-256 differs from the RUB_SRC_SHA256 pin — refused"
+"fonte_sha_div|SHA-256 do tarball diverge do pino (RUB_SRC_SHA256 ou SHA256SUMS da release) — recusado|tarball SHA-256 differs from the pin (RUB_SRC_SHA256 or the release SHA256SUMS) — refused"
 "fonte_sha|tarball %s · sha256 %s|tarball %s · sha256 %s"
 "fonte_cache|código já no cache (%s)|code already cached (%s)"
 "fonte_extraida|código em %s|code at %s"
@@ -108,7 +138,7 @@ MSG_DB=(
 "servico_ok|serviço instalado/atualizado|service installed/updated"
 "servico_ja|serviço já estava atual|service already up to date"
 "servico_falhou|scripts/install.sh falhou (exit %s) — cauda:|scripts/install.sh failed (exit %s) — tail:"
-"app_dry|(dry-run) compilaria com swift build -c release e instalaria em %s se o binário mudasse|(dry-run) would build with swift build -c release and install to %s if the binary changed"
+"app_dry|(dry-run) baixaria o River-Bridge.app.zip da release (ou compilaria com swift build -c release) e instalaria em %s se o binário mudasse|(dry-run) would download River-Bridge.app.zip from the release (or build with swift build -c release) and install to %s if the binary changed"
 "app_pulado|app pulado (--no-app)|app skipped (--no-app)"
 "app_compilando|swift build -c release (primeira vez pode levar alguns minutos)|swift build -c release (the first time may take a few minutes)"
 "app_falhou|compilação do app falhou — cauda:|app build failed — tail:"
@@ -579,6 +609,7 @@ relatorio_final() {
   else ui_shimmer "  $(msg rel_titulo_ja) ${UI_G_SEP} $(msg rel_tempo "$(fmt_seg "$total")")"; fi
   corpo="$(msg rel_instalado)"$'\n'
   corpo+="  ${C_GREEN}${UI_G_OK}${NC} $(msg rel_i_servico "${SERVICO_VERSAO:+ v$SERVICO_VERSAO}")"$'\n'
+  [ -n "$FONTE" ] && corpo+="  ${C_CYAN}${UI_G_INFO}${NC} $(msg rel_fonte "$FONTE")"$'\n'
   [ "$OP_NOAPP" = "0" ] && [ -d "$APP_DEST" ] && corpo+="  ${C_GREEN}${UI_G_OK}${NC} $(msg rel_i_app "$APP_DEST")"$'\n'
   corpo+="  ${C_GREEN}${UI_G_OK}${NC} $(msg rel_i_config "$PREFIX")"
   if command -v gum >/dev/null 2>&1 && [ "$UI_DEPTH" != "0" ]; then
@@ -608,7 +639,7 @@ limpar() {
   ui_bar_limpa; ui_show_cursor
   if [ "$MAIN_INICIADO" = "1" ] && [ "$OP_DRYRUN" = "0" ]; then
     { mkdir -p "$STATE_DIR" 2>/dev/null && {
-        printf 'river-bridge-install.sh %s  %s\nrc=%s · fase=%s\n%s' "$RBI_VERSION" "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$rc" "$FASE_ATUAL" "$PASSOS_FEITOS"
+        printf 'river-bridge-install.sh %s  %s\nrc=%s · fase=%s\nfonte=%s\n%s' "$RBI_VERSION" "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$rc" "$FASE_ATUAL" "${FONTE:-?}" "$PASSOS_FEITOS"
       } > "$LAST_RUN"; } 2>/dev/null || true
   fi
   if [ "$rc" != "0" ] && [ "$rc" != "100" ] && [ -n "$FASE_ATUAL" ]; then
@@ -645,8 +676,32 @@ fase_prevoo() {
   if [ "$OP_NOAPP" = "0" ]; then
     if command -v swift >/dev/null 2>&1 && swift --version >/dev/null 2>&1; then
       SWIFT_OK=1; ok "$(msg swift_ok "$(swift --version 2>&1 | head -1 | grep -Eo 'Swift version [0-9.]+' | cut -d' ' -f3)")"
+    elif [ "$RUB_CANAL" = "release" ]; then ui_info "$(msg swift_falta_release)"
     else ui_warn "$(msg swift_falta)"; fi
   fi
+  return 0
+}
+
+obter_release() { # canal release: lê o SHA256SUMS; deriva URL e pinos do tarball e do app.
+  # Qualquer falha → canal main com aviso (decisão ratificada no plano de 2026-09-02;
+  # a alternativa era morrer com E_CONEXAO). O relatório e o last-run dizem a fonte.
+  local base sums="$CACHE_DIR/SHA256SUMS" efetiva rc=0
+  if [ -n "$RUB_RELEASE_BASE" ]; then base="$RUB_RELEASE_BASE"
+  elif [ "$RUB_RELEASE" = "latest" ]; then base="https://github.com/$REPO_SLUG/releases/latest/download"
+  else base="https://github.com/$REPO_SLUG/releases/download/$RUB_RELEASE"; fi
+  ui_info "$(msg rel_buscando "$base")"
+  efetiva="$(curl -fsSL --retry 2 --max-time 60 -o "$sums.parcial" -w '%{url_effective}' "$base/SHA256SUMS" 2>"$CACHE_DIR/curl.err")" || rc=$?
+  if [ "$rc" != "0" ]; then rm -f "$sums.parcial"; ui_warn "$(msg rel_indisponivel "$rc")"; RUB_CANAL=main; return 1; fi
+  mv "$sums.parcial" "$sums"
+  # A tag vem do redirect de latest/download → download/<tag>/…; por file:// não há redirect.
+  RELEASE_TAG="$(printf '%s' "$efetiva" | sed -n 's|.*/releases/download/\([^/]*\)/.*|\1|p')"
+  RUB_SRC_SHA256="$(awk '$2=="river-unifi-bridge-src.tar.gz"{print $1}' "$sums")"
+  APP_SHA256="$(awk '$2=="River-Bridge.app.zip"{print $1}' "$sums")"
+  [ -n "$RUB_SRC_SHA256" ] || { ui_warn "$(msg rel_sem_tarball)"; RUB_CANAL=main; return 1; }
+  RUB_SRC_URL="$base/river-unifi-bridge-src.tar.gz"
+  APP_URL="$base/River-Bridge.app.zip"
+  FONTE="release ${RELEASE_TAG:-(local)}"
+  ok "$(msg rel_ok "${RELEASE_TAG:-(local)}")"
   return 0
 }
 
@@ -654,11 +709,12 @@ fase_fonte() { # define SRC_DIR (árvore com scripts/install.sh)
   fase "$(msg fase_fonte)"
   if [ -n "$SRC_DIR" ]; then
     [ -x "$SRC_DIR/scripts/install.sh" ] || morrer "$E_VALID" "$(msg fonte_local_invalida "$SRC_DIR")"
-    ok "$(msg fonte_local "$SRC_DIR")"; return 100
+    FONTE="local $SRC_DIR"; ok "$(msg fonte_local "$SRC_DIR")"; return 100
   fi
   local tgz="$CACHE_DIR/src.tar.gz" sha dest
   if [ "$OP_DRYRUN" = "1" ]; then ui_info "$(msg fonte_dry "$RUB_SRC_URL" "$tgz" "$CACHE_DIR")"; SRC_DIR=""; return 0; fi
   mkdir -p "$CACHE_DIR"
+  if [ "$RUB_CANAL" = "release" ]; then obter_release || true; fi
   ui_info "$(msg fonte_baixando "$RUB_SRC_URL")"
   # .parcial → mv: um download interrompido nunca é "encontrado" como pronto.
   if ! curl -fsSL --retry 2 --max-time 300 -o "$tgz.parcial" "$RUB_SRC_URL" 2>"$CACHE_DIR/curl.err"; then
@@ -667,6 +723,7 @@ fase_fonte() { # define SRC_DIR (árvore com scripts/install.sh)
   mv "$tgz.parcial" "$tgz"
   sha="$(shasum -a 256 "$tgz" | cut -d' ' -f1)"
   if [ -n "$RUB_SRC_SHA256" ] && [ "$sha" != "$RUB_SRC_SHA256" ]; then rm -f "$tgz"; morrer "$E_VALID" "$(msg fonte_sha_div)"; fi
+  [ "$RUB_CANAL" = "release" ] || FONTE="main ${sha:0:12}"
   ok "$(msg fonte_sha "$(du -h "$tgz" | cut -f1 | tr -d ' ')" "${sha:0:12}")"
   dest="$CACHE_DIR/src-${sha:0:12}"
   if [ -x "$dest/scripts/install.sh" ]; then
@@ -703,15 +760,36 @@ fase_servico() {
   esac
 }
 
-fase_app() {
-  fase "$(msg fase_app)"
-  if [ "$OP_NOAPP" = "1" ]; then ui_skip "$(msg app_pulado)"; return 100; fi
-  if [ "$OP_DRYRUN" = "1" ]; then ui_info "$(msg app_dry "$APP_DEST")"; return 0; fi
-  [ "$SWIFT_OK" = "1" ] || { ui_skip "$(msg swift_falta)"; return 100; }
-  local log="$CACHE_DIR/build-app.log" rc=0 novo="$SRC_DIR/macos/RiverBridge/dist/River Bridge.app"
-  ( cd "$SRC_DIR" && ./tools/build-app.sh ) >"$log" 2>&1 &
-  ui_spin "$(msg app_compilando)" $! || rc=$?
-  [ "$rc" = "0" ] || { ui_err "$(msg app_falhou)"; tail -8 "$log" | sed 's/^/    /' >&2; exit "$E_FALHA"; }
+baixar_app_release() { # define APP_NOVO com o River Bridge.app extraído do zip da release.
+  # Sha divergente do SHA256SUMS = E_VALID (nunca instala). Download/zip inválido = volta 1
+  # (o chamador cai para o build local). A extração é por ditto -xk, do próprio macOS.
+  local zip="$CACHE_DIR/River-Bridge.app.zip" sha="" dest
+  [ -f "$zip" ] && sha="$(shasum -a 256 "$zip" | cut -d' ' -f1)"
+  if [ "$sha" != "$APP_SHA256" ]; then
+    ui_info "$(msg app_baixando "$APP_URL")"
+    if ! curl -fsSL --retry 2 --max-time 300 -o "$zip.parcial" "$APP_URL" 2>"$CACHE_DIR/curl.err"; then
+      rm -f "$zip.parcial"; ui_warn "$(msg app_download_falhou "$(tail -1 "$CACHE_DIR/curl.err" 2>/dev/null | cut -c1-120)")"; return 1
+    fi
+    mv "$zip.parcial" "$zip"
+    sha="$(shasum -a 256 "$zip" | cut -d' ' -f1)"
+    if [ "$sha" != "$APP_SHA256" ]; then rm -f "$zip"; morrer "$E_VALID" "$(msg app_sha_div)"; fi
+  fi
+  dest="$CACHE_DIR/app-${sha:0:12}"
+  if [ ! -x "$dest/River Bridge.app/Contents/MacOS/RiverBridge" ]; then
+    rm -rf "$dest.parcial"; mkdir -p "$dest.parcial"
+    if ! ditto -xk "$zip" "$dest.parcial" 2>/dev/null || [ ! -x "$dest.parcial/River Bridge.app/Contents/MacOS/RiverBridge" ]; then
+      rm -rf "$dest.parcial"; ui_warn "$(msg app_zip_invalido)"; return 1
+    fi
+    rm -rf "$dest"; mv "$dest.parcial" "$dest"
+  fi
+  codesign --verify --deep --strict "$dest/River Bridge.app" >/dev/null 2>&1 || ui_warn "$(msg app_assinatura)"
+  APP_NOVO="$dest/River Bridge.app"
+  ok "$(msg app_da_release "${RELEASE_TAG:-(local)}")"
+  return 0
+}
+
+instalar_app_bundle() { # <.app novo> — igual ao instalado: 100; senão fecha, copia .parcial, mv atômico, reabre
+  local novo="$1"
   if [ -x "$APP_DEST/Contents/MacOS/RiverBridge" ] && cmp -s "$novo/Contents/MacOS/RiverBridge" "$APP_DEST/Contents/MacOS/RiverBridge"; then
     ui_skip "$(msg app_ja "$APP_DEST")"; return 100
   fi
@@ -724,6 +802,24 @@ fase_app() {
   ok "$(msg app_instalado "$APP_DEST")"; FEZ=1
   [ "$estava" = "1" ] && { open "$APP_DEST" >/dev/null 2>&1 || true; ui_info "$(msg app_reaberto)"; }
   return 0
+}
+
+fase_app() {
+  fase "$(msg fase_app)"
+  if [ "$OP_NOAPP" = "1" ]; then ui_skip "$(msg app_pulado)"; return 100; fi
+  if [ "$OP_DRYRUN" = "1" ]; then ui_info "$(msg app_dry "$APP_DEST")"; return 0; fi
+  # 1º o app pronto da release (só arm64: é o que a release traz); senão o build local.
+  APP_NOVO=""
+  if [ -n "$APP_SHA256" ] && [ "$(uname -m)" = "arm64" ]; then baixar_app_release || APP_NOVO=""; fi
+  if [ -z "$APP_NOVO" ]; then
+    [ "$SWIFT_OK" = "1" ] || { ui_skip "$(msg swift_falta)"; return 100; }
+    local log="$CACHE_DIR/build-app.log" rc=0
+    ( cd "$SRC_DIR" && ./tools/build-app.sh ) >"$log" 2>&1 &
+    ui_spin "$(msg app_compilando)" $! || rc=$?
+    [ "$rc" = "0" ] || { ui_err "$(msg app_falhou)"; tail -8 "$log" | sed 's/^/    /' >&2; exit "$E_FALHA"; }
+    APP_NOVO="$SRC_DIR/macos/RiverBridge/dist/River Bridge.app"
+  fi
+  instalar_app_bundle "$APP_NOVO"
 }
 
 fase_verificacao() {
@@ -742,6 +838,7 @@ fase_verificacao() {
   [ -n "$ver" ] || { ui_warn "$(msg verif_sem_api 30 "$HOME/Library/Logs/river-unifi-bridge.log")"; return 100; }
   health="$(curl -sf -m 2 -H "Authorization: Bearer $T" "http://127.0.0.1:$API_PORT/v1/health" 2>/dev/null || true)"
   SERVICO_VERSAO="$(printf '%s' "$ver" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
+  if [ -n "$RELEASE_TAG" ] && [ "v$SERVICO_VERSAO" != "$RELEASE_TAG" ]; then ui_warn "$(msg verif_versao_div "$SERVICO_VERSAO" "$RELEASE_TAG")"; fi
   ok "$(msg verif_ok \
       "$SERVICO_VERSAO" \
       "$(printf '%s' "$health" | sed -n 's/.*"nut": *"\([^"]*\)".*/\1/p')" \
@@ -761,6 +858,8 @@ river-bridge-install.sh — River Bridge (EcoFlow RIVER 3 Plus → NUT → UniFi
   --install-deps   autoriza instalar o Homebrew (oficial, NONINTERACTIVE) se faltar
   --no-app         não compila/instala o River Bridge.app
   --no-open        não abre o app ao terminar
+  --release TAG    instala a release TAG do GitHub (default: latest)
+  --from-main      baixa o tarball do branch main e compila o app aqui
   --src DIR        usa uma árvore local do repo em vez de baixar (bancada/gate)
   --no-anim        sem abertura animada · --demo  só a abertura
   --lang pt|en     idioma (default: locale do Mac)
@@ -775,6 +874,8 @@ river-bridge-install.sh - River Bridge (EcoFlow RIVER 3 Plus -> NUT -> UniFi) in
   --install-deps   allow installing Homebrew (official, NONINTERACTIVE) if missing
   --no-app         do not build/install River Bridge.app
   --no-open        do not open the app when done
+  --release TAG    install GitHub release TAG (default: latest)
+  --from-main      download the main branch tarball and build the app here
   --src DIR        use a local repo tree instead of downloading (bench/gate)
   --no-anim        no animated opening - --demo  opening only
   --lang pt|en     language (default: the Mac's locale)
@@ -787,6 +888,8 @@ ler_args() {
     case "$1" in
       --dry-run|-n) OP_DRYRUN=1 ;; --yes|-y) OP_YES=1 ;; --install-deps) OP_DEPS=1 ;; --no-app) OP_NOAPP=1 ;;
       --src) [ -n "${2:-}" ] || morrer "$E_USO" "$(msg flag_sem_valor --src)"; SRC_DIR="$2"; shift ;;
+      --release) [ -n "${2:-}" ] || morrer "$E_USO" "$(msg flag_sem_valor --release)"; RUB_RELEASE="$2"; RUB_CANAL=release; shift ;;
+      --from-main) RUB_CANAL=main ;;
       --lang) case "${2:-}" in pt|en) IDIOMA="$2"; shift ;; *) morrer "$E_USO" "$(msg lang_invalido)" ;; esac ;;
       --no-anim) UI_NO_ANIM=1; UI_ANIM=0 ;; --demo) OP_DEMO=1 ;; --no-open) OP_NOOPEN=1 ;;
       --demo-frame) [ -n "${2:-}" ] || morrer "$E_USO" "$(msg flag_sem_valor --demo-frame)"; UI_NO_ANIM=1; UI_ANIM=0; lg_quadro "$2"; exit 0 ;;

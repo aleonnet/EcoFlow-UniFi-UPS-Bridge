@@ -28,15 +28,23 @@ O mesmo arquivo, o mesmo fluxo; `--src` só troca o download pela árvore indica
 
 | Fase | Faz | "já estava" |
 |---|---|---|
-| 01 Pré-voo | macOS, `curl/tar/shasum`, Homebrew (portão; `--install-deps` instala o oficial em `NONINTERACTIVE`), Swift (só avisa) | — |
-| 02 Código-fonte | baixa o tarball (`.parcial` → `mv`), `sha256` (pino opcional `RUB_SRC_SHA256`), extrai em `~/Library/Caches/river-unifi-bridge/src-<sha>` | cache com o mesmo sha |
-| 03 Serviço | **`sudo scripts/install.sh --consent-homebrew`** — brew `nut` + `python@3.13`, código, venv, `bridge.env` (preservado), LaunchDaemon; **código novo com plist igual → `kickstart`** | `install.sh` devolve 100 |
-| 04 App | `tools/build-app.sh` (Swift, no alvo) → `~/Applications/River Bridge.app` se o binário mudou (fecha/reabre se estava aberto) | binário idêntico (`cmp`) |
+| 01 Pré-voo | macOS, `curl/tar/shasum`, Homebrew (portão; `--install-deps` instala o oficial em `NONINTERACTIVE`), Swift (no canal release, sem Swift é só informação: o app vem pronto) | — |
+| 02 Código-fonte | **canal release (default, desde 2026-09-02):** lê `SHA256SUMS` em `releases/latest/download` (a tag vem do redirect), pina o tarball e o app; **qualquer falha → canal main com aviso**. Depois: baixa o tarball (`.parcial` → `mv`), `sha256` contra o pino (`RUB_SRC_SHA256` ou o `SHA256SUMS`), extrai em `~/Library/Caches/river-unifi-bridge/src-<sha>` | cache com o mesmo sha |
+| 03 Serviço | **`sudo scripts/install.sh --consent-homebrew`** — brew `nut` + `python@3.13`, código, **desinstalador em `$PREFIX/scripts`**, venv, `bridge.env` (preservado), LaunchDaemon; **código novo com plist igual → `kickstart`** | `install.sh` devolve 100 |
+| 04 App | canal release e arm64: baixa `River-Bridge.app.zip`, confere o sha (**divergente = exit 3, nada instalado**), extrai com `ditto -xk` em `app-<sha>`; senão `tools/build-app.sh` (Swift, no alvo). Instala em `~/Applications/River Bridge.app` se o binário mudou (fecha/reabre se estava aberto) | binário idêntico (`cmp`) |
 | 05 Verificação | espera a API local, lê `/v1/version` e `/v1/health` (NUT, UDR7, UniFi) | — |
 
 Saída: 0 (fez algo) · 100 (nada a fazer) · 2 uso · 3 validação · 4 dependência · 10 rede ·
-130 cancelado · 1 falha. Relatório em `~/Library/Application Support/river-unifi-bridge/installer-last-run.log`.
-Reexecutar é seguro: cada fase confere o estado.
+130 cancelado · 1 falha. Relatório em `~/Library/Application Support/river-unifi-bridge/installer-last-run.log`,
+com a linha `fonte=release vX.Y.Z` / `fonte=main <sha12>` / `fonte=local <dir>` dizendo de onde veio o
+código — a mesma linha aparece na caixa do fecho. Reexecutar é seguro: cada fase confere o estado.
+
+O `SHA256SUMS` prova que o download chegou íntegro e que tarball e app são da **mesma** release;
+não protege contra um GitHub comprometido (mesma origem TLS). Os assets têm nome sem versão para o
+instalador achá-los por `releases/latest/download/<asset>` só com `curl`; quem os produz é
+`tools/release.sh` (na máquina de desenvolvimento, sem CI). O app da release é ad-hoc: `curl` não
+grava `com.apple.quarantine` (medido em 2026-09-02) e `ditto` só preservaria uma marca que o
+arquivo de origem tivesse.
 
 ## Senha uma vez — por quê funciona
 
@@ -48,11 +56,14 @@ repassa a senha.
 
 ## Flags
 
-`--dry-run` · `--yes` · `--install-deps` · `--no-app` · `--no-open` · `--src DIR` · `--no-anim` ·
-`--demo` · `--demo-frame N` · `--lang pt|en` · `--version` · `--help`. Seams (bancada/gate): `RUB_SRC_URL`, `RUB_SRC_DIR`,
-`RUB_SRC_SHA256`, `RUB_CACHE_DIR`, `RUB_STATE_DIR`, `RUB_PREFIX`, `RUB_LAUNCHD_DIR`,
-`RUB_SERVICE_USER`, `RUB_PYTHON`, `RUB_SUDO` (vazio = sem sudo, para stubs), `RUB_APP_DEST`,
-`RUB_SKIP_HEALTH`, `UI_NO_ANIM`, `NO_COLOR`.
+`--dry-run` · `--yes` · `--install-deps` · `--no-app` · `--no-open` · `--release TAG` (release
+específica; default `latest`) · `--from-main` (tarball do branch e build local, como até a v0.1.0) ·
+`--src DIR` · `--no-anim` · `--demo` · `--demo-frame N` · `--lang pt|en` · `--version` · `--help`.
+Seams (bancada/gate): `RUB_CANAL` (`release`|`main`; **`RUB_SRC_URL` explícito implica `main`**,
+detectado com `${RUB_SRC_URL+x}` antes do default), `RUB_RELEASE`, `RUB_RELEASE_BASE` (`file://…`
+na S18), `RUB_SRC_URL`, `RUB_SRC_DIR`, `RUB_SRC_SHA256`, `RUB_CACHE_DIR`, `RUB_STATE_DIR`,
+`RUB_PREFIX`, `RUB_LAUNCHD_DIR`, `RUB_SERVICE_USER`, `RUB_PYTHON`, `RUB_SUDO` (vazio = sem sudo,
+para stubs), `RUB_APP_DEST`, `RUB_SKIP_HEALTH`, `UI_NO_ANIM`, `NO_COLOR`.
 
 ## Abertura — o escudo do app
 
@@ -132,4 +143,12 @@ e o caminho do relatório desta execução.
 S11 sintaxe em bash 3.2 + `--help` pelo cano sob locale C (ASCII puro) · S12 contrato 0 → 100 →
 `kickstart` com código novo → download por `file://` (stubs de brew/launchctl, sem root, sem
 rede) · S13 dry-run pelo cano sai 0 e não escreve nada · S14 abertura (bordas da máscara vazias · render × máscara · snapshot) · S15 o bloco `GERADO`
-é idêntico à saída de `tools/gera-logo.py`.
+é idêntico à saída de `tools/gera-logo.py` · **S18** canal release por `file://` em cinco rodadas
+(app pronto do zip com sha conferido e `fonte=release` → reexecução 100 → sha do zip adulterado
+sai 3 sem app → release inexistente cai para main com aviso e `fonte=main` → sha do tarball
+adulterado sai 3 sem extrair), refutada em 2026-09-02 com uma mutação por rodada (pino do tarball
+desligado; sha do zip não conferido; fallback trocado por morte; `cmp` do app removido; `fonte`
+mentindo `main`) · **S19** `tools/release.sh --check` sai 0 na árvore e 3 citando `pyproject.toml`
+num mutante em 9.9.9 (refutada trocando o `pyproject` da lista pelo `CHANGELOG`) · **S9/S10** o
+desinstalador sai instalado em `$PREFIX/scripts` e a cópia instalada remove tudo, inclusive a si
+(refutadas em 2026-09-02).
