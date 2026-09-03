@@ -26,10 +26,22 @@ CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples (ts);
 CREATE TABLE IF NOT EXISTS events (
     ts INTEGER NOT NULL,
     type TEXT NOT NULL,
-    detail TEXT
+    detail TEXT,
+    device TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
 """
+
+# Bases criadas antes de 2026-09-03 não têm a coluna `device` (o dono do evento:
+# o id da instância do dispositivo protegido). ALTER TABLE ADD COLUMN é a única
+# migração de esquema e é idempotente por construção: só roda quando PRAGMA
+# table_info não lista a coluna. Linhas antigas ficam com device NULL — o app
+# resolve o dono pelo tipo do evento quando só há uma instância do tipo.
+_EVENTS_DEVICE_MIGRATION = "ALTER TABLE events ADD COLUMN device TEXT"
+
+
+def _event_row(r: tuple) -> dict:
+    return {"ts": r[0], "type": r[1], "detail": r[2], "device": r[3]}
 
 
 class HistoryStore:
@@ -39,6 +51,9 @@ class HistoryStore:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+            if "device" not in columns:
+                conn.execute(_EVENTS_DEVICE_MIGRATION)
 
     def _connect(self) -> sqlite3.Connection:
         # One fresh connection per operation (thread-safe by construction:
@@ -72,12 +87,14 @@ class HistoryStore:
             )
 
     def record_event(self, event_type: str, detail: str | None = None,
-                     ts: int | None = None) -> None:
+                     ts: int | None = None, device: str | None = None) -> None:
+        """`device` = id da instância do dispositivo protegido dona do evento;
+        None para eventos do bridge (queda, restauração, comunicação)."""
         ts = int(ts if ts is not None else time.time())
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO events (ts, type, detail) VALUES (?, ?, ?)",
-                (ts, event_type, detail),
+                "INSERT INTO events (ts, type, detail, device) VALUES (?, ?, ?, ?)",
+                (ts, event_type, detail, device),
             )
 
     def query(self, metric: str, ts_from: int, ts_to: int,
@@ -103,29 +120,32 @@ class HistoryStore:
     def recent_events(self, limit: int = 50) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT ts, type, detail FROM events ORDER BY ts DESC LIMIT ?",
+                "SELECT ts, type, detail, device FROM events ORDER BY ts DESC LIMIT ?",
                 (limit,),
             ).fetchall()
-        return [{"ts": r[0], "type": r[1], "detail": r[2]} for r in rows]
+        return [_event_row(r) for r in rows]
 
     def query_events(self, ts_from: int, ts_to: int,
                      types: list[str] | None = None,
-                     limit: int = 200) -> list[dict]:
-        """Period/type query over the persisted log (newest first)."""
+                     limit: int = 200, device: str | None = None) -> list[dict]:
+        """Period/type/device query over the persisted log (newest first)."""
         if ts_from > ts_to:
             raise ValueError("intervalo inválido: from maior que to")
         if not 1 <= limit <= 1000:
             raise ValueError("limit fora da faixa (1..1000)")
-        sql = "SELECT ts, type, detail FROM events WHERE ts >= ? AND ts <= ?"
+        sql = "SELECT ts, type, detail, device FROM events WHERE ts >= ? AND ts <= ?"
         args: list[object] = [ts_from, ts_to]
         if types:
             sql += f" AND type IN ({','.join('?' * len(types))})"
             args.extend(types)
+        if device:
+            sql += " AND device = ?"
+            args.append(device)
         sql += " ORDER BY ts DESC LIMIT ?"
         args.append(limit)
         with self._connect() as conn:
             rows = conn.execute(sql, args).fetchall()
-        return [{"ts": r[0], "type": r[1], "detail": r[2]} for r in rows]
+        return [_event_row(r) for r in rows]
 
     def delete_events(self, ts_from: int, ts_to: int) -> int:
         """Delete events inside [from, to]; returns rows removed."""

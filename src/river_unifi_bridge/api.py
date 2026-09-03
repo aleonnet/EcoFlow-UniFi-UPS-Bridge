@@ -187,7 +187,8 @@ class ApiServer:
             ts_to = int(q.get("to", str(2**33)))
             limit = int(q.get("limit", "200"))
             types = [t for t in q.get("types", "").split(",") if t] or None
-            rows = self.history.query_events(ts_from, ts_to, types, limit)
+            device = q.get("device") or None
+            rows = self.history.query_events(ts_from, ts_to, types, limit, device=device)
         except ValueError as exc:
             return web.json_response({"erro": str(exc)}, status=400)
         return web.json_response({"rows": rows})

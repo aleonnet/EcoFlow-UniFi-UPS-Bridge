@@ -261,7 +261,7 @@ def _emit(actions: list[ProtectionAction], shared, history, log=log_json) -> Non
             shared.add_event(action.event, action.payload)
         if history is not None:
             detail = action.payload.get("detail") or action.payload.get("host")
-            history.record_event(action.event, detail)
+            history.record_event(action.event, detail, device=action.payload.get("device"))
 
 
 def _write_private_json(path: str, data: dict) -> None:

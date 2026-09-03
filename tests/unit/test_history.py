@@ -71,3 +71,41 @@ def test_events_recent_first(store):
     store.record_event("B", ts=200)
     events = store.recent_events()
     assert [e["type"] for e in events] == ["B", "A"]
+
+
+def test_events_carry_device_and_filter_by_it(store):
+    store.record_event("POWER_LOSS", ts=100)                       # evento do bridge: sem dono
+    store.record_event("UDR7_SHUTDOWN_DRYRUN", "ok", ts=200, device="udr7")
+    store.record_event("SSH_HOST_SHUTDOWN_DRYRUN", "ok", ts=300, device="sshhost_3fa9c1d2")
+    rows = store.query_events(0, 2**33)
+    assert [(r["type"], r["device"]) for r in rows] == [
+        ("SSH_HOST_SHUTDOWN_DRYRUN", "sshhost_3fa9c1d2"),
+        ("UDR7_SHUTDOWN_DRYRUN", "udr7"),
+        ("POWER_LOSS", None),
+    ]
+    only = store.query_events(0, 2**33, device="udr7")
+    assert [r["type"] for r in only] == ["UDR7_SHUTDOWN_DRYRUN"]
+    assert store.recent_events()[0]["device"] == "sshhost_3fa9c1d2"
+
+
+def test_history_device_column(tmp_path):
+    """Uma base criada ANTES da coluna `device` (esquema de 2026-09-01) ganha a
+    coluna no primeiro `HistoryStore`; abrir de novo não duplica nem falha; as
+    linhas antigas ficam com device NULL e continuam legíveis."""
+    import sqlite3
+
+    path = tmp_path / "old.sqlite"
+    with sqlite3.connect(path) as conn:
+        conn.executescript(
+            "CREATE TABLE events (ts INTEGER NOT NULL, type TEXT NOT NULL, detail TEXT);"
+            "CREATE TABLE samples (ts INTEGER NOT NULL, state TEXT, charge REAL,"
+            " runtime REAL, load REAL, power_w REAL);"
+            "INSERT INTO events (ts, type, detail) VALUES (100, 'UDR7_ARMED', 'armado');"
+        )
+    for _ in range(3):                                             # idempotente
+        store = HistoryStore(str(path))
+    with sqlite3.connect(path) as conn:
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(events)")]
+    assert columns.count("device") == 1
+    rows = store.query_events(0, 2**33)
+    assert rows == [{"ts": 100, "type": "UDR7_ARMED", "detail": "armado", "device": None}]
