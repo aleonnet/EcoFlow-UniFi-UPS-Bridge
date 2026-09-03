@@ -1,5 +1,6 @@
-// A metade de TELA do contrato de plugin. O Core declara o que o dispositivo é
-// (id, ícone, chaves, eventos); aqui ele diz como se desenha.
+// A metade de TELA do contrato de dispositivo. O Core declara o que um TIPO é
+// (id, ícone, rótulos, campos, eventos); aqui ele diz como se desenha — a folha
+// de uma INSTÂNCIA (nova ou existente), a linha do cartão de saúde e o badge.
 //
 // `@MainActor` no protocolo inteiro: tudo aqui devolve View, e View é isolada ao
 // main actor no SDK — um requisito nonisolated não compilaria em modo 6.
@@ -7,21 +8,53 @@
 import RiverBridgeCore
 import SwiftUI
 
+/// O que a folha está fazendo: criando uma instância de um tipo, ou editando
+/// uma que já existe. `Identifiable` para o `.sheet(item:)` de Ajustes.
+enum DeviceSheetMode: Identifiable, Equatable {
+    case new(DeviceTypeDescriptor)
+    case edit(DeviceInstance)
+
+    var id: String {
+        switch self {
+        case .new(let type): "novo:\(type.id)"
+        case .edit(let instance): instance.id
+        }
+    }
+
+    var type: DeviceTypeDescriptor? {
+        switch self {
+        case .new(let type): type
+        case .edit(let instance): DeviceTypeRegistry.type(id: instance.type)
+        }
+    }
+
+    var instance: DeviceInstance? {
+        if case .edit(let instance) = self { return instance }
+        return nil
+    }
+
+    var isNew: Bool {
+        if case .new = self { return true }
+        return false
+    }
+}
+
 @MainActor
 protocol DevicePluginUI: Sendable {
-    var descriptor: DevicePluginDescriptor { get }
+    var type: DeviceTypeDescriptor { get }
 
-    /// A folha de configuração do dispositivo. `hostSize` é o tamanho da
-    /// janela-mãe, medido no corpo de SettingsView: a folha é NSWindow própria,
-    /// então medir dentro dela seria circular. Os DOIS eixos importam — limitar
-    /// só a largura deixava a folha vazar por baixo.
-    func settingsSheet(store: TelemetryStore, hostSize: CGSize,
+    /// A folha de configuração de UMA instância (ou de uma nova). `hostSize` é
+    /// o tamanho da janela-mãe, medido no corpo de SettingsView: a folha é
+    /// NSWindow própria, então medir dentro dela seria circular.
+    func settingsSheet(mode: DeviceSheetMode, store: TelemetryStore, hostSize: CGSize,
                        onClose: @escaping () -> Void) -> AnyView
 
-    /// A linha honesta do cartão de saúde deste dispositivo.
-    func healthDetail(chain: HealthChain?) -> String?
+    /// A linha honesta do cartão de saúde desta instância. `chainPresent` diz
+    /// se o health chegou (sem health não há o que dizer; com health e sem
+    /// detalhe, o serviço é anterior ao tipo).
+    func healthDetail(detail: DeviceDetail?, chainPresent: Bool) -> String?
 
-    /// Rótulo e cor do estado. `nil` quando o plugin não conhece o estado — o
+    /// Rótulo e cor do estado. `nil` quando o tipo não conhece o estado — o
     /// cartão cai no badge genérico, que continua servindo os outros elos.
     func badge(state: String?) -> (String, Color)?
 }
@@ -30,8 +63,8 @@ protocol DevicePluginUI: Sendable {
 enum DevicePluginUIRegistry {
     static let all: [any DevicePluginUI] = [Udr7Plugin()]
 
-    static func plugin(id: String) -> (any DevicePluginUI)? {
-        all.first { $0.descriptor.id == id }
+    static func plugin(typeID: String) -> (any DevicePluginUI)? {
+        all.first { $0.type.id == typeID }
     }
 }
 
@@ -61,7 +94,7 @@ struct ArmConfirmation {
     }
 
     var confirmLabel: String {
-        L10n.t("Armar — pode desligar o \(name) numa queda",
+        L10n.t("Armar — pode desligar \(name) numa queda",
                "Arm — may shut \(name) down in an outage")
     }
 

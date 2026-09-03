@@ -27,20 +27,23 @@ struct SettingsView: View {
     @State private var clearBefore = Date.now
     @State private var prefs = AppPrefs.shared
 
-    // Fase 3'-EXP — UDR7 protection (explicit Save: text fields must never PUT
-    // half-typed values; the daemon freezes these keys while armed).
-    /// Só o que a LISTA precisa: qual folha está aberta, o override enquanto um
-    /// PUT está em voo, e o dispositivo cuja confirmação de armar está na tela.
-    /// Dev seam: `--seam-plugin udr7` já abre a folha desse dispositivo, para a
-    /// captura conseguir fotografá-la (molde: DashboardWindow.initialSection).
-    @State private var openPlugin: DevicePluginDescriptor? = {
-        guard let id = AppPrefs.seamValue("--seam-plugin") else { return nil }
-        return DevicePluginRegistry.plugin(id: id)
-    }()
+    // Dispositivos protegidos por INSTÂNCIA (2026-09-03). Só o que a LISTA
+    // precisa: qual folha está aberta (nova ou de uma instância), o override
+    // enquanto um PUT está em voo, e a instância cuja confirmação de armar está
+    // na tela. Dev seam: `--seam-folha <id>` abre a folha dessa instância e
+    // `--seam-folha novo:<tipo>` a folha de um dispositivo novo desse tipo, para
+    // a captura fotografá-las (molde: DashboardWindow.initialSection).
+    @State private var seamSheet: String? = AppPrefs.seamValue("--seam-folha")
+    @State private var openSheet: DeviceSheetMode?
     @State private var optimistic: [String: Bool] = [:]
-    @State private var pendingArm: DevicePluginDescriptor?
+    @State private var pendingArm: DeviceInstance?
     @State private var devicesFeedback: String?
     @State private var hostSize: CGSize = CGSize(width: 1000, height: 880)
+    // As duas chaves do River que são do NÚCLEO, não de instância nenhuma (D16):
+    // salvas explicitamente (texto), nunca pelo auto-save dos presets.
+    @State private var expectedSerial = ""
+    @State private var cutoff = 0
+    @State private var riverBaseline: [String: String] = [:]
 
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
@@ -148,10 +151,38 @@ struct SettingsView: View {
                     }
                 }
 
+                SettingsRows.group(L10n.t("River", "River")) {
+                    SettingsRows.textRow("barcode", L10n.t("Número de série esperado (upsc device.serial)", "Expected serial (upsc device.serial)"),
+                                         $expectedSerial, placeholder: "R3P…", estreito: hostSize.width < 560)
+                    SettingsRows.divider
+                    SettingsRows.sliderRow("battery.0percent", L10n.t("Corte físico da saída", "Physical output cutoff"),
+                                           value: $cutoff, range: 0...48, unit: "%",
+                                           zeroLabel: L10n.t("não configurado", "not set"), accent: accent,
+                                           estreito: hostSize.width < 560)
+                    if riverChanged {
+                        HStack {
+                            Text(L10n.t("Vale para todos os dispositivos protegidos.", "Applies to every protected device."))
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button(L10n.t("Salvar", "Save")) { Task { await saveRiver() } }
+                                .buttonStyle(.glassProminent).tint(accent)
+                        }
+                    }
+                }
+
                 SettingsRows.group(L10n.t("Dispositivos protegidos", "Protected devices")) {
-                    ForEach(Array(DevicePluginRegistry.all.enumerated()), id: \.element.id) { indice, plugin in
+                    if case .unsupported(let why) = store.deviceSupport {
+                        Text(L10n.t("O serviço instalado (\(why)) não gerencia dispositivos — rode o instalador para atualizar.",
+                                    "The installed service (\(why)) does not manage devices — run the installer to update."))
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if store.devices.isEmpty {
+                        Text(L10n.t("Nenhum dispositivo protegido.", "No protected devices."))
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(store.devices.enumerated()), id: \.element.id) { indice, instance in
                         if indice > 0 { SettingsRows.divider }
-                        deviceRow(plugin)
+                        deviceRow(instance)
                     }
                 }
 
@@ -189,33 +220,35 @@ struct SettingsView: View {
             .padding(.horizontal, 24)
             .padding(.top, 6)
         }
-        .task { await loadCurrent() }
+        .task {
+            await loadCurrent()
+            await store.refreshDevices()
+            applySeamSheet()
+        }
+        .onChange(of: store.devices) { applySeamSheet() }
         // A largura da JANELA-MÃE, medida aqui: a folha é NSWindow própria, então
         // medir dentro dela seria circular. Molde: DashboardWindow.
         .onGeometryChange(for: CGSize.self) { $0.size } action: { hostSize = $0 }
-        .sheet(item: $openPlugin) { item in
-            if let ui = DevicePluginUIRegistry.plugin(id: item.id) {
-                ui.settingsSheet(store: store, hostSize: hostSize) { openPlugin = nil }
+        .sheet(item: $openSheet) { item in
+            if let type = item.type, let ui = DevicePluginUIRegistry.plugin(typeID: type.id) {
+                ui.settingsSheet(mode: item, store: store, hostSize: hostSize) { openSheet = nil }
             }
         }
         // `isPresented` DERIVADO de pendingArm: cancelar ou Esc zera o estado
         // pelo próprio binding, sem sobrar um booleano fantasma ligado.
         .confirmationDialog(
-            pendingArm.map { ArmConfirmation(name: store.deviceNames.name(for: $0),
-                                             mode: .enableWithRehearsalOff).title } ?? "",
+            pendingArm.map { ArmConfirmation(name: deviceName($0), mode: .enableWithRehearsalOff).title } ?? "",
             isPresented: Binding(get: { pendingArm != nil },
                                  set: { if !$0 { pendingArm = nil } }),
             titleVisibility: .visible, presenting: pendingArm
         ) { item in
-            let arming = ArmConfirmation(name: store.deviceNames.name(for: item),
-                                         mode: .enableWithRehearsalOff)
+            let arming = ArmConfirmation(name: deviceName(item), mode: .enableWithRehearsalOff)
             Button(arming.confirmLabel, role: .destructive) {
                 Task { await putEnable(item, on: true) }
             }
             Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
         } message: { item in
-            Text(ArmConfirmation(name: store.deviceNames.name(for: item),
-                                 mode: .enableWithRehearsalOff).message)
+            Text(ArmConfirmation(name: deviceName(item), mode: .enableWithRehearsalOff).message)
         }
         // Auto-save (owner 2026-08-31): every change PUTs after a short
         // debounce — no save button, like System Settings. All keys on this
@@ -286,8 +319,25 @@ struct SettingsView: View {
 
     // MARK: - Dispositivos protegidos
 
-    /// Uma linha por dispositivo do registro: ícone, o nome que o usuário deu,
-    /// o estado, o interruptor e o chevron que abre a folha.
+    private func deviceName(_ instance: DeviceInstance) -> String {
+        store.deviceNames.name(forDevice: instance.id, type: DeviceTypeRegistry.type(id: instance.type))
+    }
+
+    /// O seam `--seam-folha` só pode abrir a folha depois de a lista existir;
+    /// aplica-se uma vez, na primeira carga que a satisfaz.
+    private func applySeamSheet() {
+        guard let seam = seamSheet else { return }
+        if seam.hasPrefix("novo:"), let type = DeviceTypeRegistry.type(id: String(seam.dropFirst(5))) {
+            openSheet = .new(type); seamSheet = nil
+        } else if let instance = store.devices.first(where: { $0.id == seam }) {
+            openSheet = .edit(instance); seamSheet = nil
+        }
+    }
+
+    /// Uma linha por INSTÂNCIA: ícone do tipo, o nome que o usuário deu, o
+    /// estado, o interruptor e o chevron que abre a folha. O tipo não ganha
+    /// legenda na linha (o ícone já o distingue; duas instâncias do mesmo tipo se
+    /// distinguem pelo nome, que é único) — fica no `.help()` e no cabeçalho da folha.
     ///
     /// O interruptor tem UMA fonte de verdade — o health. Com `store.health` nil
     /// (serviço parado, ou antes do primeiro poll) a linha fica desligada e
@@ -295,20 +345,21 @@ struct SettingsView: View {
     /// `optimistic` existe SÓ enquanto o PUT está em voo e é ele próprio o
     /// marcador de "em voo" — nada de um `inFlight` paralelo para dessincronizar.
     @ViewBuilder
-    private func deviceRow(_ plugin: DevicePluginDescriptor) -> some View {
-        let detail = store.health?.pluginDetail(id: plugin.id)
-        let ligado = optimistic[plugin.id] ?? (detail?.enabled ?? false)
-        let badge = DevicePluginUIRegistry.plugin(id: plugin.id)?.badge(state: detail?.state)
+    private func deviceRow(_ instance: DeviceInstance) -> some View {
+        let type = DeviceTypeRegistry.type(id: instance.type)
+        let detail = store.health?.pluginDetail(id: instance.id)
+        let ligado = optimistic[instance.id] ?? (detail?.enabled ?? instance.enabled ?? false)
+        let badge = DevicePluginUIRegistry.plugin(typeID: instance.type)?.badge(state: detail?.state ?? instance.state)
         HStack(spacing: 10) {
-            Image(systemName: plugin.symbol)
+            Image(systemName: type?.symbol ?? "shield.lefthalf.filled")
                 .frame(width: 26)
                 .foregroundStyle(.secondary)
             Button {
-                openPlugin = plugin
+                openSheet = .edit(instance)
             } label: {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(store.deviceNames.name(for: plugin))
+                        Text(deviceName(instance))
                             .font(.system(.body, design: .rounded))
                         if let badge {
                             Text(badge.0).font(.caption).foregroundStyle(badge.1)
@@ -321,47 +372,76 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help(type?.label ?? instance.type)
+            .disabled(DevicePluginUIRegistry.plugin(typeID: instance.type) == nil)
             Spacer()
             Toggle("", isOn: Binding(
                 get: { ligado },
-                set: { novo in Task { await toggleDevice(plugin, on: novo) } }
+                set: { novo in Task { await toggleDevice(instance, on: novo) } }
             ))
             .labelsHidden()
             .toggleStyle(.switch)
-            .disabled(store.health == nil || optimistic[plugin.id] != nil)
+            .disabled(store.health == nil || optimistic[instance.id] != nil)
         }
     }
 
     /// Ligar com o ensaio DESLIGADO (ou desconhecido) arma de verdade: pede
     /// confirmação e NÃO escreve nada antes dela. Desligar é desarme puro —
     /// sempre aceito pelo daemon — e vai direto, de forma otimista.
-    private func toggleDevice(_ plugin: DevicePluginDescriptor, on: Bool) async {
-        let dryRun = store.health?.pluginDetail(id: plugin.id)?.dryRun
+    private func toggleDevice(_ instance: DeviceInstance, on: Bool) async {
+        let dryRun = store.health?.pluginDetail(id: instance.id)?.dryRun ?? instance.dryRun
         if DevicePluginRegistry.toggleNeedsConfirmation(on: on, dryRun: dryRun) {
-            pendingArm = plugin
+            pendingArm = instance
             return
         }
-        await putEnable(plugin, on: on)
+        await putEnable(instance, on: on)
     }
 
-    private func putEnable(_ plugin: DevicePluginDescriptor, on: Bool) async {
+    private func putEnable(_ instance: DeviceInstance, on: Bool) async {
         guard let endpoint = ApiEndpoint.discover() else {
             devicesFeedback = L10n.t("Serviço parado — nada mudou.", "Service down — nothing changed.")
             return
         }
-        optimistic[plugin.id] = on
+        optimistic[instance.id] = on
         do {
-            _ = try await APIClient(endpoint: endpoint).putConfig([plugin.enableKey: on ? "1" : "0"])
+            _ = try await APIClient(endpoint: endpoint).updateDevice(id: instance.id, enabled: on)
             devicesFeedback = nil
-            // Atualiza o health ANTES de limpar o override: limpar primeiro faria
-            // o `get` voltar ao health velho e o interruptor piscar ao contrário.
+            // Atualiza a lista e o health ANTES de limpar o override: limpar
+            // primeiro faria o `get` voltar ao estado velho e o interruptor piscar.
+            await store.refreshDevices()
             await store.refreshHealth()
         } catch let APIError.badStatus(_, body) {
             devicesFeedback = ProtectionRefusal.text(body)
         } catch {
             devicesFeedback = L10n.t("Falha: ", "Failed: ") + error.localizedDescription
         }
-        optimistic[plugin.id] = nil
+        optimistic[instance.id] = nil
+    }
+
+    // MARK: - River (núcleo)
+
+    private var riverChanged: Bool {
+        loaded && (riverBaseline["UDR7_EXPECTED_SERIAL"] != expectedSerial.trimmingCharacters(in: .whitespaces)
+                   || riverBaseline["UDR7_CUTOFF_PERCENT"] != String(cutoff))
+    }
+
+    private func saveRiver() async {
+        guard let endpoint = ApiEndpoint.discover() else {
+            feedback = L10n.t("Serviço parado — nada salvo.", "Service down — nothing saved.")
+            return
+        }
+        let changes = ["UDR7_EXPECTED_SERIAL": expectedSerial.trimmingCharacters(in: .whitespaces),
+                       "UDR7_CUTOFF_PERCENT": String(cutoff)]
+        do {
+            _ = try await APIClient(endpoint: endpoint).putConfig(changes)
+            riverBaseline = changes
+            feedback = nil
+            await store.refreshHealth()
+        } catch let APIError.badStatus(_, body) {
+            feedback = ProtectionRefusal.text(body)     // 409 armado: desarme antes
+        } catch {
+            feedback = L10n.t("Falha ao salvar: ", "Save failed: ") + error.localizedDescription
+        }
     }
 
     // MARK: - IO (unchanged contract: everything via the daemon's API)
@@ -376,6 +456,9 @@ struct SettingsView: View {
         lowBattery = cfg["low_battery_percent"]?.intValue ?? lowBattery
         pollInterval = cfg["poll_interval_seconds"]?.intValue ?? pollInterval
         retentionDays = cfg["history_retention_days"]?.intValue ?? retentionDays
+        expectedSerial = cfg["udr7_expected_serial"]?.stringValue ?? expectedSerial
+        cutoff = cfg["udr7_cutoff_percent"]?.intValue ?? cutoff
+        riverBaseline = ["UDR7_EXPECTED_SERIAL": expectedSerial, "UDR7_CUTOFF_PERCENT": String(cutoff)]
         loaded = true
     }
 

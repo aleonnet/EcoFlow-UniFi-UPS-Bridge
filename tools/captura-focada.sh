@@ -6,6 +6,8 @@ set -euo pipefail
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 SAIDA="$1"; shift
 osascript -e 'tell application "River Bridge" to quit' 2>/dev/null || true
+# Com uma folha aberta o quit por AppleScript é ignorado: encerra pelo processo.
+pkill -x RiverBridge 2>/dev/null || true
 sleep 1.5
 "$RAIZ/macos/RiverBridge/dist/River Bridge.app/Contents/MacOS/RiverBridge" \
   --abrir-painel "$@" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
@@ -17,14 +19,19 @@ if [ "$FRENTE" != "RiverBridge" ] && [ "$FRENTE" != "River Bridge" ]; then
   echo "FALHA: janela sem foco (frontmost=$FRENTE) — captura inválida" >&2
   exit 1
 fi
-WID=$(swift -e 'import CoreGraphics
+# A janela-MÃE é a de maior área (com uma folha aberta, a folha é uma janela
+# própria, menor). Captura-se a REGIÃO dela, para a folha sair por cima —
+# `-l` fotografaria uma janela só, sem a folha (2026-09-03).
+REGIAO=$(swift -e 'import CoreGraphics
 let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]
+var best: [String: Double]? = nil
 for w in list {
   if let owner = w["kCGWindowOwnerName"] as? String, owner == "River Bridge",
      let b = w["kCGWindowBounds"] as? [String: Double], b["Height"]! > 300 {
-    print(w["kCGWindowNumber"] as! Int); break
+    if best == nil || b["Width"]! * b["Height"]! > best!["Width"]! * best!["Height"]! { best = b }
   }
-}' 2>/dev/null)
-[ -n "$WID" ] || { echo "FALHA: janela não encontrada" >&2; exit 1; }
-screencapture -x -l "$WID" "$SAIDA"
-echo "[OK] captura com foco: $SAIDA"
+}
+if let b = best { print("\(Int(b["X"]!)),\(Int(b["Y"]!)),\(Int(b["Width"]!)),\(Int(b["Height"]!))") }' 2>/dev/null)
+[ -n "$REGIAO" ] || { echo "FALHA: janela não encontrada" >&2; exit 1; }
+screencapture -x -R "$REGIAO" "$SAIDA"
+echo "[OK] captura com foco: $SAIDA ($REGIAO)"

@@ -22,6 +22,9 @@ struct HealthView: View {
         let name: String
         let status: String?
         let detail: String?
+        /// O TIPO do dispositivo quando o elo é uma instância protegida; nil nos
+        /// cinco elos da cadeia. É o que escolhe o badge específico.
+        var typeID: String? = nil
     }
 
     private var links: [Link] {
@@ -43,15 +46,21 @@ struct HealthView: View {
         ] + pluginLinks
     }
 
-    /// Um cartão por DISPOSITIVO protegido, com o nome que o usuário deu. Sai do
-    /// registro, não de uma linha escrita à mão: o segundo plugin aparece aqui
-    /// sem tocar nesta tela.
+    /// Um cartão por INSTÂNCIA protegida, com o nome que o usuário deu. Sai da
+    /// lista de instâncias, não de uma linha escrita à mão: um dispositivo novo
+    /// aparece aqui sem tocar nesta tela. Só a instância migrada `udr7` tem o
+    /// alias `udr7`/`udr7_detail` como reforço.
     private var pluginLinks: [Link] {
-        DevicePluginRegistry.all.map { plugin in
-            .init(id: plugin.id, symbol: plugin.symbol,
-                  name: store.deviceNames.name(for: plugin) + L10n.t(" · proteção", " · protection"),
-                  status: chain?.pluginDetail(id: plugin.id)?.state ?? chain?.udr7,
-                  detail: DevicePluginUIRegistry.plugin(id: plugin.id)?.healthDetail(chain: chain))
+        let labels = DeviceNames.uniqueLabels(instances: store.devices)
+        return store.devices.map { instance in
+            let type = DeviceTypeRegistry.type(id: instance.type)
+            let detail = chain?.pluginDetail(id: instance.id)
+            return .init(id: instance.id, symbol: type?.symbol ?? "shield.lefthalf.filled",
+                         name: (labels[instance.id] ?? instance.name) + L10n.t(" · proteção", " · protection"),
+                         status: detail?.state ?? instance.state,
+                         detail: DevicePluginUIRegistry.plugin(typeID: instance.type)?
+                             .healthDetail(detail: detail, chainPresent: chain != nil),
+                         typeID: instance.type)
         }
     }
 
@@ -101,14 +110,16 @@ struct HealthView: View {
         } action: { _, offset in
             scrollOffset = offset
         }
-        .task { await store.refreshHealth() }
+        .task {
+            await store.refreshDevices()
+            await store.refreshHealth()
+        }
     }
 
     private func card(_ item: Link) -> some View {
-        // O id do elo é o id do plugin quando o elo É um dispositivo: assim o
-        // badge específico entra e o genérico continua servindo os outros cinco.
-        let (label, color) = badge(item.status,
-                                   pluginID: DevicePluginRegistry.plugin(id: item.id)?.id)
+        // O tipo do elo existe quando o elo É um dispositivo: assim o badge
+        // específico entra e o genérico continua servindo os outros cinco.
+        let (label, color) = badge(item.status, typeID: item.typeID)
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: item.symbol)
                 .font(.system(size: 17, weight: .medium))
@@ -139,8 +150,8 @@ struct HealthView: View {
 
     /// Badge GENÉRICO dos elos da cadeia. Os estados que só um dispositivo
     /// conhece vêm do plugin — este switch não os enumera mais.
-    private func badge(_ status: String?, pluginID: String? = nil) -> (String, Color) {
-        if let pluginID, let doPlugin = DevicePluginUIRegistry.plugin(id: pluginID)?.badge(state: status) {
+    private func badge(_ status: String?, typeID: String? = nil) -> (String, Color) {
+        if let typeID, let doPlugin = DevicePluginUIRegistry.plugin(typeID: typeID)?.badge(state: status) {
             return doPlugin
         }
         switch status {
