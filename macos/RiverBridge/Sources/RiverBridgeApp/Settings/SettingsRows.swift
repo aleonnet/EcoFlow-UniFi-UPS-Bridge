@@ -88,13 +88,66 @@ enum SettingsRows {
                 Image(systemName: symbol)
                     .frame(width: 26)
                     .foregroundStyle(.secondary)
+                // Largo: o rótulo fica numa linha e o CAMPO cede (do teto ao piso);
+                // abaixo do piso a folha já empilhou (DeviceSheetMetrics.narrowBelow).
                 Text(label)
                     .font(.system(.body, design: .rounded))
-                    .fixedSize(horizontal: false, vertical: true)
+                    .fixedSize()
                 Spacer(minLength: 8)
                 campo
                     .multilineTextAlignment(numeric ? .trailing : .leading)
                     .frame(minWidth: numeric ? 70 : 150, maxWidth: numeric ? 90 : 260)
+            }
+        }
+    }
+
+    /// Uma escolha de lista fechada (o comando de desligamento do host SSH). O
+    /// rótulo NUNCA quebra (mesma regra do sliderRow: o print do dono a 414 pt
+    /// mostrou "Shut-down com-mand" hifenizado); a legenda fica sob o rótulo.
+    /// Largo: rótulo à esquerda, seletor à direita com teto de largura. Estreito:
+    /// empilha — rótulo e legenda em cima, seletor ocupando a largura inteira —
+    /// o mesmo desenho das outras linhas empilhadas.
+    @ViewBuilder
+    static func pickerRow(_ symbol: String, _ label: String, caption: String? = nil,
+                          selection: Binding<String>, options: [String],
+                          monospaced: Bool = false, estreito: Bool = false) -> some View {
+        let seletor = Picker("", selection: selection) {
+            ForEach(options, id: \.self) { option in
+                Text(option).font(.system(.body, design: monospaced ? .monospaced : .default)).tag(option)
+            }
+        }
+        .labelsHidden()
+        let cabecalho = VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(.body, design: .rounded))
+                .fixedSize()
+            if let caption {
+                Text(caption)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        if estreito {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: symbol).frame(width: 26).foregroundStyle(.secondary)
+                    cabecalho
+                    Spacer(minLength: 0)
+                }
+                seletor
+                    .frame(maxWidth: .infinity)
+                    .padding(.leading, 36)
+            }
+        } else {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: symbol).frame(width: 26).foregroundStyle(.secondary)
+                cabecalho
+                Spacer(minLength: 8)
+                // O popup usa a largura NATURAL do seu texto: com um teto flexível
+                // ele saía truncado numa folha de 560 pt (captura de 2026-09-03);
+                // quem cede é a legenda, que quebra em duas linhas.
+                seletor
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
     }

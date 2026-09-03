@@ -9,6 +9,38 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-09-03
+
+### App — responsividade das folhas na largura mínima (dono: "inadmissível")
+- A linha do **comando de desligamento** do host SSH tinha sido escrita à mão, fora do molde
+  das linhas de Ajustes: a 414 pontos o rótulo hifenizava ("Shut-down com-mand") e o cartão
+  saía vazio. Entra `pickerRow` no molde, com variante estreita (rótulo e legenda em cima,
+  seletor na largura inteira), e a folha usa só o molde.
+- A **linha de armamento** empilha na largura mínima: o botão "Desligar modo ensaio…" ganha a
+  linha de baixo em vez de quebrar em duas (HIG: rótulo de botão nunca quebra).
+- A folha de edição do host SSH **abria rolada até o seletor** (o valor da instância chega
+  depois do primeiro desenho); a folha passa a ancorar no topo e o seletor sempre contém a
+  seleção atual.
+- O **nome sugerido** de um dispositivo novo segue o idioma do app ("SSH server" em inglês,
+  "Servidor SSH" em português).
+- **A folha nunca passa da janela.** A largura da janela-mãe era medida na própria rolagem de
+  Ajustes, que a 414 pontos media 563 (as linhas largas do primeiro desenho a empurravam para
+  fora da janela); a folha "cabia" em 523 e vazava. Agora a medida vem do espaço oferecido
+  (GeometryReader), e a folha tem tamanho fixo igual à janela menos a margem — o macOS ignora a
+  largura ideal de uma folha flexível e a dimensiona pelo conteúdo (470 pontos, medido em janelas
+  de 414 e de 600). Cada linha decide empilhar ou não pela largura em que a folha foi de fato
+  desenhada. O corte entre empilhar e lado a lado sobe de 420 para 560 pontos de largura da
+  folha: a 420 o rótulo da chave privada ainda quebrava em duas linhas (captura).
+- A folha aberta por linha de comando de desenvolvimento (`--seam-folha novo:…`) abre antes
+  das chamadas ao serviço, para a captura não fotografar a tela sem ela.
+- Verificado por captura lida contra o defeito e por geometria de janela (folha contida na
+  janela-mãe: 374×380 em 414×480, 560×556 em 600×700, 600×640 em 1000×880): folhas de edição
+  e de novo dispositivo dos dois tipos, lista de tipos, em português e inglês.
+
+### Instalador de uma linha
+- Após baixar o código, a linha dizia "código já estava baixado" quando o que já existia era a
+  pasta extraída deste mesmo download; agora diz isso.
+
 ## [0.3.2] — 2026-09-03
 
 ### Instalação — revisão inteira dos dois instaladores (dono: "trate TUDO")

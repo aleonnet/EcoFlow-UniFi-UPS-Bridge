@@ -5,6 +5,13 @@ import Foundation
 import Testing
 @testable import RiverBridgeCore
 
+/// O nome do tipo host SSH nos dois idiomas. Os testes aceitam qualquer um dos dois: o
+/// idioma vivo é estado global (`L10n.cachedIsPT`) que `languagePickerWinsOverDefaultsShadowing`
+/// alterna em paralelo — comparar com `L10n.t(...)` lido noutro instante era uma corrida
+/// (revisão fria de 2026-09-03). O mapeamento idioma → nome é testado onde o idioma é o assunto.
+let nomesDoTipoSSH = ["Servidor SSH", "SSH server"]
+
+
 private func fixture(_ name: String) -> URL {
     URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent()
@@ -91,10 +98,13 @@ private let tres = [
 }
 
 @Test func suggestedNameIsUniqueAmongExisting() {
-    #expect(DeviceNames.suggestedName(type: .sshHost, existing: tres) == "Servidor SSH")
-    let more = tres + [device("x", "ssh_host", "servidor ssh"), device("y", "ssh_host", "Servidor SSH 2")]
-    #expect(DeviceNames.suggestedName(type: .sshHost, existing: more) == "Servidor SSH 3")
+    // O nome sugerido é o do tipo (no idioma do app) e ganha ordinal até ficar único,
+    // comparando sem distinguir maiúsculas. A cadeia de ordinais é provada com o UDR7,
+    // cujo nome não depende do idioma.
+    #expect(nomesDoTipoSSH.contains(DeviceNames.suggestedName(type: .sshHost, existing: tres)))
     #expect(DeviceNames.suggestedName(type: .udr7, existing: tres) == "UDR7 2")
+    let more = tres + [device("x", "udr7_ssh", "udr7 2"), device("y", "udr7_ssh", "UDR7 3")]
+    #expect(DeviceNames.suggestedName(type: .udr7, existing: more) == "UDR7 4")
 }
 
 @Test func nameForEventPrefersTheInstanceThenTheOnlyOneOfItsType() {
@@ -102,13 +112,13 @@ private let tres = [
     #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_7b2e4d10", devices: tres) == "Servidor")
     #expect(names.name(forEvent: "UDR7_SHUTDOWN_DRYRUN", device: nil, devices: tres) == "UDR7")
     // dois hosts e nenhum dono: o nome do TIPO, nunca um chute entre os dois
-    #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: tres) == "Servidor SSH")
+    #expect(nomesDoTipoSSH.contains(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: tres)))
     #expect(names.name(forEvent: "POWER_LOSS", device: nil, devices: tres) == "")
     // Dono que já não existe (instância removida) com UMA instância do tipo restante:
     // o nome do TIPO, nunca o da que sobrou. (Com duas restantes o caminho antigo já
     // caía no tipo — o caso discriminante é este, revisão fria de 2026-09-03.)
     let soUm = [tres[0], tres[2]]
-    #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_apagado", devices: soUm) == "Servidor SSH")
+    #expect(nomesDoTipoSSH.contains(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_apagado", devices: soUm)))
     #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: soUm) == "Servidor")
 }
 
@@ -119,7 +129,7 @@ private let tres = [
     #expect(names.name(forDevice: "udr7") == "UDR7")               // a instância vence o health
     #expect(names.name(forDevice: "so_health") == "Só no health")   // o health reforça o que a lista não tem
     #expect(names.name(forDevice: "sshhost_3fa9c1d2") == "Do seam")
-    #expect(names.name(forDevice: "nao_existe", type: .sshHost) == "Servidor SSH")
+    #expect(nomesDoTipoSSH.contains(names.name(forDevice: "nao_existe", type: .sshHost)))
 }
 
 // MARK: - Chips

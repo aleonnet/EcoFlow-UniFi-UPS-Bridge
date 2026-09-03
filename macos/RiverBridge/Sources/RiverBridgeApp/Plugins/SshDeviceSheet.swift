@@ -44,7 +44,6 @@ struct SshDeviceSheet: View {
 
     private var type: DeviceTypeDescriptor { variant == .udr7 ? .udr7 : .sshHost }
     private var instance: DeviceInstance? { mode.instance }
-    private var estreito: Bool { DeviceSheetMetrics.isNarrow(width: DeviceSheetMetrics.size(host: hostSize).width) }
     /// Estado vindo do HEALTH, nunca de uma cópia local: o badge do cartão e esta
     /// folha mostram a mesma coisa porque leem a mesma fonte.
     private var detail: DeviceDetail? { instance.flatMap { store.health?.pluginDetail(id: $0.id) } }
@@ -57,9 +56,14 @@ struct SshDeviceSheet: View {
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
     }
+    /// A lista fechada do catálogo do serviço — e SEMPRE com a seleção atual
+    /// dentro: um seletor cuja seleção não está entre as opções (o catálogo
+    /// ainda não chegou, ou o serviço tem uma lista diferente) redesenha vazio
+    /// e puxa a rolagem da folha.
     private var commands: [String] {
-        store.deviceTypes.first { $0.id == type.id }?
-            .fields.first { $0.name == "shutdown_command" }?.enumValues ?? [shutdownCommand]
+        let catalogo = store.deviceTypes.first { $0.id == type.id }?
+            .fields.first { $0.name == "shutdown_command" }?.enumValues ?? []
+        return catalogo.contains(shutdownCommand) ? catalogo : catalogo + [shutdownCommand]
     }
 
     /// Nome repetido é recusado pelo serviço (409 nome_duplicado); a folha avisa
@@ -85,14 +89,15 @@ struct SshDeviceSheet: View {
             notice: notice, canSave: canSave, hasChanges: !changedFields().isEmpty || nameChanged,
             onClose: { onClose(nil) }, onSave: { Task { await save() } },
             onBack: onBack, onRemove: mode.isNew ? nil : { Task { await remove() } }
-        ) {
+        ) { estreito in
+            // `estreito` é a largura REAL da folha, medida pela moldura.
             SettingsRows.group(L10n.t("Dispositivo", "Device")) {
                 SettingsRows.textRow("tag", L10n.t("Nome", "Name"), $name,
                                      placeholder: type.defaultName, estreito: estreito)
             }
             if !mode.isNew {
                 SettingsRows.group(L10n.t("Armamento", "Arming")) {
-                    ArmingRow(dryRun: dryRun, enabled: enabled, armAllowed: armAllowed,
+                    ArmingRow(dryRun: dryRun, enabled: enabled, armAllowed: armAllowed, estreito: estreito,
                               onTurnOffRehearsal: { showArmDialog = true },
                               onTurnOnRehearsal: { Task { await setDryRun(true) } })
                 }
@@ -112,21 +117,12 @@ struct SshDeviceSheet: View {
             }
             if variant == .sshHost {
                 SettingsRows.group(L10n.t("Desligamento", "Shutdown")) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "power").frame(width: 26).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t("Comando de desligamento", "Shutdown command"))
-                                .font(.system(.body, design: .rounded))
-                            Text(L10n.t("Roda por SSH como o usuário acima.", "Runs over SSH as the user above."))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Picker("", selection: $shutdownCommand) {
-                            ForEach(commands, id: \.self) { Text($0).font(.system(.body, design: .monospaced)).tag($0) }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
+                    // Só o molde de linhas entra numa folha: a versão escrita à mão
+                    // hifenizava o rótulo e deixava o cartão vazio a 414 pt (dono, 2026-09-03).
+                    SettingsRows.pickerRow("power", L10n.t("Comando de desligamento", "Shutdown command"),
+                                           caption: L10n.t("Roda por SSH como o usuário acima.", "Runs over SSH as the user above."),
+                                           selection: $shutdownCommand, options: commands,
+                                           monospaced: true, estreito: estreito)
                 }
             }
             SettingsRows.group(L10n.t("Limiares", "Thresholds")) {

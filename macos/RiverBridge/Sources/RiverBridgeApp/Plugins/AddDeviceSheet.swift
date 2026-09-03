@@ -76,8 +76,8 @@ struct AddDeviceSheet: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(minWidth: DeviceSheetMetrics.minWidth, idealWidth: size.width, maxWidth: size.width,
-               minHeight: DeviceSheetMetrics.minHeight, idealHeight: size.height, maxHeight: size.height)
+        // Quadro FIXO, o mesmo de DeviceSheetFrame (e pelo mesmo motivo medido).
+        .frame(width: size.width, height: size.height)
     }
 
     /// O catálogo diz o que o serviço INSTALADO sabe construir. Só se ele chegou

@@ -38,7 +38,7 @@
 # =============================================================================
 # shellcheck disable=SC2034  # paleta e glifos são globais da camada visual
 set -Eeuo pipefail
-RBI_VERSION="0.3.2"
+RBI_VERSION="0.3.3"
 E_USO=2; E_VALID=3; E_DEP=4; E_CONEXAO=10; E_FALHA=1; E_CANCEL=130
 _src="${BASH_SOURCE[0]:-$0}"
 REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
@@ -129,7 +129,7 @@ MSG_DB=(
 "fonte_falhou|download falhou (%s) — repositório privado, sem rede ou URL errada; use --src DIR ou RUB_SRC_URL|download failed (%s) — private repository, no network or wrong URL; use --src DIR or RUB_SRC_URL"
 "fonte_sha_div|o código baixado não bate com a assinatura de integridade da release — recusado por segurança. Rode de novo; se repetir, avise: a release está corrompida.|the downloaded code does not match the release integrity signature — refused for safety. Run again; if it repeats, report it: the release is corrupted."
 "fonte_sha|código baixado (%s)|code downloaded (%s)"
-"fonte_cache|código já estava baixado|code was already downloaded"
+"fonte_cache|código já estava extraído deste download|code already unpacked from this download"
 "fonte_extraida|código pronto para instalar|code ready to install"
 "fonte_sem_install|o tarball não trouxe scripts/install.sh — árvore inesperada|the tarball has no scripts/install.sh — unexpected tree"
 "servico_dry|(dry-run) plano do instalador do serviço:|(dry-run) service installer plan:"

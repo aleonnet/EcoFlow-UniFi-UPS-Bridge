@@ -25,11 +25,17 @@ struct DeviceSheetFrame<Content: View>: View {
     let onSave: () -> Void
     var onBack: (() -> Void)?
     var onRemove: (() -> Void)?
-    @ViewBuilder let content: () -> Content
+    /// O corpo recebe `estreito`: verdadeiro quando a folha, na largura em que
+    /// está REALMENTE desenhada, não tem espaço para rótulo e controle lado a lado.
+    @ViewBuilder let content: (_ estreito: Bool) -> Content
 
     @State private var showRemoveDialog = false
+    /// A largura medida da folha. Nasce com a aritmética da janela-mãe (para o
+    /// primeiro desenho não piscar) e passa a ser o valor medido no primeiro layout.
+    @State private var larguraMedida: CGFloat?
 
     private var size: CGSize { DeviceSheetMetrics.size(host: hostSize) }
+    private var estreito: Bool { DeviceSheetMetrics.isNarrow(width: larguraMedida ?? size.width) }
     private var accent: Color { Theme.accentColor(onBattery: false, lowBattery: false) }
 
     var body: some View {
@@ -37,14 +43,29 @@ struct DeviceSheetFrame<Content: View>: View {
             header
             Divider()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) { content() }
+                VStack(alignment: .leading, spacing: 18) { content(estreito) }
                     .padding(20)
             }
+            // A folha abre no TOPO, sempre: a de edição do host SSH abria rolada
+            // até o seletor de comando (captura de 2026-09-03), porque o valor
+            // da instância chega depois do primeiro desenho e o seletor puxa a
+            // rolagem ao mudar.
+            .defaultScrollAnchor(.top)
+            // A variante estreita/larga das linhas segue a largura em que a folha
+            // FOI desenhada, não a que a aritmética previu: quando as duas
+            // divergiram (2026-09-03), as linhas largas cortavam o cabeçalho.
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { larguraMedida = $0 }
             Divider()
             footer
         }
-        .frame(minWidth: DeviceSheetMetrics.minWidth, idealWidth: size.width, maxWidth: size.width,
-               minHeight: DeviceSheetMetrics.minHeight, idealHeight: size.height, maxHeight: size.height)
+        // Quadro FIXO, e só ele: medido em 2026-09-03, com min/ideal/máx o macOS
+        // dimensiona a janela da folha pelo conteúdo e ignora a largura ideal
+        // (470 pt tanto numa janela de 414 quanto numa de 600). Com o quadro fixo
+        // a folha tem exatamente `size`, que é a janela-mãe menos a margem, e por
+        // isso nunca passa da janela — desde que `hostSize` seja a medida do
+        // espaço oferecido (GeometryReader em SettingsView), não a de um conteúdo
+        // que transbordou: foi essa medida errada que fez a folha vazar antes.
+        .frame(width: size.width, height: size.height)
         .interactiveDismissDisabled(hasChanges)
         .confirmationDialog(L10n.t("Remover \(currentName)?", "Remove \(currentName)?"),
                             isPresented: $showRemoveDialog, titleVisibility: .visible) {
@@ -129,42 +150,72 @@ struct ArmingRow: View {
     let dryRun: Bool
     let enabled: Bool
     let armAllowed: Bool
+    var estreito: Bool = false
     let onTurnOffRehearsal: () -> Void
     let onTurnOnRehearsal: () -> Void
 
+    /// O rótulo de um botão nunca quebra (HIG, Buttons): a 414 pt o "Desligar
+    /// modo ensaio…" saía em duas linhas ao lado do texto (captura do dono,
+    /// 2026-09-03). Estreito: o botão desce para a linha de baixo e fica à
+    /// DIREITA (é a ação da linha), a partir da coluna do texto — nunca sob o ícone.
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: dryRun ? "theatermasks.fill" : "bolt.shield.fill")
-                .frame(width: 26)
-                .foregroundStyle(dryRun ? Color.secondary : Color.red)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(dryRun ? L10n.t("Modo ensaio", "Rehearsal mode")
-                            : L10n.t("ARMADA — desliga o aparelho de verdade", "ARMED — really shuts the device down"))
-                    .font(.system(.body, design: .rounded))
-                    .fixedSize()
-                Text(armAllowed
-                     ? L10n.t("Trava aberta (UDR7_ARM_ALLOWED=1). Feche-a no arquivo do serviço depois de armar.",
-                              "Lock open (UDR7_ARM_ALLOWED=1). Close it in the service file after arming.")
-                     : L10n.t("Trava fechada: para armar, UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie.",
-                              "Lock closed: to arm, set UDR7_ARM_ALLOWED=1 in the service file and restart."))
-                    .font(.caption)
-                    .foregroundStyle(armAllowed ? Color.orange : Color.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            if dryRun {
-                Button(role: .destructive) { onTurnOffRehearsal() } label: {
-                    Text(L10n.t("Desligar modo ensaio…", "Turn rehearsal off…"))
-                        .foregroundStyle(armAllowed && enabled ? Color.red : Color.secondary)
-                        .frame(minHeight: 28)
-                        .contentShape(Rectangle())
+        if estreito {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    icone
+                    textos
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.borderless)
-                .disabled(!armAllowed || !enabled)
-            } else {
-                Button(L10n.t("Ligar modo ensaio", "Turn rehearsal on")) { onTurnOnRehearsal() }
-                    .buttonStyle(.glass)
+                HStack { Spacer(minLength: 36); botao }
             }
+        } else {
+            HStack(spacing: 10) {
+                icone
+                textos
+                Spacer(minLength: 8)
+                botao
+            }
+        }
+    }
+
+    private var icone: some View {
+        Image(systemName: dryRun ? "theatermasks.fill" : "bolt.shield.fill")
+            .frame(width: 26)
+            .foregroundStyle(dryRun ? Color.secondary : Color.red)
+    }
+
+    private var textos: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(dryRun ? L10n.t("Modo ensaio", "Rehearsal mode")
+                        : L10n.t("ARMADA — desliga o aparelho de verdade", "ARMED — really shuts the device down"))
+                .font(.system(.body, design: .rounded))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(armAllowed
+                 ? L10n.t("Trava aberta (UDR7_ARM_ALLOWED=1). Feche-a no arquivo do serviço depois de armar.",
+                          "Lock open (UDR7_ARM_ALLOWED=1). Close it in the service file after arming.")
+                 : L10n.t("Trava fechada: para armar, UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie.",
+                          "Lock closed: to arm, set UDR7_ARM_ALLOWED=1 in the service file and restart."))
+                .font(.caption)
+                .foregroundStyle(armAllowed ? Color.orange : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var botao: some View {
+        if dryRun {
+            Button(role: .destructive) { onTurnOffRehearsal() } label: {
+                Text(L10n.t("Desligar modo ensaio…", "Turn rehearsal off…"))
+                    .fixedSize()
+                    .foregroundStyle(armAllowed && enabled ? Color.red : Color.secondary)
+                    .frame(minHeight: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .disabled(!armAllowed || !enabled)
+        } else {
+            Button(L10n.t("Ligar modo ensaio", "Turn rehearsal on")) { onTurnOnRehearsal() }
+                .buttonStyle(.glass)
         }
     }
 }

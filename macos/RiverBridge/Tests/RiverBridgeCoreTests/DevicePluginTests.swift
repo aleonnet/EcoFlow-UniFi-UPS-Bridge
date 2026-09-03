@@ -6,6 +6,9 @@ import Foundation
 import Testing
 @testable import RiverBridgeCore
 
+// `nomesDoTipoSSH` (os dois idiomas do nome do tipo) está declarado em DeviceInstanceTests.swift.
+
+
 private func decode(_ json: String) throws -> HealthChain {
     try JSONCoding.decoder().decode(HealthChain.self, from: Data(json.utf8))
 }
@@ -70,7 +73,7 @@ private func decode(_ json: String) throws -> HealthChain {
 @Test func resolveWithoutHealthUsesDefaults() {
     let names = DeviceNames.resolve(devices: [], health: nil)
     #expect(names.name(forDevice: "udr7", type: .udr7) == "UDR7")
-    #expect(names.name(forDevice: "sshhost_x", type: .sshHost) == "Servidor SSH")
+    #expect(nomesDoTipoSSH.contains(names.name(forDevice: "sshhost_x", type: .sshHost)))
 }
 
 @Test func parseSeamsReadsRepeatedPairs() {

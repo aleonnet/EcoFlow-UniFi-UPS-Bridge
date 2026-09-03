@@ -55,6 +55,16 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        // A largura da JANELA-MÃE vem de um GeometryReader, que mede o espaço
+        // OFERECIDO. Medir na própria rolagem mentia: a 414 pt ela media 563,5,
+        // empurrada por linhas largas desenhadas com a largura inicial, e a folha
+        // "cabia" em 523 e vazava da janela (medido em 2026-09-03).
+        GeometryReader { geo in
+            conteudo.onChange(of: geo.size, initial: true) { hostSize = geo.size }
+        }
+    }
+
+    private var conteudo: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
                 // HIG: steppers are for SMALL ranges; for a large range with a
@@ -158,12 +168,12 @@ struct SettingsView: View {
 
                 SettingsRows.group(L10n.t("River", "River")) {
                     SettingsRows.textRow("barcode", L10n.t("Número de série esperado (upsc device.serial)", "Expected serial (upsc device.serial)"),
-                                         $expectedSerial, placeholder: "R3P…", estreito: hostSize.width < 560)
+                                         $expectedSerial, placeholder: "R3P…", estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
                     SettingsRows.divider
                     SettingsRows.sliderRow("battery.0percent", L10n.t("Corte físico da saída", "Physical output cutoff"),
                                            value: $cutoff, range: 0...48, unit: "%",
                                            zeroLabel: L10n.t("não configurado", "not set"), accent: accent,
-                                           estreito: hostSize.width < 560)
+                                           estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
                     if riverChanged {
                         HStack {
                             Text(L10n.t("Vale para todos os dispositivos protegidos.", "Applies to every protected device."))
@@ -228,14 +238,15 @@ struct SettingsView: View {
             .padding(.top, 6)
         }
         .task {
+            // "novo…" não depende de rede: aplica antes das chamadas ao serviço
+            // (medido em 2026-09-03: a primeira chamada pode levar segundos e a
+            // captura fotografava a tela sem a folha). Os ids esperam a lista.
+            applySeamSheet()
             await loadCurrent()
             await store.refreshDevices()
             applySeamSheet()
         }
         .onChange(of: store.devices) { applySeamSheet() }
-        // A largura da JANELA-MÃE, medida aqui: a folha é NSWindow própria, então
-        // medir dentro dela seria circular. Molde: DashboardWindow.
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { hostSize = $0 }
         .sheet(item: $openSheet) { item in
             if let type = item.type, let ui = DevicePluginUIRegistry.plugin(typeID: type.id) {
                 ui.settingsSheet(mode: item, store: store, hostSize: hostSize, onBack: nil) { _ in openSheet = nil }

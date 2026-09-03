@@ -38,13 +38,14 @@
 #
 # Seams de teste (gate.sh, documentados de propósito): RUB_PREFIX,
 # RUB_LAUNCHD_DIR, RUB_LAUNCHD_DOMAIN (system | gui/<uid>: o gate prova o ciclo
-# real do launchd no domínio do usuário, sem root), RUB_SERVICE_USER,
+# real do launchd no domínio do usuário, sem root), RUB_LAUNCHD_LABEL (rótulo
+# próprio do gate, para não consultar o serviço real da máquina), RUB_SERVICE_USER,
 # RUB_PYTHON, RUB_STATE_DIR, RUB_LOG_FILE, RUB_SKIP_HEALTH=1 (pula a prova
 # "serviço na porta"; só com stubs) e stubs de brew/launchctl no PATH.
 # Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.3.2"
+VERSAO="0.3.3"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
@@ -52,7 +53,7 @@ DOMINIO="${RUB_LAUNCHD_DOMAIN:-system}"
 SERVICE_USER="${RUB_SERVICE_USER:-${SUDO_USER:-$(id -un)}}"
 USER_HOME="$(eval echo "~$SERVICE_USER")"
 MANIFESTO="$PREFIX/manifest.tsv"
-LABEL_BRIDGE="com.river.unifi-bridge"
+LABEL_BRIDGE="${RUB_LAUNCHD_LABEL:-com.river.unifi-bridge}"   # seam: o gate não pode colidir com o serviço real desta máquina
 ALVO_LAUNCHD="$DOMINIO/$LABEL_BRIDGE"
 LOG_AGENTE="${RUB_LOG_FILE:-$USER_HOME/Library/Logs/river-unifi-bridge.log}"
 STATE_DIR="${RUB_STATE_DIR:-$USER_HOME/Library/Application Support/river-unifi-bridge}"

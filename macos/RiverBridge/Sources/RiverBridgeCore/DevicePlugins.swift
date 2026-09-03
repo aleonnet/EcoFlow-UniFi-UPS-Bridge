@@ -215,7 +215,12 @@ public enum ProtectionSave {
 public struct DeviceTypeDescriptor: Identifiable, Equatable, Sendable {
     public let id: String
     public let symbol: String
-    public let defaultName: String
+    /// The suggested name for a new instance, in the app's language ("SSH
+    /// server" in English, "Servidor SSH" in Portuguese — the owner saw the
+    /// Portuguese one on an English screen, 2026-09-03). UDR7 is the same in both.
+    public let defaultNamePT: String
+    public let defaultNameEN: String
+    public var defaultName: String { L10n.t(defaultNamePT, defaultNameEN) }
     public let labelPT: String
     public let labelEN: String
     public let blurbPT: String
@@ -225,11 +230,12 @@ public struct DeviceTypeDescriptor: Identifiable, Equatable, Sendable {
     public let fieldKeys: [String]
     public let events: [DeviceEventKind]
 
-    public init(id: String, symbol: String, defaultName: String, labelPT: String, labelEN: String,
+    public init(id: String, symbol: String, defaultNamePT: String, defaultNameEN: String, labelPT: String, labelEN: String,
                 blurbPT: String, blurbEN: String, fieldKeys: [String], events: [DeviceEventKind]) {
         self.id = id
         self.symbol = symbol
-        self.defaultName = defaultName
+        self.defaultNamePT = defaultNamePT
+        self.defaultNameEN = defaultNameEN
         self.labelPT = labelPT
         self.labelEN = labelEN
         self.blurbPT = blurbPT
@@ -260,7 +266,7 @@ extension DeviceTypeDescriptor {
     public static let udr7 = DeviceTypeDescriptor(
         id: "udr7_ssh",
         symbol: "shield.lefthalf.filled",
-        defaultName: "UDR7",
+        defaultNamePT: "UDR7", defaultNameEN: "UDR7",
         labelPT: "Console UniFi (UDR7)", labelEN: "UniFi console (UDR7)",
         blurbPT: "Desliga o console pela chave SSH antes de a bateria acabar.",
         blurbEN: "Shuts the console down over SSH before the battery runs out.",
@@ -271,7 +277,7 @@ extension DeviceTypeDescriptor {
     public static let sshHost = DeviceTypeDescriptor(
         id: "ssh_host",
         symbol: "desktopcomputer",
-        defaultName: "Servidor SSH",
+        defaultNamePT: "Servidor SSH", defaultNameEN: "SSH server",
         labelPT: "Computador ou servidor via SSH", labelEN: "Computer or server over SSH",
         blurbPT: "Roda um comando de desligamento por SSH em qualquer máquina.",
         blurbEN: "Runs a shutdown command over SSH on any machine.",
@@ -322,8 +328,17 @@ public enum DeviceSheetMetrics {
     public static let minHeight: CGFloat = 380
     public static let maxWidth: CGFloat = 600
     public static let maxHeight: CGFloat = 640
-    /// Below this width, label and field stack (same cut as the filter bar).
-    public static let narrowBelow: CGFloat = 420
+    /// Below this CONTAINER width (the sheet as actually drawn, or the settings
+    /// pane), label and control stack. The sheet MEASURES its own width and
+    /// compares it with this number; the arithmetic in `size(host:)` is only the
+    /// first guess. The number is set by CAPTURE, not by adding up text widths
+    /// (2026-09-03, Portuguese): at 420 (the old cut) the side-by-side key row
+    /// wrapped "Chave privada (caminho absoluto)" in two lines; at a 465-pt sheet
+    /// drawn wide the group headers were clipped; at a 560-pt sheet every
+    /// side-by-side row of both device sheets — key path, "Comando de
+    /// desligamento" with its caption and the monospaced command popup — fits on
+    /// one line, and at 600 as well.
+    public static let narrowBelow: CGFloat = 560
     public static let margin: CGFloat = 40
 
     public static func size(host: CGSize) -> CGSize {

@@ -329,6 +329,10 @@ else
     erro "S9d dry-run: rc=$RC9D — cauda:"; tail -3 /tmp/gate_inst_9d.log
 fi
 
+# Espera até 10 s por um ouvinte TCP na porta (o python de mentira e o daemon
+# manual partem a frio; com a máquina carregada, 1 s não bastava — 2026-09-03).
+esperar_ouvinte() { local i; for i in $(seq 1 10); do [ -n "$(/usr/sbin/lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1)" ] && return 0; sleep 1; done; return 1; }
+
 # S9e — programa ALHEIO na porta da API: a guarda recusa (3) ANTES de qualquer
 # mutação, com a frase humana nomeando o programa (sem PID) e o PID no registro
 # `#`. O código instalado (marcado) fica intacto. Porta livre 35997 no
@@ -336,7 +340,7 @@ fi
 sed -i '' 's/^UI_API_PORT=.*/UI_API_PORT=35997/' "$INST/prefix/etc/bridge.env"
 python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35997)); s.listen(1); time.sleep(90)' &
 OUVINTE_PID=$!
-sleep 1
+esperar_ouvinte 35997 || erro "S9e o ouvinte de mentira não abriu a porta 35997 em 10 s"
 echo "# marca S9e" >> "$MARCA"
 env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e.log 2>&1
 RC9E=$?
@@ -403,7 +407,7 @@ kill "$MANUAL_PID" 2>/dev/null; wait "$MANUAL_PID" 2>/dev/null
 # (3) programa alheio
 launchctl bootout "$G9_ALVO" 2>/dev/null || true; sleep 1
 python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35998)); s.listen(1); time.sleep(90)' &
-ALHEIO_PID=$!; sleep 1
+ALHEIO_PID=$!; esperar_ouvinte 35998 || erro "S9g.3 o ouvinte de mentira não abriu a porta 35998 em 10 s"
 env $G9_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9g3.log 2>&1; RC9G3=$?
 kill "$ALHEIO_PID" 2>/dev/null; wait "$ALHEIO_PID" 2>/dev/null
 if [ "$RC9G3" = "3" ] && grep -q "^✖ a porta 35998 já está em uso por outro programa" /tmp/gate_inst_9g3.log && ! launchctl print "$G9_ALVO" >/dev/null 2>&1; then
@@ -417,17 +421,28 @@ launchctl bootout "$G9_ALVO" 2>/dev/null || true
 # prefixo + --env do prefixo, prefixo LONGO como o do gate) → o dry-run diz que
 # está tudo no lugar, não "cópia antiga … seria encerrada" (revisão fria B-1:
 # o corte de 160 colunas no comando escondia o "--env" e o ramo nunca casava).
+sleep 2   # o job da S9g.3 acabou de sair; a porta pode levar um instante para ficar livre
 ( cd "$G9" && env RUB_STATE_DIR="$G9/state" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual2.log" 2>&1 ) &
 MANUAL2_PID=$!
-for i in $(seq 1 15); do [ -n "$(g9_ouvinte)" ] && break; sleep 1; done
-env PATH="$G9/bin:/usr/bin:/bin:/usr/sbin:/sbin" RUB_BREW="$G9/bin/brew" RUB_PREFIX="$G9/prefix" RUB_LAUNCHD_DIR="$G9/ld" RUB_SERVICE_USER="$(id -un)" RUB_STATE_DIR="$G9/state" RUB_LOG_FILE="$G9/daemon.log" \
-  "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_9j.log 2>&1; RC9J=$?
-kill "$MANUAL2_PID" 2>/dev/null; wait "$MANUAL2_PID" 2>/dev/null
-if [ "$RC9J" = "0" ] && grep -q "é o serviço instalado" /tmp/gate_inst_9j.log && ! grep -q "cópia antiga" /tmp/gate_inst_9j.log && ! grep -q "em uso por outro programa" /tmp/gate_inst_9j.log; then
-    ok "S9j dry-run sem sudo com o serviço instalado na porta (prefixo longo) → reconhecido, sem acusar cópia nem programa alheio"
+# A cena só faz sentido COM o daemon manual na porta: se ele não abrir em 30 s,
+# a cena falha dizendo isso (no gate completo ele parte a frio; 15 s não bastaram
+# em 2026-09-03 e a cena seguia sem ouvinte, escondendo o que devia provar).
+for i in $(seq 1 30); do [ -n "$(g9_ouvinte)" ] && break; sleep 1; done
+if [ -z "$(g9_ouvinte)" ]; then
+    erro "S9j o daemon manual não abriu a porta 35998 em 30 s — cauda do registro dele:"; tail -3 "$G9/manual2.log" 2>/dev/null
 else
-    erro "S9j dry-run com o serviço instalado na porta: rc=$RC9J — cauda:"; tail -4 /tmp/gate_inst_9j.log
+    # RUB_LAUNCHD_LABEL próprio: no domínio system sem sudo, `launchctl print` de
+    # um rótulo INEXISTENTE é o caso "não consultável"; com o rótulo real a cena
+    # consultava o serviço de verdade deste Mac (que hoje responde com PID).
+    env PATH="$G9/bin:/usr/bin:/bin:/usr/sbin:/sbin" RUB_BREW="$G9/bin/brew" RUB_PREFIX="$G9/prefix" RUB_LAUNCHD_DIR="$G9/ld" RUB_LAUNCHD_LABEL="com.river.unifi-bridge.gate" RUB_SERVICE_USER="$(id -un)" RUB_STATE_DIR="$G9/state" RUB_LOG_FILE="$G9/daemon.log" \
+      "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_9j.log 2>&1; RC9J=$?
+    if [ "$RC9J" = "0" ] && grep -q "é o serviço instalado" /tmp/gate_inst_9j.log && ! grep -q "cópia antiga" /tmp/gate_inst_9j.log && ! grep -q "em uso por outro programa" /tmp/gate_inst_9j.log; then
+        ok "S9j dry-run sem sudo com o serviço instalado na porta (prefixo longo) → reconhecido, sem acusar cópia nem programa alheio"
+    else
+        erro "S9j dry-run com o serviço instalado na porta: rc=$RC9J — cauda:"; tail -4 /tmp/gate_inst_9j.log
+    fi
 fi
+kill "$MANUAL2_PID" 2>/dev/null; wait "$MANUAL2_PID" 2>/dev/null
 
 # S9h — o ONE-LINER inteiro, com launchd real (gui) e a verificação REAL, nos
 # três desfechos: (1) instala → "serviço v… no ar" e rc 0; (2) reexecução → 100
@@ -442,7 +457,7 @@ env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --n
 env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r2.log" 2>&1; RH2=$?
 launchctl bootout "$G9_ALVO" 2>/dev/null || true; sleep 1
 python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",35994)); s.listen(1); time.sleep(90)' &
-H9_ALHEIO=$!; sleep 1
+H9_ALHEIO=$!; esperar_ouvinte 35994 || erro "S9h o ouvinte de mentira não abriu a porta 35994 em 10 s"
 env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r3.log" 2>&1; RH3=$?
 kill "$H9_ALHEIO" 2>/dev/null; wait "$H9_ALHEIO" 2>/dev/null
 launchctl bootout "$G9_ALVO" 2>/dev/null || true
