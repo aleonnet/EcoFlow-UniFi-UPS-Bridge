@@ -1,0 +1,70 @@
+{
+  "devices": [
+    {
+      "id": "udr7",
+      "type": "udr7_ssh",
+      "name": "UDR7",
+      "enabled": true,
+      "dry_run": true,
+      "fields": {
+        "ssh_host": "192.0.2.1",
+        "ssh_port": 22,
+        "ssh_user": "root",
+        "ssh_key": "",
+        "shutdown_percent": 20,
+        "discharge_seconds_per_pct": 0,
+        "runtime_minutes": 0,
+        "min_outage_seconds": 0,
+        "confirm_seconds": 6,
+        "retry_max": 3,
+        "wol_mac": ""
+      },
+      "created_at": "2026-09-03T00:00:00-0300",
+      "updated_at": "2026-09-03T00:00:00-0300"
+    },
+    {
+      "id": "sshhost_3fa9c1d2",
+      "type": "ssh_host",
+      "name": "NAS da sala",
+      "enabled": false,
+      "dry_run": true,
+      "fields": {
+        "ssh_host": "192.0.2.5",
+        "ssh_port": 22,
+        "ssh_user": "admin",
+        "ssh_key": "/Users/x/.ssh/river-bridge-sshhost_3fa9c1d2",
+        "shutdown_percent": 25,
+        "discharge_seconds_per_pct": 0,
+        "runtime_minutes": 0,
+        "min_outage_seconds": 0,
+        "confirm_seconds": 6,
+        "retry_max": 3,
+        "shutdown_command": "sudo -n shutdown -h now"
+      },
+      "created_at": "2026-09-03T00:00:00-0300",
+      "updated_at": "2026-09-03T00:00:00-0300"
+    },
+    {
+      "id": "sshhost_7b2e4d10",
+      "type": "ssh_host",
+      "name": "Servidor",
+      "enabled": true,
+      "dry_run": true,
+      "fields": {
+        "ssh_host": "192.0.2.6",
+        "ssh_port": 2222,
+        "ssh_user": "ops",
+        "ssh_key": "/Users/x/.ssh/river-bridge-sshhost_7b2e4d10",
+        "shutdown_percent": 30,
+        "discharge_seconds_per_pct": 0,
+        "runtime_minutes": 0,
+        "min_outage_seconds": 0,
+        "confirm_seconds": 6,
+        "retry_max": 3,
+        "shutdown_command": "systemctl poweroff"
+      },
+      "created_at": "2026-09-03T00:00:00-0300",
+      "updated_at": "2026-09-03T00:00:00-0300"
+    }
+  ]
+}

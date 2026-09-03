@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 
 from aiohttp import web
@@ -27,11 +28,14 @@ from .config import (
     config_field_names,
     validate_update,
 )
+from .devices import DeviceInstance, DevicesError, new_id, now_iso, validate_fields
 from .envfile import update_env_file
 from .history import METRICS, HistoryStore
 from .localtoken import get_or_create_token
-from .plugins import plugin_statuses, type_catalog
-from .protect import _emit
+from .plugins import TYPES, PluginSet, plugin_statuses, type_catalog
+from .plugins.base import FieldSpec
+from .plugins.udr7_ssh import LEGACY_ATTR_TO_KEY, LEGACY_FIELD_TO_KEY, NAME_FIELD
+from .protect import _emit, log_json
 from .state import SharedState
 
 # Fence: the API is loopback-only by design (§7A.3). Tests + gate mutation
@@ -39,6 +43,11 @@ from .state import SharedState
 BIND_HOST = "127.0.0.1"
 
 RESTART_EXIT_DELAY_SECONDS = 0.5
+
+# Os dois booleanos do predicado de armamento de uma instância, validados com a
+# mesma régua dos campos (1/0, true/false); `enabled` nasce falso, `dry_run` nasce ligado.
+_BOOL_ENABLED = FieldSpec("enabled", "bool", False)
+_BOOL_DRY_RUN = FieldSpec("dry_run", "bool", True)
 
 
 def ensure_loopback(host: str) -> None:
@@ -110,9 +119,9 @@ class ApiServer:
         self.history = history
         self.env_path = env_path
         self.restart_cb = restart_cb
-        # Um PluginSet (produção) ou uma lista (fixtures): os dois iteram; uma
-        # fixture sem plugins itera vazio em vez de precisar de guardas `is None`.
-        self.plugins = plugins if plugins is not None else []
+        # Sempre um PluginSet: é o que POST/DELETE mutam. Uma lista (fixtures) é
+        # embrulhada; uma fixture sem plugins itera vazio, sem guardas `is None`.
+        self.plugins = plugins if isinstance(plugins, PluginSet) else PluginSet(plugins or [])
         # A loja de instâncias (devices.json) e o diretório de estado: None nas
         # fixtures que não os exercitam — o espelho legado então não grava a loja.
         self.store = store
@@ -145,6 +154,11 @@ class ApiServer:
         app.router.add_post("/v1/service/restart", self._h_restart)
         app.router.add_get("/v1/version", self._h_version)
         app.router.add_get("/v1/device-types", self._h_device_types)
+        app.router.add_get("/v1/devices", self._h_devices_list)
+        app.router.add_post("/v1/devices", self._h_devices_post)
+        app.router.add_get("/v1/devices/{id}", self._h_devices_get)
+        app.router.add_put("/v1/devices/{id}", self._h_devices_put)
+        app.router.add_delete("/v1/devices/{id}", self._h_devices_delete)
         return app
 
     # -- handlers ----------------------------------------------------------
@@ -308,6 +322,166 @@ class ApiServer:
         """O catálogo de TIPOS de dispositivo: o app confere os campos por tipo
         contra a sua metade de tela (escrita à mão), nunca gera formulário daqui."""
         return web.json_response({"types": type_catalog()})
+
+    # -- instâncias de dispositivos protegidos (2026-09-03) --------------------
+    #
+    # Ordem de toda escrita, e ela é a cerca: validar → autorizar → gravar a loja
+    # → aplicar no plugin → espelhar no .env (só a instância `udr7`) → health.
+    # Uma recusa não deixa rastro em devices.json nem no .env.
+
+    @staticmethod
+    def _device_json(plugin) -> dict:
+        st = plugin.status()
+        return {**plugin.instance.to_json(), "armed": plugin.armed, "state": st["state"]}
+
+    def _instances(self) -> list[DeviceInstance]:
+        return [p.instance for p in self.plugins if hasattr(p, "instance")]
+
+    @staticmethod
+    def _refuse(status: int, motivo: str, mensagem: str) -> web.Response:
+        return web.json_response({"erro": mensagem, "motivo": motivo}, status=status)
+
+    def _mirror_udr7_to_env(self, instance: DeviceInstance, patch: dict) -> None:
+        """A instância migrada continua espelhada no .env do Mac mini (D2)."""
+        env_changes: dict[str, str] = {}
+        for attr, key in LEGACY_ATTR_TO_KEY.items():
+            if attr in patch:
+                value = getattr(instance, attr)
+                env_changes[key] = ("1" if value else "0") if isinstance(value, bool) else str(value)
+                setattr(self.cfg, key.lower(), value)
+        for field_name, value in (patch.get("fields") or {}).items():
+            key = LEGACY_FIELD_TO_KEY.get(field_name)
+            if key is not None:
+                env_changes[key] = str(value)
+                setattr(self.cfg, key.lower(), value)
+        if env_changes:
+            update_env_file(self.env_path, env_changes)
+
+    async def _h_devices_list(self, _req: web.Request) -> web.Response:
+        return web.json_response({"devices": [self._device_json(p) for p in self.plugins
+                                              if hasattr(p, "instance")]})
+
+    async def _h_devices_get(self, request: web.Request) -> web.Response:
+        plugin = self.plugins.get(request.match_info["id"])
+        if plugin is None or not hasattr(plugin, "instance"):
+            return self._refuse(404, "dispositivo_ausente", "não existe dispositivo com esse id")
+        return web.json_response({"device": self._device_json(plugin)})
+
+    async def _h_devices_post(self, request: web.Request) -> web.Response:
+        if self.store is None or self.state_dir is None:
+            return self._refuse(501, "sem_loja", "este serviço não gerencia dispositivos")
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return web.json_response({"erro": "corpo não é JSON"}, status=400)
+        if not isinstance(body, dict):
+            return web.json_response({"erro": "esperado objeto {type, name, fields}"}, status=400)
+        cls = TYPES.get(str(body.get("type", "")))
+        if cls is None:
+            return self._refuse(400, "tipo_desconhecido", "o serviço instalado não conhece este tipo de dispositivo")
+        try:
+            name = validate_fields((NAME_FIELD,), {"name": body.get("name", "")})["name"]
+            enabled = validate_fields((_BOOL_ENABLED,), {"enabled": body.get("enabled", False)})["enabled"]
+            dry_run = validate_fields((_BOOL_DRY_RUN,), {"dry_run": body.get("dry_run", True)})["dry_run"]
+            fields = validate_fields(cls.fields, body.get("fields") or {})
+        except DevicesError as exc:
+            return self._refuse(400, "validacao", str(exc))
+        # Armar é ato separado, pelo PUT, com trava + fonte real + confirmação.
+        if enabled and not dry_run:
+            return self._refuse(400, "armar_no_post", "um dispositivo nasce em ensaio; armar é pelo PUT")
+        instances = self._instances()
+        if self.store.name_taken(instances, name):
+            return self._refuse(409, "nome_duplicado", "já existe um dispositivo com este nome")
+        instance = DeviceInstance(
+            id=new_id(cls.type_id.replace("_", "")), type=cls.type_id, name=name,
+            enabled=enabled, dry_run=dry_run, fields=fields,
+            created_at=now_iso(), updated_at=now_iso(),
+        )
+        try:
+            plugin = cls.build(instance, self.cfg, self.state_dir)
+            self.store.save(instances + [instance])
+        except DevicesError as exc:
+            return self._refuse(400, "validacao", str(exc))
+        self.plugins.add(plugin)
+        self.state.set_plugins(plugin_statuses(self.plugins))
+        return web.json_response({"device": self._device_json(plugin)}, status=201)
+
+    async def _h_devices_put(self, request: web.Request) -> web.Response:
+        plugin = self.plugins.get(request.match_info["id"])
+        if plugin is None or not hasattr(plugin, "instance"):
+            return self._refuse(404, "dispositivo_ausente", "não existe dispositivo com esse id")
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return web.json_response({"erro": "corpo não é JSON"}, status=400)
+        if not isinstance(body, dict) or not body:
+            return web.json_response({"erro": "esperado objeto {name?, enabled?, dry_run?, fields?}"}, status=400)
+        if "type" in body or "id" in body:
+            return self._refuse(400, "validacao", "type e id são imutáveis")
+        unknown = sorted(set(body) - {"name", "enabled", "dry_run", "fields"})
+        if unknown:
+            return self._refuse(400, "validacao", f"campo desconhecido: {unknown[0]}")
+        cls = TYPES[plugin.instance.type]
+        patch: dict = {}
+        try:
+            if "name" in body:
+                patch["name"] = validate_fields((NAME_FIELD,), {"name": body["name"]})["name"]
+            if "enabled" in body:
+                patch["enabled"] = validate_fields((_BOOL_ENABLED,), {"enabled": body["enabled"]})["enabled"]
+            if "dry_run" in body:
+                patch["dry_run"] = validate_fields((_BOOL_DRY_RUN,), {"dry_run": body["dry_run"]})["dry_run"]
+            if "fields" in body:
+                patch["fields"] = validate_fields(cls.fields, body["fields"] or {}, partial=True)
+        except DevicesError as exc:
+            return self._refuse(400, "validacao", str(exc))
+        instances = self._instances()
+        if "name" in patch and self.store is not None \
+                and self.store.name_taken(instances, patch["name"], except_id=plugin.id):
+            return self._refuse(409, "nome_duplicado", "já existe um dispositivo com este nome")
+        _version, snapshot, comm_ok, _err = self.state.get()
+        refusal = plugin.authorize_update(patch, snapshot, comm_ok)
+        if refusal is not None:
+            return self._refuse(*refusal)
+        old = plugin.instance
+        new = DeviceInstance(
+            id=old.id, type=old.type,
+            name=patch.get("name", old.name),
+            enabled=patch.get("enabled", old.enabled), dry_run=patch.get("dry_run", old.dry_run),
+            fields={**old.fields, **patch.get("fields", {})},
+            created_at=old.created_at, updated_at=now_iso(),
+        )
+        if self.store is not None:
+            try:
+                self.store.save([new if i.id == old.id else i for i in instances])
+            except DevicesError as exc:
+                return self._refuse(400, "validacao", str(exc))
+        _emit(plugin.apply_patch(new), self.state, self.history)
+        if plugin.id == "udr7":
+            self._mirror_udr7_to_env(new, patch)
+        self.state.set_plugins(plugin_statuses(self.plugins))
+        return web.json_response({"device": self._device_json(plugin)})
+
+    async def _h_devices_delete(self, request: web.Request) -> web.Response:
+        plugin = self.plugins.get(request.match_info["id"])
+        if plugin is None or not hasattr(plugin, "instance"):
+            return self._refuse(404, "dispositivo_ausente", "não existe dispositivo com esse id")
+        if plugin.armed:  # DELETE nunca remove um dispositivo armado
+            return self._refuse(409, "armado", (
+                f"{plugin.instance.name} está armado — desligue a proteção (ligar modo ensaio) antes de remover"))
+        if self.store is not None:
+            self.store.save([i for i in self._instances() if i.id != plugin.id])
+        self.plugins.remove(plugin.id)
+        if self.state_dir is not None:
+            for suffix in ("_armed.json", "_runtime.json"):
+                try:
+                    os.unlink(os.path.join(self.state_dir, f"{plugin.id}{suffix}"))
+                except OSError:
+                    pass
+            if os.path.exists(os.path.join(self.state_dir, f"{plugin.id}_known_hosts")):
+                log_json("WARN", "known_hosts_kept", device=plugin.id,
+                         reason="semeado à mão pelo dono; remoção é decisão dele")
+        self.state.set_plugins(plugin_statuses(self.plugins))
+        return web.Response(status=204)
 
     # -- lifecycle ---------------------------------------------------------
 

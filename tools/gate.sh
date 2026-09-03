@@ -184,6 +184,15 @@ cena_mutacao S4t src/river_unifi_bridge/devices.py \
 cena_mutacao S4r src/river_unifi_bridge/plugins/ssh_host.py \
     'if value not in SHUTDOWN_COMMANDS:' 'if False:' \
     tests/unit/test_plugin_contract.py::test_ssh_host_rejects_command_outside_allowlist
+# S4q — DELETE de instância armada aceito: a proteção sumiria com um clique, sem os
+# passos do dono, e o armed.json ficaria órfão.
+cena_mutacao S4q src/river_unifi_bridge/api.py \
+    'if plugin.armed:  # DELETE nunca remove um dispositivo armado' 'if False:  # DELETE nunca remove um dispositivo armado' \
+    tests/unit/test_api.py::test_devices_delete_refused_while_armed
+# S4v — POST criando já armado: armar é só pelo PUT (trava + fonte real + confirmação).
+cena_mutacao S4v src/river_unifi_bridge/api.py \
+    'if enabled and not dry_run:' 'if False:' \
+    tests/unit/test_api.py::test_devices_post_cannot_create_armed
 # S4u — a loja (e o armed.json) gravados com permissão aberta: _read_private_json
 # recusaria o próprio arquivo, e qualquer usuário local leria os pinos.
 cena_mutacao S4u src/river_unifi_bridge/protect.py 'os.chmod(tmp, 0o600)' 'os.chmod(tmp, 0o644)' \

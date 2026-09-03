@@ -196,6 +196,7 @@ async def test_events_delete_requires_to_and_removes_range(client, server):
 
 # --- Fase 3'-EXP: arming rules of PUT /v1/config (§7A.5) ------------------------------
 import json as _json
+import re as _re
 import os as _os
 
 from river_unifi_bridge.protect import (
@@ -552,3 +553,180 @@ async def test_device_types_endpoint_matches_the_catalog(client):
     assert resp.status == 200
     assert (await resp.json()) == {"types": type_catalog()}
     assert (await client.get("/v1/device-types")).status == 401
+
+
+# --- instâncias de dispositivos: /v1/devices (2026-09-03) ------------------------------
+HOST = {"type": "ssh_host", "name": "NAS da sala",
+        "fields": {"ssh_host": "192.0.2.5", "ssh_user": "admin", "ssh_key": "/tmp/k",
+                   "shutdown_percent": 25, "shutdown_command": "sudo -n shutdown -h now"}}
+
+
+async def _post(c, body):
+    resp = await c.post("/v1/devices", json=body, headers=c.auth)
+    return resp.status, (await resp.json())
+
+
+async def _put_dev(c, dev_id, body):
+    resp = await c.put(f"/v1/devices/{dev_id}", json=body, headers=c.auth)
+    return resp.status, (await resp.json())
+
+
+async def test_devices_list_get_and_post_create_ssh_host(unlocked):
+    srv, c = unlocked
+    body = await (await c.get("/v1/devices", headers=c.auth)).json()
+    assert [d["id"] for d in body["devices"]] == ["udr7"]
+    assert body["devices"][0]["type"] == "udr7_ssh" and body["devices"][0]["armed"] is False
+    status, body = await _post(c, HOST)
+    assert status == 201, body
+    dev = body["device"]
+    assert dev["type"] == "ssh_host" and dev["name"] == "NAS da sala"
+    assert _re.fullmatch(r"sshhost_[0-9a-f]{8}", dev["id"])
+    assert dev["enabled"] is False and dev["dry_run"] is True and dev["armed"] is False
+    assert dev["fields"]["ssh_port"] == 22 and dev["fields"]["shutdown_command"] == "sudo -n shutdown -h now"
+    assert dev["state"] == "desabilitado"
+    # persistiu na loja, entrou no health e no GET por id
+    assert [i.id for i in srv.store.load()] == ["udr7", dev["id"]]
+    health = await (await c.get("/v1/health", headers=c.auth)).json()
+    assert [p["id"] for p in health["plugins"]] == ["udr7", dev["id"]]
+    assert health["plugins"][1]["type"] == "ssh_host" and health["udr7"] == health["plugins"][0]["state"]
+    resp = await c.get(f"/v1/devices/{dev['id']}", headers=c.auth)
+    assert resp.status == 200 and (await resp.json())["device"]["id"] == dev["id"]
+    assert (await c.get("/v1/devices/nao_existe", headers=c.auth)).status == 404
+
+
+async def test_devices_post_refusals(unlocked):
+    srv, c = unlocked
+    antes = srv.store.load()
+    assert (await _post(c, {**HOST, "type": "torradeira"}))[0:1] == (400,)
+    status, body = await _post(c, {**HOST, "type": "torradeira"})
+    assert body["motivo"] == "tipo_desconhecido"
+    status, body = await _post(c, {**HOST, "name": ""})
+    assert status == 400 and body["motivo"] == "validacao"
+    status, body = await _post(c, {**HOST, "fields": {**HOST["fields"], "ssh_port": "70000"}})
+    assert status == 400 and "ssh_port" in body["erro"]
+    status, body = await _post(c, {**HOST, "fields": {**HOST["fields"], "shutdown_command": "rm -rf /"}})
+    assert status == 400 and "shutdown_command" in body["erro"]
+    status, body = await _post(c, {**HOST, "name": "udr7"})            # casefold do UDR7
+    assert status == 409 and body["motivo"] == "nome_duplicado"
+    assert [i.id for i in srv.store.load()] == [i.id for i in antes]  # nada gravado
+
+
+async def test_devices_post_cannot_create_armed(unlocked):
+    """Nó da cena S4v: armar é ato separado, pelo PUT."""
+    srv, c = unlocked
+    status, body = await _post(c, {**HOST, "enabled": True, "dry_run": False})
+    assert status == 400 and body["motivo"] == "armar_no_post"
+    assert [i.id for i in srv.store.load()] == ["udr7"]
+
+
+async def test_devices_put_arming_rules_and_frozen_fields(tmp_path, aiohttp_client):
+    import asyncio
+    srv = _prot_server(tmp_path, arm_allowed=False)
+    c = await aiohttp_client(srv.build_app()); c.auth = {"Authorization": f"Bearer {TOKEN}"}
+    srv._loop = asyncio.get_running_loop()
+    dev = (await _post(c, HOST))[1]["device"]
+    # trava fechada → armamento_bloqueado, sem armed.json
+    status, body = await _put_dev(c, dev["id"], {"enabled": True, "dry_run": False})
+    assert status == 409 and body["motivo"] == "armamento_bloqueado"
+    assert not _os.path.exists(str(tmp_path / "state" / f"{dev['id']}_armed.json"))
+    # trava aberta, sem snapshot → sem_snapshot; fonte sintética → fonte_nao_real
+    (tmp_path / "b").mkdir()
+    srv2 = _prot_server(tmp_path / "b", arm_allowed=True)
+    c2 = await aiohttp_client(srv2.build_app()); c2.auth = c.auth
+    srv2._loop = asyncio.get_running_loop()
+    dev2 = (await _post(c2, HOST))[1]["device"]
+    status, body = await _put_dev(c2, dev2["id"], {"enabled": True, "dry_run": False})
+    assert status == 409 and body["motivo"] == "sem_snapshot"
+    srv2.state.update_snapshot(FAKE)
+    status, body = await _put_dev(c2, dev2["id"], {"enabled": True, "dry_run": False})
+    assert status == 409 and body["motivo"] == "fonte_nao_real"
+    # fonte real com o serial esperado do NÚCLEO (D16) → arma; armed.json da instância
+    srv2.state.update_snapshot(REAL)
+    status, body = await _put_dev(c2, dev2["id"], {"enabled": True, "dry_run": False})
+    assert status == 200 and body["device"]["armed"] is True, body
+    armed_path = tmp_path / "b" / "state" / f"{dev2['id']}_armed.json"
+    assert armed_path.exists()
+    pins = _json.loads(armed_path.read_text())["pins"]
+    assert pins["shutdown_command"] == "sudo -n shutdown -h now" and pins["udr7_expected_serial"] == "R3P-1"
+    assert [e["event"] for e in srv2.state.events()][-1] == "SSH_HOST_ARMED"
+    assert srv2.history.query_events(0, 2**33)[0] == {
+        **srv2.history.query_events(0, 2**33)[0], "type": "SSH_HOST_ARMED", "device": dev2["id"]}
+    # armado: campos congelados (409 armado nomeando a instância); nome livre
+    status, body = await _put_dev(c2, dev2["id"], {"fields": {"ssh_port": 2222}})
+    assert status == 409 and body["motivo"] == "armado" and "NAS da sala" in body["erro"]
+    status, body = await _put_dev(c2, dev2["id"], {"name": "NAS do escritório"})
+    assert status == 200 and body["device"]["name"] == "NAS do escritório" and body["device"]["armed"]
+    # o UDR7 (desarmado) continua editável enquanto o host está armado
+    assert (await _put_dev(c2, "udr7", {"fields": {"ssh_port": 2222}}))[0] == 200
+    # desarme puro sempre aceito; apaga o armed.json
+    status, body = await _put_dev(c2, dev2["id"], {"dry_run": True})
+    assert status == 200 and body["device"]["armed"] is False
+    assert not armed_path.exists()
+    assert "SSH_HOST_DISARMED" in [e["event"] for e in srv2.state.events()]
+
+
+async def test_other_armed_instance_does_not_veto_disarm(unlocked):
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    dev = (await _post(c, HOST))[1]["device"]
+    assert (await _put_dev(c, dev["id"], {"enabled": True, "dry_run": False}))[0] == 200
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200        # udr7 arma pela via legada
+    assert (await _put_dev(c, "udr7", {"dry_run": True}))[0] == 200   # desarme do udr7 com o host armado
+    assert (await _put_dev(c, dev["id"], {"enabled": False}))[0] == 200
+
+
+async def test_devices_delete_refused_while_armed(unlocked):
+    """Nó da cena S4q."""
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    dev = (await _post(c, HOST))[1]["device"]
+    assert (await _put_dev(c, dev["id"], {"enabled": True, "dry_run": False}))[0] == 200
+    resp = await c.delete(f"/v1/devices/{dev['id']}", headers=c.auth)
+    assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
+    assert [i.id for i in srv.store.load()] == ["udr7", dev["id"]]
+
+
+async def test_devices_delete_removes_instance_state_and_keeps_known_hosts(unlocked):
+    srv, c = unlocked
+    dev = (await _post(c, HOST))[1]["device"]
+    state = _os.path.dirname(srv.armed_path)
+    for suffix in ("_armed.json", "_runtime.json", "_known_hosts"):
+        open(_os.path.join(state, f"{dev['id']}{suffix}"), "w").close()
+    resp = await c.delete(f"/v1/devices/{dev['id']}", headers=c.auth)
+    assert resp.status == 204
+    assert [i.id for i in srv.store.load()] == ["udr7"]
+    assert not _os.path.exists(_os.path.join(state, f"{dev['id']}_armed.json"))
+    assert not _os.path.exists(_os.path.join(state, f"{dev['id']}_runtime.json"))
+    assert _os.path.exists(_os.path.join(state, f"{dev['id']}_known_hosts"))
+    health = await (await c.get("/v1/health", headers=c.auth)).json()
+    assert [p["id"] for p in health["plugins"]] == ["udr7"]
+    assert (await c.delete("/v1/devices/nao_existe", headers=c.auth)).status == 404
+    # remover o udr7 desarmado é permitido: o alias volta a "desabilitado"
+    assert (await c.delete("/v1/devices/udr7", headers=c.auth)).status == 204
+    health = await (await c.get("/v1/health", headers=c.auth)).json()
+    assert health["udr7"] == "desabilitado" and health["plugins"] == []
+
+
+async def test_devices_put_udr7_mirrors_env_and_cfg(unlocked):
+    srv, c = unlocked
+    status, body = await _put_dev(c, "udr7", {"name": "Console", "fields": {"ssh_port": 2222}})
+    assert status == 200
+    env = open(srv.env, encoding="utf-8").read()
+    assert "UDR7_SSH_PORT=2222" in env and "UDR7_NAME=Console" in env
+    assert srv.cfg.udr7_ssh_port == 2222 and srv.cfg.udr7_name == "Console"
+    assert srv.store.load()[0].fields["ssh_port"] == 2222
+    assert srv.holder.get().udr7_ssh_port == 2222 and srv.policy.status()["name"] == "Console"
+    status, body = await _put_dev(c, "udr7", {"type": "ssh_host"})
+    assert status == 400 and "imutáveis" in body["erro"]
+
+
+async def test_core_river_keys_refresh_every_instance(unlocked):
+    """Aceitação 6c: série esperada e corte são do núcleo e chegam a TODA instância a quente."""
+    srv, c = unlocked
+    dev = (await _post(c, HOST))[1]["device"]
+    assert (await _put(c, {"UDR7_CUTOFF_PERCENT": "12", "UDR7_EXPECTED_SERIAL": "R3P-9"}))[0] == 200
+    for plugin in srv.plugins:
+        assert plugin.status()["cutoff"] == 12
+        assert plugin._holder.get().udr7_expected_serial == "R3P-9"
+    body = await (await c.get(f"/v1/devices/{dev['id']}", headers=c.auth)).json()
+    assert body["device"]["fields"].get("cutoff_percent") is None       # não é campo de instância
