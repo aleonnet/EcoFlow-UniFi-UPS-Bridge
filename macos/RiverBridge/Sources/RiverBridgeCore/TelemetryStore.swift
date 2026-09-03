@@ -25,12 +25,22 @@ public final class TelemetryStore {
     /// Resolved device names. Configuration, not telemetry: it survives the
     /// service going down (the state disappears, the name stays).
     public private(set) var deviceNames: DeviceNames
+    /// The device INSTANCES (`GET /v1/devices`) and the daemon's type catalog
+    /// (2026-09-03). Configuration, like the names: they survive a lost poll.
+    public private(set) var devices: [DeviceInstance] = []
+    public private(set) var deviceTypes: [DeviceTypeInfo] = []
+    public private(set) var deviceSupport: DeviceAPISupport = .unknown
 
     private var task: Task<Void, Never>?
     private var healthTask: Task<Void, Never>?
     private let client: APIClient?
     private let seams: [String: String]
+    /// `--seam-dispositivos <devices.json>` / `--seam-health <health.json>`: a
+    /// screenshot run populates the screens from the SAME fixtures the tests
+    /// decode, without a daemon; `deviceSupport` is then pinned to `.supported`.
+    private let seamedDevices: Bool
     private var environment: [String: String]
+    private var devicesGeneration = 0
     /// Generation counter, NOT single-flight: single-flight would swallow the
     /// refresh right after a PUT, which is the one that matters. An older GET
     /// finishing late never re-displays a stale name.
@@ -46,13 +56,54 @@ public final class TelemetryStore {
         self.client = client
         let seams = DeviceNames.parseSeams(arguments)
         self.seams = seams
-        self.deviceNames = DeviceNames.resolve(health: nil, seams: seams)
         self.environment = environment
+        let seededDevices = Self.seamFixture(DevicesResponse.self, flag: "--seam-dispositivos", in: arguments)?.devices ?? []
+        let seededHealth = Self.seamFixture(HealthChain.self, flag: "--seam-health", in: arguments)
+        self.seamedDevices = !seededDevices.isEmpty || seededHealth != nil
+        self.devices = seededDevices
+        self.health = seededHealth
+        self.deviceSupport = seamedDevices ? .supported : .unknown
+        self.deviceNames = DeviceNames.resolve(devices: seededDevices, health: seededHealth, seams: seams)
+    }
+
+    /// A fixture file named on the command line, decoded at launch. Launch only:
+    /// the value never changes afterwards, and a missing/invalid file is nil.
+    nonisolated static func seamFixture<T: Decodable>(_ type: T.Type, flag: String, in args: [String]) -> T? {
+        guard let path = AppPrefs.seamValue(flag, in: args),
+              let data = FileManager.default.contents(atPath: path) else { return nil }
+        return try? JSONCoding.decoder().decode(T.self, from: data)
+    }
+
+    // MARK: - Devices (2026-09-03)
+
+    /// Reloads the instances and, the first time, the type catalog. Same
+    /// generation guard as the health: the refresh right after a POST/PUT/DELETE
+    /// is the one that matters and must never be swallowed by an older GET.
+    public func refreshDevices() async {
+        guard !seamedDevices else { return }          // a screenshot run stays on its fixture
+        devicesGeneration += 1
+        let mine = devicesGeneration
+        let api = client ?? ApiEndpoint.discover(environment: environment).map { APIClient(endpoint: $0) }
+        guard let api else { return }
+        do {
+            let list = try await api.devices()
+            guard mine == devicesGeneration else { return }
+            devices = list
+            deviceSupport = .supported
+            if deviceTypes.isEmpty, let types = try? await api.deviceTypes() { deviceTypes = types }
+        } catch {
+            guard mine == devicesGeneration else { return }
+            let verdict = DeviceAPISupport.verdict(for: error, version: nil)
+            if case .unsupported = verdict { deviceSupport = verdict }
+            return
+        }
+        deviceNames = DeviceNames.resolve(devices: devices, health: health, seams: seams)
     }
 
     // MARK: - Health
 
     public func refreshHealth() async {
+        guard !seamedDevices else { return }          // a screenshot run stays on its fixture
         healthGeneration += 1
         let mine = healthGeneration
         let api = client ?? ApiEndpoint.discover(environment: environment).map { APIClient(endpoint: $0) }
@@ -63,7 +114,7 @@ public final class TelemetryStore {
         // `if let`: with the service down the state disappears, but the name is
         // configuration and must stay. Without the guard it would snap back to
         // "UDR7" the moment a GET failed.
-        if let chain { deviceNames = DeviceNames.resolve(health: chain, seams: seams) }
+        if let chain { deviceNames = DeviceNames.resolve(devices: devices, health: chain, seams: seams) }
     }
 
     // MARK: - Stream lifecycle
@@ -74,6 +125,7 @@ public final class TelemetryStore {
         // environment would lose the hermeticity that RUB_STATE_DIR gives tests.
         self.environment = environment
         healthTask = Task { [weak self] in
+            await self?.refreshDevices()
             while !Task.isCancelled {
                 await self?.refreshHealth()
                 try? await Task.sleep(for: .seconds(5))

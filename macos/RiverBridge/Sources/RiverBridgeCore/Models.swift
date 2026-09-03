@@ -63,9 +63,12 @@ public struct HealthChain: Codable, Equatable, Sendable {
     public var hasSnapshot: Bool?
 }
 
-/// Detail of the UDR7 protection link. Every field optional: the daemon publishes
-/// null until the first tick, and older daemons publish nothing at all.
-public struct Udr7Detail: Codable, Equatable, Sendable {
+/// Detail of one protected device (the SSH engine's status, any type). Every
+/// field optional: the daemon publishes null until the first tick, and older
+/// daemons publish nothing at all. `Udr7Detail` stays as the historical name.
+public typealias Udr7Detail = DeviceDetail
+
+public struct DeviceDetail: Codable, Equatable, Sendable {
     public var state: String?
     public var dryRun: Bool?
     public var enabled: Bool?
@@ -116,6 +119,9 @@ public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
     public var state: String?
     public var charge: Double?
     public var reason: String?
+    /// The owning device INSTANCE (2026-09-03); nil for bridge events and for
+    /// rows written before the daemon carried it.
+    public var device: String?
 
     public var id: String { ts + event }
 
@@ -203,11 +209,12 @@ public enum JSONCoding {
     }
 }
 
-/// One persisted row from GET /v1/events/log ({ts, type, detail}).
+/// One persisted row from GET /v1/events/log ({ts, type, detail, device}).
 public struct EventLogRow: Codable, Equatable, Sendable, Identifiable {
     public var ts: Int
     public var type: String
     public var detail: String?
+    public var device: String?
 
     public var id: String { "\(ts)-\(type)" }
 
@@ -218,10 +225,89 @@ public struct EventLogRow: Codable, Equatable, Sendable, Identifiable {
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         let iso = formatter.string(from: Date(timeIntervalSince1970: Double(ts)))
-        return BridgeEvent(ts: iso, event: type, state: nil, charge: nil, reason: detail)
+        return BridgeEvent(ts: iso, event: type, state: nil, charge: nil, reason: detail, device: device)
     }
 }
 
 public struct EventsLogResponse: Codable, Sendable {
     public var rows: [EventLogRow]
+}
+
+// MARK: - Instâncias de dispositivos protegidos (2026-09-03)
+
+/// One protected-device INSTANCE as `GET /v1/devices` publishes it. `fields` is
+/// the type's own dictionary (the app knows each type's fields by hand — no
+/// schema→UI); `armed`/`state` come along on every read so the list never
+/// needs a second request.
+public struct DeviceInstance: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var type: String
+    public var name: String
+    public var enabled: Bool?
+    public var dryRun: Bool?
+    public var fields: [String: ConfigValue]
+    public var createdAt: String?
+    public var updatedAt: String?
+    public var armed: Bool?
+    public var state: String?
+
+    public init(id: String, type: String, name: String, enabled: Bool? = nil, dryRun: Bool? = nil,
+                fields: [String: ConfigValue] = [:], createdAt: String? = nil, updatedAt: String? = nil,
+                armed: Bool? = nil, state: String? = nil) {
+        self.id = id
+        self.type = type
+        self.name = name
+        self.enabled = enabled
+        self.dryRun = dryRun
+        self.fields = fields
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.armed = armed
+        self.state = state
+    }
+}
+
+public struct DevicesResponse: Codable, Sendable {
+    public var devices: [DeviceInstance]
+}
+
+public struct DeviceResponse: Codable, Sendable {
+    public var device: DeviceInstance
+}
+
+/// One field of a device TYPE, from `GET /v1/device-types`. Consumed for
+/// defaults and for the contract test (`fieldKeys` == catalog) — never to
+/// generate a form.
+public struct DeviceTypeField: Codable, Equatable, Sendable {
+    public var name: String
+    public var type: String
+    public var defaultValue: ConfigValue?
+    public var required: Bool?
+    public var min: Int?
+    public var max: Int?
+    public var pattern: String?
+    public var enumValues: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case name, type, required, min, max, pattern
+        case defaultValue = "default"
+        case enumValues = "enum"
+    }
+}
+
+public struct DeviceTypeInfo: Codable, Equatable, Sendable, Identifiable {
+    public var id: String
+    public var labelPt: String
+    public var labelEn: String
+    public var defaultName: String
+    public var eventPrefix: String
+    public var fields: [DeviceTypeField]
+
+    public func defaultValue(for field: String) -> ConfigValue? {
+        fields.first { $0.name == field }?.defaultValue
+    }
+}
+
+public struct DeviceTypesResponse: Codable, Sendable {
+    public var types: [DeviceTypeInfo]
 }

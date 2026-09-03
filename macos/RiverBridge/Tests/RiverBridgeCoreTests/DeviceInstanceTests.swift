@@ -1,0 +1,164 @@
+// Dispositivos por instância (2026-09-03): tipos × instâncias, nomes únicos,
+// chips por instância, dono de evento, métricas da folha — tudo puro.
+
+import Foundation
+import Testing
+@testable import RiverBridgeCore
+
+private func fixture(_ name: String) -> URL {
+    URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("tests/fixtures/\(name).json")
+}
+
+private func device(_ id: String, _ type: String, _ name: String) -> DeviceInstance {
+    DeviceInstance(id: id, type: type, name: name)
+}
+
+private let tres = [
+    device("udr7", "udr7_ssh", "UDR7"),
+    device("sshhost_3fa9c1d2", "ssh_host", "NAS da sala"),
+    device("sshhost_7b2e4d10", "ssh_host", "Servidor"),
+]
+
+// MARK: - Decodificação das fixtures partilhadas com o Python
+
+@Test func decodeDeviceTypesCatalog() throws {
+    let data = try Data(contentsOf: fixture("device_types"))
+    let types = try JSONCoding.decoder().decode(DeviceTypesResponse.self, from: data).types
+    #expect(types.map(\.id) == ["udr7_ssh", "ssh_host"])
+    let host = try #require(types.first { $0.id == "ssh_host" })
+    #expect(host.labelPt == "Computador ou servidor via SSH")
+    let cmd = try #require(host.fields.first { $0.name == "shutdown_command" })
+    #expect(cmd.defaultValue?.stringValue == "shutdown -h now")
+    #expect(cmd.enumValues?.contains("sudo -n shutdown -h now") == true)
+    #expect(host.defaultValue(for: "ssh_port")?.intValue == 22)
+}
+
+@Test func decodeDevicesTresFixture() throws {
+    let data = try Data(contentsOf: fixture("devices_tres"))
+    let devices = try JSONCoding.decoder().decode(DevicesResponse.self, from: data).devices
+    #expect(devices.map(\.id) == ["udr7", "sshhost_3fa9c1d2", "sshhost_7b2e4d10"])
+    #expect(devices[1].fields["shutdown_command"]?.stringValue == "sudo -n shutdown -h now")
+    #expect(devices[2].enabled == true && devices[2].dryRun == true)
+}
+
+@Test func decodeHealthDispositivosKeepsAliasAndTypes() throws {
+    let data = try Data(contentsOf: fixture("health_dispositivos"))
+    let chain = try JSONCoding.decoder().decode(HealthChain.self, from: data)
+    let list = try #require(chain.plugins)
+    #expect(list.map(\.type) == ["udr7_ssh", "ssh_host", "ssh_host"])
+    #expect(chain.udr7 == list[0].state)
+    #expect(chain.pluginDetail(id: "sshhost_3fa9c1d2")?.state == "desabilitado")
+}
+
+// MARK: - O contrato de campos com o catálogo do daemon
+
+@Test func fieldKeysMatchTheDaemonCatalogPerType() throws {
+    let data = try Data(contentsOf: fixture("device_types"))
+    let types = try JSONCoding.decoder().decode(DeviceTypesResponse.self, from: data).types
+    for descriptor in DeviceTypeRegistry.all {
+        let catalog = try #require(types.first { $0.id == descriptor.id }, "tipo \(descriptor.id) fora do catálogo")
+        #expect(Set(descriptor.fieldKeys) == Set(catalog.fields.map(\.name)),
+                "campos do tipo \(descriptor.id) divergem do catálogo")
+        // Série esperada e corte são do núcleo, nunca da instância (D16).
+        #expect(!descriptor.fieldKeys.contains("expected_serial") && !descriptor.fieldKeys.contains("cutoff_percent"))
+    }
+}
+
+// MARK: - Registro de tipos e eventos
+
+@Test func registryMapsEventsOfBothTypes() {
+    #expect(DeviceTypeRegistry.type(forEventType: "UDR7_SHUTDOWN_SENT")?.id == "udr7_ssh")
+    #expect(DeviceTypeRegistry.type(forEventType: "SSH_HOST_SHUTDOWN_SENT")?.id == "ssh_host")
+    #expect(DeviceTypeRegistry.type(forEventType: "POWER_LOSS") == nil)
+    #expect(DeviceTypeRegistry.eventKind("SSH_HOST_ARMED")?.tone == .toggle)
+    #expect(DeviceTypeDescriptor.sshHost.events.count == 8)          // sem WoL
+    #expect(DeviceTypeDescriptor.udr7.events.count == 10)
+    let types = DeviceTypeRegistry.allEventTypes
+    #expect(Set(types).count == types.count)
+}
+
+// MARK: - Nomes
+
+@Test func uniqueLabelsGiveEveryColliderAnOrdinal() {
+    let dup = [device("a", "ssh_host", "Servidor"), device("b", "ssh_host", "Servidor"),
+               device("c", "udr7_ssh", "UDR7"), device("d", "ssh_host", " Servidor ")]
+    let labels = DeviceNames.uniqueLabels(instances: dup)
+    #expect(labels == ["a": "Servidor 1", "b": "Servidor 2", "c": "UDR7", "d": "Servidor 3"])
+    #expect(DeviceNames.uniqueLabels(instances: tres).values.sorted() == ["NAS da sala", "Servidor", "UDR7"])
+}
+
+@Test func suggestedNameIsUniqueAmongExisting() {
+    #expect(DeviceNames.suggestedName(type: .sshHost, existing: tres) == "Servidor SSH")
+    let more = tres + [device("x", "ssh_host", "servidor ssh"), device("y", "ssh_host", "Servidor SSH 2")]
+    #expect(DeviceNames.suggestedName(type: .sshHost, existing: more) == "Servidor SSH 3")
+    #expect(DeviceNames.suggestedName(type: .udr7, existing: tres) == "UDR7 2")
+}
+
+@Test func nameForEventPrefersTheInstanceThenTheOnlyOneOfItsType() {
+    let names = DeviceNames.resolve(devices: tres, health: nil)
+    #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: "sshhost_7b2e4d10", devices: tres) == "Servidor")
+    #expect(names.name(forEvent: "UDR7_SHUTDOWN_DRYRUN", device: nil, devices: tres) == "UDR7")
+    // dois hosts e nenhum dono: o nome do TIPO, nunca um chute entre os dois
+    #expect(names.name(forEvent: "SSH_HOST_SHUTDOWN_SENT", device: nil, devices: tres) == "Servidor SSH")
+    #expect(names.name(forEvent: "POWER_LOSS", device: nil, devices: tres) == "")
+}
+
+@Test func resolveTakesDevicesOverHealthAndSeamsOverBoth() throws {
+    let chain = try JSONCoding.decoder().decode(HealthChain.self, from: Data(
+        #"{"plugins": [{"id": "udr7", "name": "Do health"}, {"id": "so_health", "name": "Só no health"}]}"#.utf8))
+    let names = DeviceNames.resolve(devices: tres, health: chain, seams: ["sshhost_3fa9c1d2": "Do seam"])
+    #expect(names.name(forDevice: "udr7") == "UDR7")               // a instância vence o health
+    #expect(names.name(forDevice: "so_health") == "Só no health")   // o health reforça o que a lista não tem
+    #expect(names.name(forDevice: "sshhost_3fa9c1d2") == "Do seam")
+    #expect(names.name(forDevice: "nao_existe", type: .sshHost) == "Servidor SSH")
+}
+
+// MARK: - Chips
+
+@Test func chipsFollowInstances() {
+    let chips = EventChipSpec.all(devices: tres)
+    #expect(chips.count == 4 + 3)
+    #expect(Set(chips.map(\.id)).count == chips.count)
+    let nas = try! #require(chips.first { $0.deviceID == "sshhost_3fa9c1d2" })
+    #expect(nas.name == "NAS da sala" && nas.symbol == "desktopcomputer")
+    #expect(Set(nas.types) == Set(DeviceTypeDescriptor.sshHost.events.map(\.type)))
+    #expect(EventChipSpec.all(devices: []).count == 4)
+}
+
+// MARK: - Suporte do serviço
+
+@Test func supportVerdictOnlyOn404() {
+    #expect(DeviceAPISupport.verdict(for: APIError.badStatus(404, ""), version: "0.2.0")
+            == .unsupported(L10n.t("serviço 0.2.0", "service 0.2.0")))
+    #expect(DeviceAPISupport.verdict(for: APIError.badStatus(500, ""), version: nil) == .unknown)
+    #expect(DeviceAPISupport.verdict(for: APIError.notConnected, version: nil) == .unknown)
+}
+
+// MARK: - A folha cabe na janela (lê o Core, não copia números)
+
+@Test func sheetMetricsFitTheSmallestHostWindow() {
+    let host = CGSize(width: 414, height: 480)
+    let size = DeviceSheetMetrics.size(host: host)
+    #expect(size.width <= host.width - DeviceSheetMetrics.margin)
+    #expect(size.height <= host.height - DeviceSheetMetrics.margin)
+    #expect(DeviceSheetMetrics.minWidth <= host.width - DeviceSheetMetrics.margin)
+    #expect(DeviceSheetMetrics.minHeight <= host.height - DeviceSheetMetrics.margin)
+    #expect(DeviceSheetMetrics.isNarrow(width: size.width))
+    let big = DeviceSheetMetrics.size(host: CGSize(width: 1000, height: 880))
+    #expect(big == CGSize(width: DeviceSheetMetrics.maxWidth, height: DeviceSheetMetrics.maxHeight))
+}
+
+@MainActor
+@Test func storeSeededFromFixturesIsSupportedAndNamed() {
+    let store = TelemetryStore(arguments: [
+        "app", "--seam-dispositivos", fixture("devices_tres").path,
+        "--seam-health", fixture("health_dispositivos").path,
+    ], environment: ["RUB_STATE_DIR": "/nao/existe"])
+    #expect(store.devices.map(\.id) == ["udr7", "sshhost_3fa9c1d2", "sshhost_7b2e4d10"])
+    #expect(store.deviceSupport == .supported)
+    #expect(store.health?.plugins?.count == 3)
+    #expect(store.deviceNames.name(forDevice: "sshhost_7b2e4d10") == "Servidor")
+}

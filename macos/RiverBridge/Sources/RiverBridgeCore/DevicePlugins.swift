@@ -23,12 +23,15 @@ import Foundation
 /// registry, which is the source of what CAN be shown.
 public struct HealthPlugin: Codable, Equatable, Sendable {
     public var id: String?
+    /// The device TYPE of this instance (2026-09-03); nil on older daemons.
+    public var type: String?
     public var name: String?
     public var state: String?
-    public var detail: Udr7Detail?
+    public var detail: DeviceDetail?
 
-    public init(id: String? = nil, name: String? = nil, state: String? = nil, detail: Udr7Detail? = nil) {
+    public init(id: String? = nil, type: String? = nil, name: String? = nil, state: String? = nil, detail: DeviceDetail? = nil) {
         self.id = id
+        self.type = type
         self.name = name
         self.state = state
         self.detail = detail
@@ -293,5 +296,256 @@ public enum ProtectionSave {
         let keys = refused.sorted().joined(separator: ", ")
         return L10n.t("nome salvo; recusadas: \(keys) — \(motivo)",
                       "name saved; refused: \(keys) — \(motivo)")
+    }
+}
+
+// MARK: - Tipos × instâncias (2026-09-03)
+
+/// A device TYPE, as the app knows it: icon, human labels, the fields its
+/// hand-written sheet edits (checked against the daemon's catalog by a test),
+/// and its event vocabulary. An INSTANCE is a `DeviceInstance` from the daemon.
+public struct DeviceTypeDescriptor: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let symbol: String
+    public let defaultName: String
+    public let labelPT: String
+    public let labelEN: String
+    public let blurbPT: String
+    public let blurbEN: String
+    /// The instance fields the type's sheet edits (daemon field names).
+    public let fieldKeys: [String]
+    public let events: [DeviceEventKind]
+
+    public init(id: String, symbol: String, defaultName: String, labelPT: String, labelEN: String,
+                blurbPT: String, blurbEN: String, fieldKeys: [String], events: [DeviceEventKind]) {
+        self.id = id
+        self.symbol = symbol
+        self.defaultName = defaultName
+        self.labelPT = labelPT
+        self.labelEN = labelEN
+        self.blurbPT = blurbPT
+        self.blurbEN = blurbEN
+        self.fieldKeys = fieldKeys
+        self.events = events
+    }
+
+    public var label: String { L10n.t(labelPT, labelEN) }
+    public var blurb: String { L10n.t(blurbPT, blurbEN) }
+}
+
+extension DeviceEventKind {
+    /// The same vocabulary with another type's prefix (the daemon's SSH engine
+    /// speaks UDR7_* and each type renames the prefix).
+    fileprivate func renamed(from oldPrefix: String, to newPrefix: String) -> DeviceEventKind {
+        DeviceEventKind(type: newPrefix + type.dropFirst(oldPrefix.count), symbol: symbol, tone: tone,
+                        shortPT: shortPT, shortEN: shortEN, longPT: longPT, longEN: longEN)
+    }
+}
+
+extension DeviceTypeDescriptor {
+    static let sshFieldKeys = [
+        "ssh_host", "ssh_port", "ssh_user", "ssh_key", "shutdown_percent",
+        "discharge_seconds_per_pct", "runtime_minutes", "min_outage_seconds", "confirm_seconds", "retry_max",
+    ]
+
+    public static let udr7 = DeviceTypeDescriptor(
+        id: "udr7_ssh",
+        symbol: "shield.lefthalf.filled",
+        defaultName: "UDR7",
+        labelPT: "Console UniFi (UDR7)", labelEN: "UniFi console (UDR7)",
+        blurbPT: "Desliga o console pela chave SSH antes de a bateria acabar.",
+        blurbEN: "Shuts the console down over SSH before the battery runs out.",
+        fieldKeys: sshFieldKeys + ["wol_mac"],
+        events: DevicePluginDescriptor.udr7.events
+    )
+
+    public static let sshHost = DeviceTypeDescriptor(
+        id: "ssh_host",
+        symbol: "desktopcomputer",
+        defaultName: "Servidor SSH",
+        labelPT: "Computador ou servidor via SSH", labelEN: "Computer or server over SSH",
+        blurbPT: "Roda um comando de desligamento por SSH em qualquer máquina.",
+        blurbEN: "Runs a shutdown command over SSH on any machine.",
+        fieldKeys: sshFieldKeys + ["shutdown_command"],
+        // The engine's vocabulary without WoL (the type has no wake MAC).
+        events: DevicePluginDescriptor.udr7.events
+            .filter { !$0.type.contains("WOL") }
+            .map { $0.renamed(from: "UDR7_", to: "SSH_HOST_") }
+    )
+}
+
+public enum DeviceTypeRegistry {
+    /// Static, in code. A third type is one entry here plus its sheet.
+    public static let all: [DeviceTypeDescriptor] = [.udr7, .sshHost]
+
+    public static func type(id: String) -> DeviceTypeDescriptor? {
+        all.first { $0.id == id }
+    }
+
+    public static func type(forEventType type: String) -> DeviceTypeDescriptor? {
+        all.first { $0.events.contains { $0.type == type } }
+    }
+
+    public static func eventKind(_ type: String) -> DeviceEventKind? {
+        for descriptor in all {
+            if let kind = descriptor.events.first(where: { $0.type == type }) { return kind }
+        }
+        return nil
+    }
+
+    public static var allEventTypes: [String] {
+        all.flatMap { $0.events.map(\.type) }
+    }
+}
+
+/// The sheet's geometry, as pure arithmetic: the host window can shrink to
+/// 414×480 (RiverBridgeApp), and every device sheet has to fit inside it with
+/// 20 pt of slack on each side. The sheets AND the test read these numbers.
+public enum DeviceSheetMetrics {
+    public static let minWidth: CGFloat = 340
+    public static let minHeight: CGFloat = 380
+    public static let maxWidth: CGFloat = 600
+    public static let maxHeight: CGFloat = 640
+    /// Below this width, label and field stack (same cut as the filter bar).
+    public static let narrowBelow: CGFloat = 420
+    public static let margin: CGFloat = 40
+
+    public static func size(host: CGSize) -> CGSize {
+        CGSize(width: max(minWidth, min(maxWidth, host.width - margin)),
+               height: max(minHeight, min(maxHeight, host.height - margin)))
+    }
+
+    public static func isNarrow(width: CGFloat) -> Bool { width < narrowBelow }
+}
+
+/// Whether the daemon we talk to manages device instances.
+public enum DeviceAPISupport: Equatable, Sendable {
+    case unknown
+    case supported
+    /// The reason, for the settings screen ("serviço 0.2.0", "404", …).
+    case unsupported(String)
+
+    /// Pure: what a failed `GET /v1/devices` means. 404 = a daemon that predates
+    /// instances (0.2.0); anything else is a transient failure, not a verdict.
+    public static func verdict(for error: Error, version: String?) -> DeviceAPISupport {
+        if case APIError.badStatus(404, _) = error {
+            return .unsupported(version.map { L10n.t("serviço \($0)", "service \($0)") }
+                                ?? L10n.t("serviço antigo", "old service"))
+        }
+        return .unknown
+    }
+}
+
+extension DeviceNames {
+    /// Names by INSTANCE id: `/v1/devices` is the configuration, the health is
+    /// a reinforcement (it carries `name` too), the seam wins over both.
+    public static func resolve(devices: [DeviceInstance], health: HealthChain?,
+                               seams: [String: String] = [:]) -> DeviceNames {
+        var names: [String: String] = [:]
+        for entry in health?.plugins ?? [] {
+            if let id = entry.id, let name = entry.name?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+                names[id] = name
+            }
+        }
+        for device in devices {
+            let name = device.name.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { names[device.id] = name }
+        }
+        for (id, seam) in seams where !seam.isEmpty { names[id] = seam }
+        return DeviceNames(byPluginID: names)
+    }
+
+    public func name(forDevice id: String, type: DeviceTypeDescriptor? = nil) -> String {
+        byPluginID[id] ?? type?.defaultName ?? id
+    }
+
+    /// The owner of an event row. A known instance id wins; without one, a
+    /// single instance of the event's type is unambiguous; otherwise the type's
+    /// default name — never a guess between two devices.
+    public func name(forEvent type: String, device: String?, devices: [DeviceInstance]) -> String {
+        guard let kind = DeviceTypeRegistry.type(forEventType: type) else { return "" }
+        if let device, let known = byPluginID[device] { return known }
+        let ofType = devices.filter { $0.type == kind.id }
+        if ofType.count == 1 { return name(forDevice: ofType[0].id, type: kind) }
+        return kind.defaultName
+    }
+
+    /// B14: two instances with the same name would collapse in the chart's
+    /// colour domain and in the chips. When names collide, EVERY one of them
+    /// gets an ordinal (nobody is "the one without a number").
+    public static func uniqueLabels(instances: [DeviceInstance]) -> [String: String] {
+        var counts: [String: Int] = [:]
+        for instance in instances { counts[instance.name.trimmingCharacters(in: .whitespaces), default: 0] += 1 }
+        var seen: [String: Int] = [:]
+        var out: [String: String] = [:]
+        for instance in instances {
+            let base = instance.name.trimmingCharacters(in: .whitespaces)
+            if counts[base, default: 0] > 1 {
+                seen[base, default: 0] += 1
+                out[instance.id] = "\(base) \(seen[base]!)"
+            } else {
+                out[instance.id] = base
+            }
+        }
+        return out
+    }
+
+    /// "Servidor SSH", then "Servidor SSH 2", "Servidor SSH 3"… — unique among
+    /// the existing names (casefold), so the form never opens with a collision.
+    public static func suggestedName(type: DeviceTypeDescriptor, existing: [DeviceInstance]) -> String {
+        let taken = Set(existing.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() })
+        if !taken.contains(type.defaultName.lowercased()) { return type.defaultName }
+        var n = 2
+        while taken.contains("\(type.defaultName) \(n)".lowercased()) { n += 1 }
+        return "\(type.defaultName) \(n)"
+    }
+}
+
+/// A filter chip of the timeline, as pure data: four bridge subjects plus one
+/// chip per device instance (B13). Colours are App-side.
+public struct EventChipSpec: Identifiable, Hashable, Sendable {
+    public enum Kind: Hashable, Sendable {
+        case queda, restaurada, bateria, comunicacao
+        case device(id: String, type: String)
+    }
+
+    public let kind: Kind
+    public let symbol: String
+    public let types: [String]
+    /// The instance's (unique) label for device chips; nil for bridge chips.
+    public let name: String?
+
+    public var id: String {
+        switch kind {
+        case .queda: "queda"
+        case .restaurada: "restaurada"
+        case .bateria: "bateria"
+        case .comunicacao: "comunicacao"
+        case .device(let id, _): "device:\(id)"
+        }
+    }
+
+    public var deviceID: String? {
+        if case .device(let id, _) = kind { return id }
+        return nil
+    }
+
+    public static func all(devices: [DeviceInstance]) -> [EventChipSpec] {
+        let labels = DeviceNames.uniqueLabels(instances: devices)
+        let bridge: [EventChipSpec] = [
+            .init(kind: .queda, symbol: "bolt.slash.fill", types: ["POWER_LOSS"], name: nil),
+            .init(kind: .restaurada, symbol: "bolt.badge.checkmark.fill", types: ["POWER_RESTORED"], name: nil),
+            .init(kind: .bateria, symbol: "battery.25percent", types: ["LOW_BATTERY"], name: nil),
+            .init(kind: .comunicacao, symbol: "antenna.radiowaves.left.and.right",
+                  types: ["COMM_LOST", "COMM_RESTORED"], name: nil),
+        ]
+        let perDevice = devices.map { device -> EventChipSpec in
+            let type = DeviceTypeRegistry.type(id: device.type)
+            return .init(kind: .device(id: device.id, type: device.type),
+                         symbol: type?.symbol ?? "shield.lefthalf.filled",
+                         types: type?.events.map(\.type) ?? [],
+                         name: labels[device.id] ?? device.name)
+        }
+        return bridge + perDevice
     }
 }

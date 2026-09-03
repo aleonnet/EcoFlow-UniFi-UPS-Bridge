@@ -67,7 +67,8 @@ public struct APIClient: Sendable {
 
     /// GET /v1/events/log — persisted log, newest first.
     public func eventsLog(from: Int? = nil, to: Int? = nil,
-                          types: [String] = [], limit: Int = 200) async throws -> [EventLogRow] {
+                          types: [String] = [], limit: Int = 200,
+                          device: String? = nil) async throws -> [EventLogRow] {
         var components = URLComponents(
             url: endpoint.baseURL.appendingPathComponent("v1/events/log"),
             resolvingAgainstBaseURL: false
@@ -78,6 +79,7 @@ public struct APIClient: Sendable {
         if !types.isEmpty {
             items.append(.init(name: "types", value: types.joined(separator: ",")))
         }
+        if let device { items.append(.init(name: "device", value: device)) }
         components.queryItems = items
         var req = request("v1/events/log")
         req.url = components.url
@@ -123,5 +125,54 @@ public struct APIClient: Sendable {
     /// 202 = restart scheduled by the daemon (§7A.3 contract).
     public func restartService() async throws {
         _ = try await run(request("v1/service/restart", method: "POST"), accept: [202])
+    }
+
+    // MARK: - Dispositivos por instância (2026-09-03)
+
+    /// GET /v1/device-types — the daemon's catalog of types (404 on a 0.2.0 daemon).
+    public func deviceTypes() async throws -> [DeviceTypeInfo] {
+        try JSONCoding.decoder().decode(
+            DeviceTypesResponse.self, from: try await run(request("v1/device-types"))
+        ).types
+    }
+
+    /// GET /v1/devices — every instance, in the daemon's order.
+    public func devices() async throws -> [DeviceInstance] {
+        try JSONCoding.decoder().decode(
+            DevicesResponse.self, from: try await run(request("v1/devices"))
+        ).devices
+    }
+
+    public func device(id: String) async throws -> DeviceInstance {
+        try JSONCoding.decoder().decode(
+            DeviceResponse.self, from: try await run(request("v1/devices/\(id)"))
+        ).device
+    }
+
+    /// POST /v1/devices — a new instance is born disabled and in rehearsal
+    /// (the daemon refuses `enabled && !dry_run` at creation). 201 on success.
+    public func createDevice(type: String, name: String, fields: [String: String]) async throws -> DeviceInstance {
+        struct Body: Encodable { var type: String; var name: String; var fields: [String: String] }
+        let body = try JSONEncoder().encode(Body(type: type, name: name, fields: fields))
+        let data = try await run(request("v1/devices", method: "POST", body: body), accept: [201])
+        return try JSONCoding.decoder().decode(DeviceResponse.self, from: data).device
+    }
+
+    /// PUT /v1/devices/{id} — a partial patch; every argument nil = untouched.
+    public func updateDevice(id: String, name: String? = nil, enabled: Bool? = nil,
+                             dryRun: Bool? = nil, fields: [String: String]? = nil) async throws -> DeviceInstance {
+        var patch: [String: Any] = [:]
+        if let name { patch["name"] = name }
+        if let enabled { patch["enabled"] = enabled }
+        if let dryRun { patch["dry_run"] = dryRun }
+        if let fields { patch["fields"] = fields }
+        let body = try JSONSerialization.data(withJSONObject: patch)
+        let data = try await run(request("v1/devices/\(id)", method: "PUT", body: body))
+        return try JSONCoding.decoder().decode(DeviceResponse.self, from: data).device
+    }
+
+    /// DELETE /v1/devices/{id} — 204; 409 `armado` while the instance is armed.
+    public func deleteDevice(id: String) async throws {
+        _ = try await run(request("v1/devices/\(id)", method: "DELETE"), accept: [200, 204])
     }
 }
