@@ -13,3 +13,8 @@ macos/RiverBridge/.build/
 macos/RiverBridge/dist/
 
 .playwright-mcp/
+/dist/
+# estado transitório do Roadworthy (o escopo, a evidência e o estado são da sessão)
+.roadworthy/scope
+.roadworthy/state
+.roadworthy/evidence.jsonl

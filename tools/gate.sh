@@ -358,6 +358,27 @@ else
 fi
 rm -rf "$OL" "$OL2"
 
+# S19 — tools/release.sh --check: a tag amarra as 6 declarações de versão + CHANGELOG.
+# Na árvore: rc 0. Numa cópia com pyproject.toml em 9.9.9, conferida contra a
+# versão de scripts/install.sh: rc 3 E a saída cita pyproject.toml (não "qualquer rc≠0").
+# Refutado em 2026-09-02 removendo a linha do pyproject da lista do --check → mutante rc 0.
+REL="$(mktemp -d)"
+mkdir -p "$REL/src/river_unifi_bridge"
+cp "$RAIZ/pyproject.toml" "$RAIZ/CHANGELOG.md" "$RAIZ/river-bridge-install.sh" "$REL/"
+cp "$RAIZ/src/river_unifi_bridge/__init__.py" "$REL/src/river_unifi_bridge/"
+cp -R "$RAIZ/scripts" "$RAIZ/tools" "$REL/"
+sed -i '' 's/^version = ".*"$/version = "9.9.9"/' "$REL/pyproject.toml"
+REL_V="$(sed -n 's/^VERSAO="\(.*\)"$/\1/p' "$RAIZ/scripts/install.sh")"
+"$RAIZ/tools/release.sh" --check >"$REL/limpo.log" 2>&1; REL_RC0=$?
+"$REL/tools/release.sh" --check "v$REL_V" >"$REL/mutante.log" 2>&1; REL_RC1=$?
+if [ "$REL_RC0" = "0" ] && [ "$REL_RC1" = "3" ] && grep -q "pyproject.toml não declara" "$REL/mutante.log"; then
+    ok "S19 release --check: rc 0 na árvore (v$REL_V); rc 3 citando pyproject.toml no mutante 9.9.9"
+else
+    erro "S19 release --check: limpo rc=$REL_RC0 (esperado 0), mutante rc=$REL_RC1 (esperado 3) — caudas:"
+    tail -3 "$REL/limpo.log" "$REL/mutante.log"
+fi
+rm -rf "$REL"
+
 # S14 — abertura num pty de 80 colunas: asserção estrutural (o quadro bate com a
 # LG_MASK do próprio script, bordas incluídas) + snapshot do quadro final.
 # Só num pty a camada visual vê TTY; sem ele degrada para texto e o snapshot não diria nada.
