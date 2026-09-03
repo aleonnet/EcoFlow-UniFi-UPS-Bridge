@@ -144,9 +144,14 @@ cena_mutacao S4n src/river_unifi_bridge/state.py 'if p["id"] == UDR7_ALIAS_ID' "
     tests/unit/test_service_loop.py::test_process_snapshot_drives_policy_state_and_history
 
 # P1 — o nome do dispositivo: prefixo UDR7_ mas NÃO é configuração de proteção.
+# Desde 2026-09-03 a regra "renomear armado é permitido" vive no MOTOR, sobre o
+# patch da instância (S4x); em config.py a cerca guarda o conjunto congelado do
+# .env (PROTECTION_KEYS sem o nome), que o PUT legado do núcleo ainda consulta.
 cena_mutacao S4m src/river_unifi_bridge/config.py "    - DEVICE_NAME_KEYS" "    | DEVICE_NAME_KEYS" \
-    tests/unit/test_api.py::test_rename_allowed_while_armed \
     tests/unit/test_config.py::test_protection_key_sets_are_consistent
+cena_mutacao S4x src/river_unifi_bridge/plugins/ssh_motor.py \
+    'touched = sorted(set(changes) - {"name"})' 'touched = sorted(set(changes))' \
+    tests/unit/test_api.py::test_rename_allowed_while_armed
 cena_mutacao S4o src/river_unifi_bridge/protect.py '"read_only", "udr7_name")' '"read_only")' \
     tests/unit/test_protect.py::test_rename_while_armed_keeps_pins
 
