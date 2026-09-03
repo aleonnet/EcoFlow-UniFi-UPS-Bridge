@@ -72,12 +72,17 @@ class SshMotorPlugin(DevicePlugin):
     def armed(self) -> bool:
         return self._holder.get().armed
 
+    def _event_name(self, event: str | None) -> str | None:
+        """O motor fala UDR7_*; cada tipo publica com o SEU prefixo."""
+        if event is not None and event.startswith("UDR7_"):
+            return self.event_prefix + event[len("UDR7_"):]
+        return event
+
     def _tag(self, actions: list) -> list:
         """Toda ação sai com o dono e com o prefixo de evento do tipo."""
         name = self._holder.get().udr7_name or self.default_name
         for action in actions:
-            if action.event.startswith("UDR7_"):
-                action.event = self.event_prefix + action.event[len("UDR7_"):]
+            action.event = self._event_name(action.event)
             action.payload["device"] = self.id
             action.payload["device_name"] = name
         return actions
@@ -113,7 +118,9 @@ class SshMotorPlugin(DevicePlugin):
         return self._rebuild()
 
     def status(self) -> dict:
-        return self._policy.status()
+        st = self._policy.status()
+        st["last_event"] = self._event_name(st.get("last_event"))   # o health fala a língua do tipo
+        return st
 
     def drain_transition(self) -> tuple[str | None, str] | None:
         return self._policy.drain_transition()

@@ -178,7 +178,8 @@ class Api:
         )
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
-                return resp.status, json.loads(resp.read())
+                raw = resp.read()
+                return resp.status, (json.loads(raw) if raw else None)   # 204: sem corpo
         except urllib.error.HTTPError as exc:
             return exc.code, json.loads(exc.read())
 
@@ -188,8 +189,14 @@ class Api:
     def put(self, body):
         return self._req("PUT", "/v1/config", body)
 
-    def post(self, path):
-        return self._req("POST", path)
+    def post(self, path, body=None):
+        return self._req("POST", path, body)
+
+    def put_path(self, path, body):
+        return self._req("PUT", path, body)
+
+    def delete(self, path):
+        return self._req("DELETE", path)
 
     def wait(self, predicate, timeout=15, path="/v1/health"):
         deadline = time.time() + timeout
@@ -321,6 +328,83 @@ def test_e2e_real_looking_source_arms_fires_stub_once_and_disarms(tmp_path):
             assert len(stub_log.read_text().splitlines()) == 1
             status, _ = api.post("/v1/service/restart")
             assert status == 202
+        finally:
+            stop(daemon)
+    finally:
+        upsd.stop()
+
+
+# --- (e) instâncias (2026-09-03): um host SSH criado pela API arma e dispara o stub ------
+def test_e2e_ssh_host_instance_arms_and_fires_stub_once(tmp_path):
+    """Duas instâncias na mesma queda: o UDR7 em ENSAIO (DRYRUN, nada sai) e um host
+    SSH ARMADO pela API (o stub roda UMA vez, com o argv desse host e o known_hosts
+    dessa instância). Depois: remover armado é recusado; desarmar e remover, aceito."""
+    upsd = RealLookingUpsd().start()
+    api_port = free_port()
+    stub_log = tmp_path / "stub.log"
+    stub = write_stub(tmp_path, stub_log)
+    try:
+        daemon, token, state_dir, env_file = start_daemon(
+            tmp_path, base_env(tmp_path, upsd.port, api_port, expected_serial=REAL_SERIAL),
+            api_port, stub, stub_log)
+        try:
+            api = Api(api_port, token)
+            api.wait(lambda h: h["has_snapshot"] and h["nut"] == "ok" and h["udr7"] == "dry_run")
+            key = tmp_path / "river-bridge-udr7"        # chave falsa: o ssh é o stub
+            status, body = api.post("/v1/devices", {
+                "type": "ssh_host", "name": "NAS da sala",
+                "fields": {"ssh_host": "192.0.2.5", "ssh_user": "admin", "ssh_key": str(key),
+                           "shutdown_percent": 20, "min_outage_seconds": 0, "confirm_seconds": 0,
+                           "shutdown_command": "shutdown -h now"}})
+            assert status == 201, body
+            dev = body["device"]["id"]
+            # known_hosts DESTA instância, com a mesma chave fabricada da bancada
+            pub = (tmp_path / "hostkey.pub").read_text().strip()
+            kh = state_dir / f"{dev}_known_hosts"
+            kh.write_text(f"192.0.2.5 {pub}\n"); kh.chmod(0o600)
+            health = api.wait(lambda h: len(h["plugins"]) == 2)
+            assert health["plugins"][1]["type"] == "ssh_host"
+            assert health["plugins"][1]["detail"]["ssh_binary"] == str(stub), "recusando armar: ssh não é o stub"
+            # arma pela API de instâncias: trava aberta (.env), fonte real, serial do núcleo
+            status, body = api.put_path(f"/v1/devices/{dev}", {"enabled": True, "dry_run": False})
+            assert status == 200, body
+            armed = json.loads((state_dir / f"{dev}_armed.json").read_text())
+            assert armed["pins"]["shutdown_command"] == "shutdown -h now"
+            assert armed["pins"]["udr7_expected_serial"] == REAL_SERIAL
+            api.wait(lambda h: h["plugins"][1]["state"] == "armado_nao_verificado")
+            assert "SSH_HOST_ARMED" in api.event_types()
+            # a queda: o UDR7 ensaia, o host dispara — o stub roda UMA vez, com o argv do host
+            upsd.phase = "OB"
+            api.wait(lambda h: h["plugins"][1]["detail"]["last_event"] == "SSH_HOST_SHUTDOWN_SENT", timeout=20)
+            api.wait(lambda h: h["udr7_detail"]["last_event"] == "UDR7_SHUTDOWN_DRYRUN", timeout=20)
+            time.sleep(2.5)
+            calls = [json.loads(l) for l in stub_log.read_text().splitlines()]
+            assert len(calls) == 1, calls
+            argv = calls[0]
+            assert argv[-1] == "shutdown -h now" and argv[-2] == "admin@192.0.2.5" and argv[-3] == "--"
+            assert f"UserKnownHostsFile={kh}" in argv
+            # o histórico sabe de quem é cada evento
+            _, log = api.get(f"/v1/events/log?device={dev}")
+            assert [r["type"] for r in log["rows"]][:1] == ["SSH_HOST_SHUTDOWN_SENT"]
+            assert all(r["device"] == dev for r in log["rows"])
+            _, log = api.get("/v1/events/log?device=udr7")
+            assert "UDR7_SHUTDOWN_DRYRUN" in [r["type"] for r in log["rows"]]
+            # armado: remover é recusado; desarmar e então remover, aceito
+            status, body = api.delete(f"/v1/devices/{dev}")
+            assert status == 409 and body["motivo"] == "armado"
+            upsd.phase = "OL"
+            api.wait(lambda h: h["plugins"][1]["detail"]["last_event"] == "SSH_HOST_PROTECTION_REARMED", timeout=20)
+            status, body = api.put_path(f"/v1/devices/{dev}", {"dry_run": True})
+            assert status == 200 and body["device"]["armed"] is False
+            assert not (state_dir / f"{dev}_armed.json").exists()
+            status, _ = api.delete(f"/v1/devices/{dev}")
+            assert status == 204
+            assert kh.exists()                                   # semeado pelo dono: fica
+            health = api.wait(lambda h: len(h["plugins"]) == 1)
+            assert health["udr7"] == "dry_run"
+            store = json.loads((state_dir / "devices.json").read_text())
+            assert [d["id"] for d in store["devices"]] == ["udr7"]
+            assert len(stub_log.read_text().splitlines()) == 1
         finally:
             stop(daemon)
     finally:

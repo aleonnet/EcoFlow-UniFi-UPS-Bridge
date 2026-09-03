@@ -347,6 +347,10 @@ def test_ssh_host_events_carry_type_prefix_and_owner(cfg, tmp_path):
     assert [a.event for a in tagged] == ["SSH_HOST_SHUTDOWN_DRYRUN", "SSH_HOST_SHUTDOWN_SENT"]
     assert all(a.payload["device"] == inst.id and a.payload["device_name"] == "NAS da sala" for a in tagged)
     assert plugin._policy._known_hosts_path == str(tmp_path / f"{inst.id}_known_hosts")
+    # O health também fala a língua do tipo: o last_event anotado pela política
+    # (UDR7_*) sai renomeado — defeito visto no e2e em 2026-09-03.
+    plugin._policy._note(EV_SENT)
+    assert plugin.status()["last_event"] == "SSH_HOST_SHUTDOWN_SENT"
 
 
 def test_udr7_events_keep_their_prefix(cfg, tmp_path):
