@@ -13,6 +13,7 @@ Defence in depth even if the stub were ignored: UDR7_SSH_HOST=192.0.2.1 (TEST-NE
 RFC 5737, never routable) and the known_hosts entry is a fabricated key.
 """
 
+import hashlib
 import json
 import os
 import pathlib
@@ -227,8 +228,19 @@ def test_e2e_simulator_dryrun_and_arming_refused(tmp_path):
             api_port, stub, stub_log)
         try:
             api = Api(api_port, token)
+            # Migração no 1.º boot (2026-09-03): a loja nasce 0600 com a instância udr7,
+            # e o boot NÃO reescreve o .env nem os arquivos de estado udr7_* (hashes).
+            env_sha = hashlib.sha256(env_file.read_bytes()).hexdigest()
+            kh_sha = hashlib.sha256((state_dir / "udr7_known_hosts").read_bytes()).hexdigest()
             # (a) rehearsal: exactly one DRYRUN per outage, blocked by the source gate
             health = api.wait(lambda h: h["udr7_detail"] and h["udr7_detail"]["last_event"] == "UDR7_SHUTDOWN_DRYRUN")
+            store = json.loads((state_dir / "devices.json").read_text())
+            assert [d["id"] for d in store["devices"]] == ["udr7"]
+            assert store["devices"][0]["fields"]["ssh_host"] == "192.0.2.1"
+            assert stat.S_IMODE(os.stat(state_dir / "devices.json").st_mode) == 0o600
+            assert hashlib.sha256(env_file.read_bytes()).hexdigest() == env_sha
+            assert hashlib.sha256((state_dir / "udr7_known_hosts").read_bytes()).hexdigest() == kh_sha
+            assert health["plugins"][0]["type"] == "udr7_ssh"
             assert health["udr7"] == "fonte_nao_real"
             d = health["udr7_detail"]
             assert d["dry_run"] is True and d["source"] == "sintetica"

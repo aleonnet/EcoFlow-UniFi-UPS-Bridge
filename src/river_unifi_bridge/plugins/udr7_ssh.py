@@ -1,18 +1,22 @@
-"""The UDR7 over SSH — the first device plugin.
+"""The UDR7 over SSH — the first device type, and the one with a legacy `.env`.
 
-A thin adapter: it COMPOSES `ProtectionPolicy` and `ConfigHolder` from
-`protect.py`, which does not move. What lives here is what is specific to this
-device as a *plugin*: which keys it owns, which of them are frozen while armed,
-and the arming rules that used to sit in `api._authorize`.
+Desde 2026-09-03 é um TIPO sobre o motor SSH comum (`ssh_motor.py`): o que fica
+aqui é o que só o UDR7 tem — a tabela verificada de comandos, e o mapa das 14
+chaves legadas `PROTECT_*`/`UDR7_*` que o `.env` do Mac mini ainda carrega e que
+espelham a instância migrada `udr7` (as outras três — trava, série esperada e
+corte — são do núcleo: `config.LEGACY_CORE_KEYS`).
 """
 
 from __future__ import annotations
 
-import os
-
-from ..config import PROTECTION_KEYS
-from ..protect import ConfigHolder, ProtectionConfig, ProtectionPolicy, _is_synthetic_driver
-from .base import DevicePlugin
+from ..config import (
+    HOST_PATTERN, KEY_PATH_PATTERN, LEGACY_CORE_KEYS, MAC_PATTERN, NAME_PATTERN,
+    PROTECTION_KEYS, USER_PATTERN,
+)
+from ..devices import DeviceInstance, LEGACY_INSTANCE_ID, now_iso
+from ..protect import INSTANCE_FIELD_DEFAULTS
+from .base import FieldSpec
+from .ssh_motor import SshMotorPlugin
 
 # --- O VOCABULÁRIO DE COMANDOS DESTE DISPOSITIVO -----------------------------
 #
@@ -75,120 +79,147 @@ POWEROFF = COMMANDS["poweroff"]
 PROBE = COMMANDS["probe"]
 
 
-# The two keys that form the arming predicate. A PUT touching ONLY these, and
-# making `armed` false, is a pure disarm and is always accepted.
-_PREDICATE_KEYS = frozenset({"PROTECT_UDR7", "PROTECT_DRY_RUN"})
+# --- os campos de uma instância deste tipo ------------------------------------------
+_D = INSTANCE_FIELD_DEFAULTS
+SSH_FIELDS: tuple[FieldSpec, ...] = (
+    FieldSpec("ssh_host", "str", _D["ssh_host"], pattern=HOST_PATTERN),
+    FieldSpec("ssh_port", "int", _D["ssh_port"], bounds=(1, 65535)),
+    FieldSpec("ssh_user", "str", _D["ssh_user"], pattern=USER_PATTERN),
+    FieldSpec("ssh_key", "str", _D["ssh_key"], pattern=KEY_PATH_PATTERN),
+    FieldSpec("shutdown_percent", "int", _D["shutdown_percent"], bounds=(0, 50)),
+    FieldSpec("discharge_seconds_per_pct", "int", _D["discharge_seconds_per_pct"], bounds=(0, 3600)),
+    FieldSpec("runtime_minutes", "int", _D["runtime_minutes"], bounds=(0, 60)),
+    FieldSpec("min_outage_seconds", "int", _D["min_outage_seconds"], bounds=(0, 3600)),
+    FieldSpec("confirm_seconds", "int", _D["confirm_seconds"], bounds=(0, 600)),
+    FieldSpec("retry_max", "int", _D["retry_max"], bounds=(0, 3)),
+)
+UDR7_FIELDS: tuple[FieldSpec, ...] = SSH_FIELDS + (
+    FieldSpec("wol_mac", "str", _D["wol_mac"], pattern=MAC_PATTERN),
+)
+NAME_FIELD = FieldSpec("name", "str", "", pattern=NAME_PATTERN, required=True)
+
+# --- o espelho legado: 14 chaves do .env ↔ a instância `udr7` -------------------------
+LEGACY_KEY_TO_FIELD: dict[str, str] = {
+    "UDR7_SSH_HOST": "ssh_host", "UDR7_SSH_PORT": "ssh_port", "UDR7_SSH_USER": "ssh_user",
+    "UDR7_SSH_KEY": "ssh_key", "UDR7_SHUTDOWN_PERCENT": "shutdown_percent",
+    "UDR7_DISCHARGE_SECONDS_PER_PCT": "discharge_seconds_per_pct",
+    "UDR7_RUNTIME_MINUTES": "runtime_minutes", "UDR7_MIN_OUTAGE_SECONDS": "min_outage_seconds",
+    "UDR7_CONFIRM_SECONDS": "confirm_seconds", "UDR7_RETRY_MAX": "retry_max",
+    "UDR7_WOL_MAC": "wol_mac",
+}
+LEGACY_KEY_TO_ATTR: dict[str, str] = {
+    "PROTECT_UDR7": "enabled", "PROTECT_DRY_RUN": "dry_run", "UDR7_NAME": "name",
+}
+LEGACY_FIELD_TO_KEY = {v: k for k, v in LEGACY_KEY_TO_FIELD.items()}
+LEGACY_ATTR_TO_KEY = {v: k for k, v in LEGACY_KEY_TO_ATTR.items()}
 
 
-def _is_pure_disarm(changes: dict, pc: ProtectionConfig) -> bool:
-    """A PUT that contains ONLY the predicate keys and makes `armed` false."""
-    if not set(changes) <= _PREDICATE_KEYS:
-        return False
-    protect = changes.get("PROTECT_UDR7", pc.protect_udr7)
-    dry_run = changes.get("PROTECT_DRY_RUN", pc.protect_dry_run)
-    return not (protect and not dry_run)
+def legacy_instance(cfg) -> DeviceInstance:
+    """A instância `udr7` montada do `.env` (migração na 1.ª execução da 0.3.0)."""
+    return DeviceInstance(
+        id=LEGACY_INSTANCE_ID, type=Udr7SshPlugin.type_id,
+        name=cfg.udr7_name or Udr7SshPlugin.default_name,
+        enabled=bool(cfg.protect_udr7), dry_run=bool(cfg.protect_dry_run),
+        fields={f: getattr(cfg, k.lower()) for k, f in LEGACY_KEY_TO_FIELD.items()},
+        created_at=now_iso(), updated_at=now_iso(),
+    )
 
 
-class Udr7SshPlugin(DevicePlugin):
-    id = "udr7"
-    # Literal on purpose, NOT derived by prefix: the test that partitions the
-    # allowlist among plugins compares this literal with the set built from the
-    # prefixes, so it catches a PROTECT_/UDR7_ key that no plugin owns. Deriving
-    # it here would make that test compare a thing with itself.
-    config_keys = frozenset({
-        "PROTECT_UDR7", "PROTECT_DRY_RUN", "UDR7_ARM_ALLOWED", "UDR7_SSH_HOST",
-        "UDR7_SSH_PORT", "UDR7_SSH_USER", "UDR7_SSH_KEY", "UDR7_EXPECTED_SERIAL",
-        "UDR7_CUTOFF_PERCENT", "UDR7_SHUTDOWN_PERCENT", "UDR7_DISCHARGE_SECONDS_PER_PCT",
-        "UDR7_RUNTIME_MINUTES", "UDR7_MIN_OUTAGE_SECONDS", "UDR7_CONFIRM_SECONDS",
-        "UDR7_RETRY_MAX", "UDR7_WOL_MAC", "UDR7_NAME",
-    })
-    # Includes the three NUT_* keys: they decide WHICH source feeds the policy,
-    # so changing them while armed would move the ground under it. Note that
-    # UDR7_NAME is NOT here — renaming the device while armed is allowed.
+def absorb_legacy_keys(instance: DeviceInstance, cfg, keys) -> DeviceInstance:
+    """Depois de um PUT legado: as chaves tocadas entram na instância (.env → loja)."""
+    for key in keys:
+        if key in LEGACY_KEY_TO_FIELD:
+            instance.fields[LEGACY_KEY_TO_FIELD[key]] = getattr(cfg, key.lower())
+        elif key in LEGACY_KEY_TO_ATTR:
+            attr = LEGACY_KEY_TO_ATTR[key]
+            value = getattr(cfg, key.lower())
+            if attr == "name":
+                value = value or Udr7SshPlugin.default_name
+            setattr(instance, attr, value)
+    instance.updated_at = now_iso()
+    return instance
+
+
+def apply_instance_to_cfg(instance: DeviceInstance, cfg) -> list[str]:
+    """No boot: a loja vence. Copia a instância `udr7` para o BridgeConfig em memória
+    (para `GET /v1/config` dizer a verdade) e devolve as chaves cujo `.env` divergia —
+    nomes só, nunca valores. O `.env` NÃO é reescrito aqui."""
+    shadowed: list[str] = []
+    for key, attr in LEGACY_KEY_TO_ATTR.items():
+        value = getattr(instance, attr)
+        if getattr(cfg, key.lower()) != value:
+            shadowed.append(key)
+            setattr(cfg, key.lower(), value)
+    for key, field_name in LEGACY_KEY_TO_FIELD.items():
+        value = instance.fields.get(field_name, INSTANCE_FIELD_DEFAULTS[field_name])
+        if getattr(cfg, key.lower()) != value:
+            shadowed.append(key)
+            setattr(cfg, key.lower(), value)
+    return shadowed
+
+
+def legacy_changes_to_patch(changes: dict) -> dict:
+    """Um PUT legado (`{UDR7_SSH_HOST: ..., PROTECT_DRY_RUN: ...}`) como patch de instância."""
+    patch: dict = {}
+    fields: dict = {}
+    for key, value in changes.items():
+        if key in LEGACY_KEY_TO_ATTR:
+            patch[LEGACY_KEY_TO_ATTR[key]] = value
+        elif key in LEGACY_KEY_TO_FIELD:
+            fields[LEGACY_KEY_TO_FIELD[key]] = value
+    if fields:
+        patch["fields"] = fields
+    return patch
+
+
+class Udr7SshPlugin(SshMotorPlugin):
+    type_id = "udr7_ssh"
+    label_pt = "Console UniFi (UDR7)"
+    label_en = "UniFi console (UDR7)"
+    default_name = "UDR7"
+    event_prefix = "UDR7_"
+    fields = UDR7_FIELDS
+    # As 14 chaves legadas que este tipo ainda possui no .env (espelho da instância
+    # `udr7`). Literal de propósito: o teste de partição compara com o conjunto
+    # montado por prefixo, descontadas as três do núcleo (LEGACY_CORE_KEYS).
+    legacy_keys = frozenset(LEGACY_KEY_TO_FIELD) | frozenset(LEGACY_KEY_TO_ATTR)
+    # O que este tipo congela no PUT /v1/config enquanto armado: as suas chaves
+    # legadas (menos o nome) mais as do núcleo — exatamente PROTECTION_KEYS.
     frozen_keys = PROTECTION_KEYS
 
-    def __init__(self, holder: ConfigHolder, policy: ProtectionPolicy):
-        self._holder = holder
-        self._policy = policy
-
     @classmethod
-    def build(cls, cfg, state_dir: str) -> "Udr7SshPlugin":
-        holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
-        policy = ProtectionPolicy(
-            holder,
-            known_hosts_path=os.path.join(state_dir, "udr7_known_hosts"),
-            armed_path=os.path.join(state_dir, "udr7_armed.json"),
-            runtime_path=os.path.join(state_dir, "udr7_runtime.json"),
-            shutdown_command=POWEROFF.argv,      # da tabela deste plugin
-        )
-        return cls(holder, policy)
+    def shutdown_command_for(cls, instance) -> str:
+        return POWEROFF.argv          # da tabela deste tipo, com fonte verificada
 
-    # --- what the loop calls ----------------------------------------------------
-    @property
-    def armed(self) -> bool:
-        return self._holder.get().armed
-
-    def observe(self, snap, tracker_events: list[str]) -> list:
-        return self._policy.observe(snap, tracker_events)
-
-    def observe_failure(self, tracker_events: list[str]) -> list:
-        return self._policy.observe_failure(tracker_events)
-
-    def on_config_applied(self, cfg) -> list:
-        """Rebuild this plugin's snapshot from the new effective config.
-
-        `holder.replace` runs OUTSIDE the policy lock (the holder owns its own),
-        and the policy is only told when something actually changed.
-        """
-        new = ProtectionConfig.from_cfg(cfg)
-        old = self._holder.get()
-        self._holder.replace(new)
-        if new == old:
-            return []
-        return self._policy.on_config_applied(old, new)
-
-    def status(self) -> dict:
-        return self._policy.status()
-
-    def drain_transition(self) -> tuple[str | None, str] | None:
-        return self._policy.drain_transition()
-
-    # --- the arming rules (were api._authorize) ---------------------------------
     def authorize(self, changes: dict, snapshot: dict | None,
                   comm_ok: bool) -> tuple[int, str, str] | None:
-        """§7A.5. Runs BEFORE anything is written, so a 4xx leaves no trace.
-
-        The 400 for file-only keys is NOT here: it is generic and stays in the
-        API, because it must answer the same way with no plugins at all.
-        """
-        pc = self._holder.get()
-        protect_after = changes.get("PROTECT_UDR7", pc.protect_udr7)
-        dry_run_after = changes.get("PROTECT_DRY_RUN", pc.protect_dry_run)
-        armed_after = bool(protect_after) and not bool(dry_run_after)
-        if pc.armed:
-            if _is_pure_disarm(changes, pc):
-                return None
-            touched = sorted(set(changes) & self.frozen_keys)
-            if touched:
-                return 409, "armado", (
-                    f"{touched[0]}: configuração congelada enquanto a proteção está armada — "
-                    "desligue a proteção (ligar modo ensaio) antes")
+        """PUT /v1/config legado: traduz as chaves para um patch e aplica as MESMAS
+        regras de `authorize_update`; as chaves do núcleo seguem a regra do motor."""
+        core = super().authorize({k: v for k, v in changes.items() if k in LEGACY_CORE_KEYS
+                                  or k not in self.legacy_keys}, snapshot, comm_ok)
+        if core is not None:
+            return core
+        patch = legacy_changes_to_patch(changes)
+        if not patch:
             return None
-        if armed_after:
-            if not pc.udr7_arm_allowed:
-                return 409, "armamento_bloqueado", (
-                    "trava fechada: UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie antes de armar")
-            if snapshot is None or not comm_ok:
-                return 409, "sem_snapshot", "sem leitura corrente do NUT — não há como verificar a fonte"
-            source = snapshot.get("source") or {}
-            name, version = source.get("driver_name"), source.get("driver_version")
-            if not name or not version or _is_synthetic_driver(name, version):
-                return 409, "fonte_nao_real", (
-                    "a fonte de telemetria corrente não é aceita para armar "
-                    f"(driver {name!r} {version!r})")
-            expected = changes.get("UDR7_EXPECTED_SERIAL", pc.udr7_expected_serial)
-            serial = (snapshot.get("identity") or {}).get("serial")
-            if not expected or serial != expected:
-                return 409, "fonte_nao_real", (
-                    "serial da leitura corrente não confere com UDR7_EXPECTED_SERIAL")
-        return None
+        return self.authorize_update(patch, snapshot, comm_ok)
+
+    def on_config_applied(self, cfg) -> list:
+        """Um PUT legado já gravou o .env e o `cfg`: absorve as chaves na instância e
+        refresca a política (núcleo incluído)."""
+        touched = [k for k in self.legacy_keys if self._cfg_value(cfg, k) != self._instance_value(k)]
+        if touched:
+            absorb_legacy_keys(self.instance, cfg, touched)
+        return super().on_config_applied(cfg)
+
+    def _instance_value(self, key: str):
+        if key in LEGACY_KEY_TO_FIELD:
+            field_name = LEGACY_KEY_TO_FIELD[key]
+            return self.instance.fields.get(field_name, INSTANCE_FIELD_DEFAULTS[field_name])
+        return getattr(self.instance, LEGACY_KEY_TO_ATTR[key])
+
+    def _cfg_value(self, cfg, key: str):
+        value = getattr(cfg, key.lower())
+        if key == "UDR7_NAME":
+            return value or self.default_name      # nome vazio no .env = o padrão
+        return value

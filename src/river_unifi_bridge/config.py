@@ -278,6 +278,10 @@ DEVICE_NAME_KEYS = frozenset({"UDR7_NAME"})
 CORE_FROZEN_KEYS = frozenset({
     "NUT_HOST", "NUT_PORT", "NUT_UPS", "UDR7_EXPECTED_SERIAL", "UDR7_CUTOFF_PERCENT",
 })
+# As três chaves com prefixo UDR7_ que NÃO pertencem à instância migrada `udr7` e
+# sim ao núcleo: a trava global de armamento (somente arquivo) e as duas do River
+# acima. O nome ficou pelo .env do Mac mini; a semântica é do núcleo (D3/D16).
+LEGACY_CORE_KEYS = frozenset({"UDR7_ARM_ALLOWED", "UDR7_EXPECTED_SERIAL", "UDR7_CUTOFF_PERCENT"})
 PROTECTION_KEYS = (
     frozenset(
         {k for k in _ALLOWLIST if k.startswith(("PROTECT_", "UDR7_"))}

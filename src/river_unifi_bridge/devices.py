@@ -27,9 +27,12 @@ import re
 import secrets
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from .plugins.base import FieldSpec
 from .protect import _read_private_json, _write_private_json, log_json
+
+if TYPE_CHECKING:   # só para o tipo: importar plugins aqui fecharia o ciclo plugins → devices
+    from .plugins.base import FieldSpec
 
 STORE_VERSION = 1
 LEGACY_INSTANCE_ID = "udr7"
@@ -102,7 +105,7 @@ def _parse_bool(raw: object) -> bool:
     raise DevicesError(f"valor booleano inválido: {raw!r} (use 1/0)")
 
 
-def validate_fields(specs: tuple[FieldSpec, ...], raw: dict, *, partial: bool = False) -> dict:
+def validate_fields(specs: "tuple[FieldSpec, ...]", raw: dict, *, partial: bool = False) -> dict:
     """Aplica a especificação do tipo a um dicionário cru (POST: completo; PUT: parcial).
 
     Mesmas regras de `config.validate_update`: strip, bool por 1/0, faixa para int,

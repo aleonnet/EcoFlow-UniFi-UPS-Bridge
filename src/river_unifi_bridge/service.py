@@ -18,12 +18,14 @@ import time
 
 from . import __version__
 from .config import BridgeConfig, ConfigError, load_config
+from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from .nut import NutClient, NutError
 # Import no TOPO, não dentro da função: um monkeypatch de
 # `service.build_plugins` no teste só intercepta se o nome viver aqui.
-from .plugins import build_plugins, plugin_statuses
+from .plugins import PluginSet, build_plugins, plugin_statuses
+from .plugins.udr7_ssh import apply_instance_to_cfg, legacy_instance
 from .protect import _emit
 
 EXIT_OK = 0
@@ -177,9 +179,28 @@ def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> N
 def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> int:
     tracker = TransitionTracker(cfg)
 
-    # Cada plugin traz o próprio holder e a própria política; `--once` é
-    # diagnóstico e não constrói nenhum.
-    plugins = [] if once else build_plugins(cfg, state_dir())
+    # Cada instância traz o próprio holder e a própria política; `--once` é
+    # diagnóstico e não constrói nenhuma (nem lê nem escreve a loja).
+    store = None
+    plugins = PluginSet()
+    if not once:
+        store = DeviceStore(os.path.join(state_dir(), "devices.json"))
+        try:
+            devices = store.load_or_migrate(lambda: legacy_instance(cfg))
+            plugins = PluginSet(build_plugins(devices, cfg, state_dir()))
+        except DevicesError as exc:
+            # Mesma classe do config_invalid: repetiria a cada relançamento. Sob
+            # launchd a parada é deliberada (exit 0); no CLI, 3 = validação.
+            _log("ERROR", "devices_invalid", reason=str(exc))
+            _log("ERROR", "parada_deliberada", reason="loja de dispositivos inválida não relança")
+            return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
+        # A loja vence: a instância migrada `udr7` é copiada para o cfg em memória
+        # (GET /v1/config diz a verdade); o .env NÃO é reescrito no boot.
+        for plugin in plugins:
+            if plugin.id == "udr7" and hasattr(plugin, "instance"):
+                shadowed = apply_instance_to_cfg(plugin.instance, cfg)
+                if shadowed:
+                    _log("INFO", "legacy_key_shadowed", keys=sorted(shadowed))
 
     api_server = None
     shared = None
@@ -197,7 +218,7 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
         )
         api_server = ApiServer(
             cfg, shared, history, env_path, restart_cb=restart_requested.set,
-            plugins=plugins,
+            plugins=plugins, store=store, state_dir=state_dir(),
         )
         # Bind failures (e.g. EADDRINUSE) get 3 attempts with backoff; a
         # persistent failure is config-class → deliberate stop under launchd.

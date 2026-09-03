@@ -10,9 +10,13 @@ from __future__ import annotations
 import pytest
 
 from fake_plugin import FakePlugin
-from river_unifi_bridge.config import DEVICE_NAME_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS, allowlist_keys, load_config
+from river_unifi_bridge.config import (
+    DEVICE_NAME_KEYS, HOT_RELOAD_KEYS, LEGACY_CORE_KEYS, PROTECTION_KEYS, allowlist_keys, load_config,
+)
+from river_unifi_bridge.devices import DeviceInstance, DeviceStore
 from river_unifi_bridge.model import snapshot_from_nut_vars
-from river_unifi_bridge.plugins import PLUGINS, build_plugins, plugin_statuses
+from river_unifi_bridge.plugins import PLUGINS, TYPES, build_plugins, plugin_statuses
+from river_unifi_bridge.plugins.udr7_ssh import legacy_instance
 
 MINIMAL = "NUT_HOST=127.0.0.1\nNUT_PORT=3493\nNUT_UPS=river\nRIVER_NAME=River\n"
 ALL_CLASSES = list(PLUGINS) + [FakePlugin]
@@ -25,13 +29,22 @@ def cfg(tmp_path):
     return load_config(str(path))
 
 
+def sample(cls) -> DeviceInstance:
+    """Uma instância de teste do tipo, com os defaults dos campos."""
+    return DeviceInstance(id=f"{cls.type_id}_teste", type=cls.type_id, name=cls.default_name,
+                          fields={spec.name: spec.default for spec in cls.fields})
+
+
 @pytest.mark.parametrize("cls", ALL_CLASSES)
 def test_contract_attributes(cls):
-    assert cls.id and cls.id == cls.id.lower()
-    assert cls.config_keys <= set(allowlist_keys()), "config_keys fora da allowlist"
-    # Everything a plugin owns must be frozen while armed, EXCEPT the name: the
-    # whole point of DEVICE_NAME_KEYS is that renaming stays possible.
-    assert cls.frozen_keys >= (cls.config_keys - DEVICE_NAME_KEYS)
+    assert cls.type_id and cls.type_id == cls.type_id.lower()
+    assert cls.label_pt and cls.label_en and cls.default_name and cls.event_prefix.endswith("_")
+    assert cls.legacy_keys <= set(allowlist_keys()), "legacy_keys fora da allowlist"
+    # Everything a type owns in the .env must be frozen while armed, EXCEPT the
+    # name: the whole point of DEVICE_NAME_KEYS is that renaming stays possible.
+    assert cls.frozen_keys >= (cls.legacy_keys - DEVICE_NAME_KEYS)
+    names = [spec.name for spec in cls.fields]
+    assert len(set(names)) == len(names), "campo repetido no tipo"
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES)
@@ -49,7 +62,8 @@ def test_contract_methods(cls, cfg, tmp_path):
         "device.mfr": "EcoFlow", "device.model": "RIVER 3 Plus",
         "driver.name": "usbhid-ups", "driver.version": "2.8.4",
     })
-    plugin = cls.build(cfg, str(tmp_path))
+    plugin = cls.build(sample(cls), cfg, str(tmp_path))
+    assert plugin.id == f"{cls.type_id}_teste"
     assert isinstance(plugin.armed, bool)
     assert isinstance(plugin.observe(leitura, []), list)
     assert isinstance(plugin.observe_failure([]), list)
@@ -58,20 +72,23 @@ def test_contract_methods(cls, cfg, tmp_path):
     plugin.drain_transition()                       # não pode levantar
     # A key that belongs to NOBODY is never vetoed by this plugin.
     alheia = "HISTORY_RETENTION_DAYS"
-    assert alheia not in (plugin.config_keys | plugin.frozen_keys)
+    assert alheia not in (plugin.legacy_keys | plugin.frozen_keys)
     assert plugin.authorize({alheia: "7"}, None, False) is None
+    assert plugin.authorize_update({"name": "Outro"}, None, False) is None
+    assert isinstance(plugin.apply_patch(sample(cls)), list)
 
 
 def test_udr7_frozen_keys_include_nut(cfg, tmp_path):
     """Só o UDR7: as chaves NUT_* condicionam a FONTE que alimenta a política."""
-    plugin = PLUGINS[0].build(cfg, str(tmp_path))
+    plugin = PLUGINS[0].build(legacy_instance(cfg), cfg, str(tmp_path))
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS"} <= plugin.frozen_keys
 
 
 def test_registry_is_static_and_ids_unique():
-    ids = [cls.id for cls in PLUGINS]
+    ids = [cls.type_id for cls in PLUGINS]
     assert len(set(ids)) == len(ids)
     assert PLUGINS == tuple(PLUGINS), "o registro é estático"
+    assert all(TYPES[cls.type_id] is cls for cls in PLUGINS)
 
 
 def test_device_keys_are_partitioned_among_plugins():
@@ -85,9 +102,13 @@ def test_device_keys_are_partitioned_among_plugins():
     por_prefixo = {k for k in allowlist_keys() if k.startswith(("PROTECT_", "UDR7_"))}
     dos_plugins: set[str] = set()
     for cls in PLUGINS:
-        assert not (dos_plugins & cls.config_keys), "duas plugins reivindicam a mesma chave"
-        dos_plugins |= cls.config_keys
-    assert dos_plugins == por_prefixo
+        assert not (dos_plugins & cls.legacy_keys), "dois tipos reivindicam a mesma chave"
+        dos_plugins |= cls.legacy_keys
+    # As três do núcleo (trava, série esperada, corte) não são de instância nenhuma.
+    assert dos_plugins == por_prefixo - LEGACY_CORE_KEYS
+    assert LEGACY_CORE_KEYS <= por_prefixo
+    # Tipos novos NUNCA ganham chave no .env: só o UDR7 migrado tem espelho.
+    assert [cls.type_id for cls in PLUGINS if cls.legacy_keys] == ["udr7_ssh"]
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES)
@@ -101,13 +122,13 @@ def test_no_plugin_freezes_another_plugins_key(cls):
     outros: set[str] = set()
     for outro in ALL_CLASSES:
         if outro is not cls:
-            outros |= outro.config_keys
+            outros |= outro.legacy_keys
     assert not (cls.frozen_keys & outros)
 
 
 def test_udr7_name_is_hot_owned_and_never_frozen():
     udr7 = PLUGINS[0]
-    assert "UDR7_NAME" in udr7.config_keys
+    assert "UDR7_NAME" in udr7.legacy_keys
     assert "UDR7_NAME" in HOT_RELOAD_KEYS
     assert "UDR7_NAME" not in udr7.frozen_keys
     assert "UDR7_NAME" not in PROTECTION_KEYS
@@ -116,7 +137,7 @@ def test_udr7_name_is_hot_owned_and_never_frozen():
 def test_udr7_status_name_falls_back_when_empty(cfg, tmp_path):
     from dataclasses import replace
 
-    plugin = PLUGINS[0].build(cfg, str(tmp_path))
+    plugin = PLUGINS[0].build(legacy_instance(cfg), cfg, str(tmp_path))
     assert plugin.status()["name"] == "UDR7"
     plugin._holder.replace(replace(plugin._holder.get(), udr7_name="Meu UDR"))
     assert plugin.status()["name"] == "Meu UDR"
@@ -147,12 +168,23 @@ def test_plugin_statuses_reads_status_once(cfg, tmp_path):
     assert entradas[0]["state"] == entradas[0]["detail"]["state"]
 
 
-def test_build_plugins_builds_the_registry(cfg, tmp_path):
-    plugins = build_plugins(cfg, str(tmp_path))
-    assert [p.id for p in plugins] == [cls.id for cls in PLUGINS]
+def test_build_plugins_builds_the_store(cfg, tmp_path):
+    """Os plugins nascem da LOJA (uma instância por entrada), na ordem dela; a
+    migração do .env põe o udr7 na posição 0."""
+    store = DeviceStore(str(tmp_path / "devices.json"))
+    devices = store.load_or_migrate(lambda: legacy_instance(cfg))
+    plugins = build_plugins(devices, cfg, str(tmp_path))
+    assert [p.id for p in plugins] == ["udr7"]
     entradas = plugin_statuses(plugins)
-    assert entradas[0]["id"] == "udr7"
+    assert entradas[0]["id"] == "udr7" and entradas[0]["type"] == "udr7_ssh"
     assert entradas[0]["name"] == "UDR7"
+    assert plugins[0]._policy._known_hosts_path == str(tmp_path / "udr7_known_hosts")
+
+
+def test_build_plugins_refuses_unknown_type(cfg, tmp_path):
+    from river_unifi_bridge.devices import DevicesError
+    with pytest.raises(DevicesError, match="tipo de dispositivo desconhecido"):
+        build_plugins([DeviceInstance(id="x_1", type="nao_existe", name="X")], cfg, str(tmp_path))
 
 
 # --- a tabela de comandos do dispositivo -------------------------------------
@@ -223,8 +255,9 @@ def test_policy_fires_the_command_the_plugin_declares(cfg, tmp_path):
     from river_unifi_bridge.protect import ProtectionConfig, ConfigHolder, ProtectionPolicy, ssh_argv
     from river_unifi_bridge.plugins.udr7_ssh import POWEROFF, Udr7SshPlugin
 
-    plugin = Udr7SshPlugin.build(cfg, str(tmp_path))
+    plugin = Udr7SshPlugin.build(legacy_instance(cfg), cfg, str(tmp_path))
     assert plugin._policy._shutdown_command == POWEROFF.argv
+    assert plugin._holder.get().shutdown_command == POWEROFF.argv     # e está pinado
 
     holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
     outra = ProtectionPolicy(
@@ -236,3 +269,28 @@ def test_policy_fires_the_command_the_plugin_declares(cfg, tmp_path):
     # e o transporte usa o que recebeu, sem reintroduzir o literal
     argv = ssh_argv(holder.get(), str(tmp_path / "kh"), outra._shutdown_command)
     assert argv[-1] == "comando-de-teste"
+
+
+# --- o espelho legado (.env ↔ instância udr7) ----------------------------------------
+def test_apply_instance_to_cfg_reports_shadowed_keys_and_never_writes_env(cfg, tmp_path):
+    """No boot a loja vence: o cfg em memória recebe a instância, e as chaves em que
+    o .env divergia são devolvidas (nomes, nunca valores). O .env não é tocado."""
+    from river_unifi_bridge.plugins.udr7_ssh import apply_instance_to_cfg
+
+    inst = legacy_instance(cfg)
+    assert apply_instance_to_cfg(inst, cfg) == []          # recém-migrada: nada sombreado
+    inst.fields["ssh_host"] = "192.0.2.7"
+    inst.name = "Console da sala"
+    inst.enabled = True
+    shadowed = apply_instance_to_cfg(inst, cfg)
+    assert sorted(shadowed) == ["PROTECT_UDR7", "UDR7_NAME", "UDR7_SSH_HOST"]
+    assert (cfg.udr7_ssh_host, cfg.udr7_name, cfg.protect_udr7) == ("192.0.2.7", "Console da sala", True)
+
+
+def test_legacy_put_translates_to_an_instance_patch():
+    from river_unifi_bridge.plugins.udr7_ssh import legacy_changes_to_patch
+
+    patch = legacy_changes_to_patch({"PROTECT_DRY_RUN": False, "UDR7_SSH_PORT": 2222,
+                                     "UDR7_NAME": "X", "NUT_PORT": 3494})
+    assert patch == {"dry_run": False, "name": "X", "fields": {"ssh_port": 2222}}
+    assert legacy_changes_to_patch({"NUT_PORT": 3494}) == {}

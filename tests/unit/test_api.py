@@ -229,8 +229,11 @@ def _prot_env(tmp_path, arm_allowed: bool) -> str:
 def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     from river_unifi_bridge.config import load_config
     env = _prot_env(tmp_path, arm_allowed)
+    from river_unifi_bridge.devices import DeviceStore
+    from river_unifi_bridge.plugins.udr7_ssh import POWEROFF, legacy_instance
     cfg = load_config(env)
-    holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
+    instance = legacy_instance(cfg)
+    holder = ConfigHolder(ProtectionConfig.from_instance(instance, cfg, shutdown_command=POWEROFF.argv))
     state = tmp_path / "state"
     policy = ProtectionPolicy(
         holder, runner=lambda *a, **k: None, keygen_runner=lambda *a, **k: None,
@@ -240,10 +243,13 @@ def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     )
     from river_unifi_bridge.plugins import Udr7SshPlugin
 
-    plugin = Udr7SshPlugin(holder, policy)
+    plugin = Udr7SshPlugin(instance, holder, policy, cfg)
+    store = DeviceStore(str(state / "devices.json"))
+    store.save([plugin.instance, *[p.instance for p in extra if hasattr(p, "instance")]])
     srv = ApiServer(cfg=cfg, state=SharedState(), history=HistoryStore(str(tmp_path / "h.sqlite")),
                     env_path=env, restart_cb=lambda: None, token=TOKEN,
-                    plugins=[plugin, *extra])
+                    plugins=[plugin, *extra], store=store, state_dir=str(state))
+    srv.store = store
     # Atalhos ad hoc para os testes: holder e policy continuam sendo lidos
     # diretamente por várias asserções, e o plugin é só o invólucro deles.
     srv.holder = holder
@@ -457,12 +463,16 @@ async def test_rename_allowed_while_armed(unlocked):
 
 
 async def test_rename_empty_via_put_falls_back_to_default(unlocked):
-    """PUT com nome vazio grava vazio; quem repõe o padrão é o status()."""
+    """PUT legado com nome vazio grava vazio no .env; a INSTÂNCIA (que exige nome)
+    repõe o padrão, e é isso que o status() e a loja mostram."""
     srv, c = unlocked
     srv.state.update_snapshot(REAL)
     assert (await _put(c, {"UDR7_NAME": "Meu UDR"}))[0] == 200
+    assert srv.store.load()[0].name == "Meu UDR"           # espelho .env → loja
     assert (await _put(c, {"UDR7_NAME": ""}))[0] == 200
-    assert srv.holder.get().udr7_name == ""
+    assert "UDR7_NAME=\n" in open(srv.env, encoding="utf-8").read()
+    assert srv.holder.get().udr7_name == "UDR7"
+    assert srv.store.load()[0].name == "UDR7"
     assert srv.policy.status()["name"] == "UDR7"
 
 

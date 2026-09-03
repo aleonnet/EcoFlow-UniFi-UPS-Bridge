@@ -64,20 +64,46 @@ class FieldSpec:
 
 
 class DevicePlugin(abc.ABC):
-    """One protected device, from the daemon's point of view.
+    """One protected device INSTANCE, from the daemon's point of view (2026-09-03).
 
-    `id`, `config_keys` and `frozen_keys` are class annotations — `abc` does not
-    enforce attributes, so the fence for them is `test_contract_attributes`.
+    The class is the TYPE (`type_id`, labels, `default_name`, `event_prefix`,
+    `fields`, `legacy_keys`, `frozen_keys`); the object is one instance
+    (`id`, `instance`). `abc` does not enforce attributes, so the fence for
+    them is `test_contract_attributes`.
+
+    * `legacy_keys`: the `.env` keys this type still owns for the migrated
+      instance (only `udr7_ssh` has any; new types never get `.env` keys).
+    * `frozen_keys`: `.env` keys refused by `authorize` while an instance of
+      this type is armed (the core NUT/River keys for every type).
     """
 
-    id: str
-    config_keys: frozenset[str]
+    type_id: str
+    label_pt: str
+    label_en: str
+    default_name: str
+    event_prefix: str
+    fields: tuple
+    legacy_keys: frozenset[str]
     frozen_keys: frozenset[str]
+
+    id: str
+    instance: object
 
     @classmethod
     @abc.abstractmethod
-    def build(cls, cfg, state_dir: str) -> "DevicePlugin":
-        """Create the plugin from the effective config and the state directory."""
+    def build(cls, instance, cfg, state_dir: str) -> "DevicePlugin":
+        """Create the plugin for one instance, from the core config and the state dir."""
+
+    @abc.abstractmethod
+    def authorize_update(self, changes: dict, snapshot: dict | None,
+                         comm_ok: bool) -> tuple[int, str, str] | None:
+        """Veto a patch to THIS instance (`name`, `enabled`, `dry_run`, `fields`)
+        before anything is written. Same return contract as `authorize`."""
+
+    @abc.abstractmethod
+    def apply_patch(self, instance) -> list:
+        """Adopt a new instance snapshot (after a PUT /v1/devices/{id}) and
+        return the actions it caused (armed/disarmed transitions)."""
 
     @property
     @abc.abstractmethod

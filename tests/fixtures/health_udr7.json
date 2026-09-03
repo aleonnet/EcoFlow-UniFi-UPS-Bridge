@@ -30,6 +30,7 @@
   "plugins": [
     {
       "id": "udr7",
+      "type": "udr7_ssh",
       "name": "UDR7",
       "state": "fonte_nao_real",
       "detail": {

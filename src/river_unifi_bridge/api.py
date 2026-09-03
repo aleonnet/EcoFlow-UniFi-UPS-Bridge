@@ -100,7 +100,9 @@ class ApiServer:
         env_path: str,
         restart_cb,
         token: str | None = None,
-        plugins: list | None = None,
+        plugins=None,
+        store=None,
+        state_dir: str | None = None,
     ) -> None:
         ensure_loopback(BIND_HOST)
         self.cfg = cfg
@@ -108,9 +110,13 @@ class ApiServer:
         self.history = history
         self.env_path = env_path
         self.restart_cb = restart_cb
-        # list(...) e não o objeto cru: uma fixture sem plugins itera uma lista
-        # vazia em vez de precisar de guardas `is None` em cada ponto.
-        self.plugins = list(plugins or [])
+        # Um PluginSet (produção) ou uma lista (fixtures): os dois iteram; uma
+        # fixture sem plugins itera vazio em vez de precisar de guardas `is None`.
+        self.plugins = plugins if plugins is not None else []
+        # A loja de instâncias (devices.json) e o diretório de estado: None nas
+        # fixtures que não os exercitam — o espelho legado então não grava a loja.
+        self.store = store
+        self.state_dir = state_dir
         self.token = token if token is not None else get_or_create_token()
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -267,6 +273,12 @@ class ApiServer:
                 restart_required = True
         for plugin in self.plugins:
             _emit(plugin.on_config_applied(self.cfg), self.state, self.history)
+        # Espelho legado (.env → loja): um PUT em chave legada do UDR7 já entrou na
+        # instância pelo on_config_applied; a loja é gravada para a verdade e o
+        # espelho não divergirem. Sem loja (fixtures antigas), nada a gravar.
+        if self.store is not None and any(
+                key in getattr(plugin, "legacy_keys", ()) for plugin in self.plugins for key in parsed):
+            self.store.save([plugin.instance for plugin in self.plugins if hasattr(plugin, "instance")])
         # O health é atualizado no fim do PUT: sem isto a tela mostraria o estado
         # anterior até o próximo tick do laço (≤ POLL_INTERVAL_SECONDS).
         self.state.set_plugins(plugin_statuses(self.plugins))

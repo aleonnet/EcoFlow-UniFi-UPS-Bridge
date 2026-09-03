@@ -132,8 +132,10 @@ cena_mutacao S4k src/river_unifi_bridge/protect.py '        "--",
         f"{pc.udr7_ssh_user}@{pc.udr7_ssh_host}",' '        f"{pc.udr7_ssh_user}@{pc.udr7_ssh_host}",' \
     tests/unit/test_protect.py::test_ssh_argv_is_isolated_and_terminated
 # S4l — exceção de desarme removida (o botão de parada).
-# S4l migrou de api.py para o adaptador do UDR7 junto com as regras de armamento.
-cena_mutacao S4l src/river_unifi_bridge/plugins/udr7_ssh.py "if _is_pure_disarm(changes, pc):" "if False:" \
+# S4l migrou de api.py para o adaptador do UDR7 e, em 2026-09-03, para o motor SSH
+# comum (ssh_motor.py) — o texto da âncora é o mesmo; o PUT legado e o PUT de
+# instância passam pelo mesmo authorize_update.
+cena_mutacao S4l src/river_unifi_bridge/plugins/ssh_motor.py "if _is_pure_disarm(changes, pc):" "if False:" \
     tests/unit/test_api.py::test_disarm_is_always_allowed_while_armed
 
 # P6 — o alias udr7/udr7_detail do health deriva da entrada certa da lista.

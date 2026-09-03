@@ -54,8 +54,9 @@ def rig(tmp_path):
         runtime_path=str(tmp_path / "runtime.json"),
     )
     from river_unifi_bridge.plugins import Udr7SshPlugin
+    from river_unifi_bridge.plugins.udr7_ssh import legacy_instance
 
-    plugin = Udr7SshPlugin(holder, policy)
+    plugin = Udr7SshPlugin(legacy_instance(cfg), holder, policy, cfg)
     return dict(cfg=cfg, clock=clock, tracker=TransitionTracker(cfg, clock), policy=policy,
                 plugin=plugin, plugins=[plugin],
                 shared=SharedState(), history=HistoryStore(str(tmp_path / "h.sqlite")))
@@ -101,7 +102,7 @@ def test_once_never_protects(tmp_path, monkeypatch):
     """`--once` é diagnóstico: nenhum plugin é construído, logo nada protege."""
     built = []
 
-    def boom(cfg, state_dir):
+    def boom(devices, cfg, state_dir):
         built.append(1)
         raise AssertionError("nenhum plugin pode existir em --once")
 
@@ -110,6 +111,7 @@ def test_once_never_protects(tmp_path, monkeypatch):
     monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
     assert run_loop(make_cfg(), once=True) == service.EXIT_OK
     assert built == []
+    assert not (tmp_path / "devices.json").exists()     # --once nem lê nem escreve a loja
 
 
 def test_loop_feeds_every_plugin_and_health_lists_both(rig):
@@ -141,7 +143,8 @@ def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):
 
     visto = {}
 
-    def fake_build(cfg, state_dir):
+    def fake_build(devices, cfg, state_dir):
+        visto["devices"] = devices
         visto["cfg"] = cfg
         visto["state_dir"] = state_dir
         return [Explode()]
@@ -155,3 +158,6 @@ def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):
         run_loop(cfg, once=False)
     assert visto["cfg"] is cfg
     assert visto["state_dir"] == str(tmp_path)
+    # A loja foi migrada do .env no boot: uma instância `udr7`, e o arquivo existe.
+    assert [d.id for d in visto["devices"]] == ["udr7"]
+    assert (tmp_path / "devices.json").exists()
