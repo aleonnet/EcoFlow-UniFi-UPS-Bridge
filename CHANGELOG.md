@@ -9,6 +9,10 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+### App
+- Rodapé de Ajustes mostra as versões do app e do serviço (`GET /v1/version`), com aviso quando
+  divergem — o painel "Sobre" do macOS só mostraria a do app.
+
 ## [0.3.3] — 2026-09-03
 
 ### App — responsividade das folhas na largura mínima (dono: "inadmissível")

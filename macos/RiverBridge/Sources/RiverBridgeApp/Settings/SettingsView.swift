@@ -49,6 +49,9 @@ struct SettingsView: View {
     @State private var expectedSerial = ""
     @State private var cutoff = 0
     @State private var riverBaseline: [String: String] = [:]
+    /// A versão do serviço que responde (GET /v1/version); nil enquanto não chegou.
+    @State private var serviceVersion: String?
+    private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
 
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
@@ -231,6 +234,11 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                // As versões ficam no rodapé de Ajustes (o lugar dos utilitários de barra
+                // de menus: o painel "Sobre" do macOS só mostraria a do app; aqui a pessoa
+                // vê as DUAS e se estão alinhadas — dono, 2026-09-03).
+                versionFooter
             }
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
@@ -238,6 +246,9 @@ struct SettingsView: View {
             .padding(.top, 6)
         }
         .task {
+            if let endpoint = ApiEndpoint.discover() {
+                serviceVersion = try? await APIClient(endpoint: endpoint).version().version
+            }
             // "novo…" não depende de rede: aplica antes das chamadas ao serviço
             // (medido em 2026-09-03: a primeira chamada pode levar segundos e a
             // captura fotografava a tela sem a folha). Os ids esperam a lista.
@@ -341,6 +352,23 @@ struct SettingsView: View {
     }
 
     // MARK: - Building blocks in the house language
+
+    private var versionFooter: some View {
+        VStack(spacing: 4) {
+            Text("River Bridge \(appVersion) · " + L10n.t("Serviço", "Service") + " " + (serviceVersion ?? L10n.t("sem resposta", "no answer")))
+                .font(.caption).foregroundStyle(.secondary)
+                .monospacedDigit()
+            if let serviceVersion, serviceVersion != appVersion {
+                Text(L10n.t("Versões diferentes — rode o instalador para alinhar app e serviço.",
+                            "Versions differ — run the installer to align app and service."))
+                    .font(.caption).foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+    }
 
     // MARK: - Dispositivos protegidos
 

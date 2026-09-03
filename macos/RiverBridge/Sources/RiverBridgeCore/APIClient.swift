@@ -110,6 +110,12 @@ public struct APIClient: Sendable {
         )
     }
 
+    public func version() async throws -> VersionResponse {
+        try JSONCoding.decoder().decode(
+            VersionResponse.self, from: try await run(request("v1/version"))
+        )
+    }
+
     /// PUT /v1/config — returns (hot-applied keys, restart_required).
     public func putConfig(_ changes: [String: String]) async throws -> (applied: [String], restartRequired: Bool) {
         let body = try JSONEncoder().encode(changes)

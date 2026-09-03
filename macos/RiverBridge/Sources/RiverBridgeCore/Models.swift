@@ -154,6 +154,11 @@ public struct ConfigResponse: Codable, Equatable, Sendable {
     public var config: [String: ConfigValue]
 }
 
+/// GET /v1/version — a versão do SERVIÇO que responde (a do app vem do bundle).
+public struct VersionResponse: Codable, Equatable, Sendable {
+    public var version: String
+}
+
 /// Config values arrive as heterogeneous JSON (string/int/bool).
 public enum ConfigValue: Codable, Equatable, Sendable {
     case string(String)
