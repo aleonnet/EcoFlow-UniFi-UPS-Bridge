@@ -1,5 +1,5 @@
 ---
-status: aceito
+status: superado por 2026-09-02-0105-pesquisa-api-local-console-udr7.md
 ---
 
 # SSH é mesmo o caminho para desligar o UDR7? — pesquisa, 2026-09-01

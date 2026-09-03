@@ -13,6 +13,9 @@ Revisar é criar arquivo NOVO e marcar o antigo como `superado por` — o antigo
 `[P]` primária (a origem: código do fabricante, especificação, medição no aparelho) ·
 `[S]` secundária (wiki, gist, blog — **nunca vira `[P]` por repetição**) ·
 `[M]` medido no repositório ou no equipamento, com o comando registrado no ato ·
+**`[P-estático]`** leitura do código do fabricante **sem execução** (adicionada em 2026-09-02,
+depois de uma leitura de código ter sido apresentada como se fosse medição) — **não é `[M]`,
+e nunca autoriza dizer que algo funciona** ·
 `HIPÓTESE Hnn` (`research/hypotheses.md`) · `PROVISÓRIO-SEM-FONTE` · `ANALOGIA` · `INFERIDO`.
 
 Nenhum número entra num documento sem marca.
@@ -23,7 +26,8 @@ Nenhum número entra num documento sem marca.
 |---|---|---|
 | `2026-08-31-2345-pesquisa-udr7-ups-terceiros.md` | aceito | Por que um console UniFi não consome um UPS de terceiros — o veredito que originou a estratégia de agir de fora |
 | `2026-09-01-0817-runbook-protecao-udr7-ssh.md` | aceito | **Runbook operacional** da proteção do UDR7: preparar, medir, armar em 3 passos, desarmar, recuperar |
-| `2026-09-01-2243-pesquisa-ssh-sota-udr7.md` | aceito | SSH é o caminho para desligar o UDR7? Superfícies de API medidas no console, e a lista de comandos com a fonte de cada um |
+| `2026-09-01-2243-pesquisa-ssh-sota-udr7.md` | superado por `2026-09-02-0105-…` | SSH é o caminho para desligar o UDR7? **A conclusão "API para saber, SSH para agir" está ERRADA** — ver o documento que o supera |
+| `2026-09-02-0105-pesquisa-api-local-console-udr7.md` | proposto | A rota de desligamento local do console (a do botão **Shut Down**), medida e lida no aparelho; o que fecha as portas da via nativa; e o que continua sendo premissa |
 | `API_LOCAL_20260831.md` | — | Contrato da API local daemon ↔ app (§7A.3) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
