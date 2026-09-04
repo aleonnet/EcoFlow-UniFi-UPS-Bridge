@@ -23,8 +23,8 @@
   },
   "health": {
     "communication_ok": false,
-    "low_battery": false,
-    "overload": false,
+    "low_battery": null,
+    "overload": null,
     "alarm": [],
     "unknown_status_tokens": [],
     "last_error": null

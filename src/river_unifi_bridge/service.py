@@ -28,6 +28,10 @@ from .plugins import PluginSet, build_plugins, plugin_statuses
 from .plugins.udr7_ssh import apply_instance_to_cfg, legacy_instance
 from .protect import _emit
 
+# Folga (em pontos de carga) para o alerta de bateria baixa poder ser emitido de
+# novo: a condição só é considerada cessada acima do limiar mais esta margem.
+LOW_BATTERY_HYSTERESIS_PERCENT = 5
+
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_VALIDATION = 3
@@ -86,13 +90,27 @@ class TransitionTracker:
                 self._low_battery_reported = False
                 events.append("POWER_RESTORED")
 
-        low = snap.low_battery or (
-            snap.charge_percent is not None
-            and snap.charge_percent <= self._cfg.low_battery_percent
+        # Bateria baixa só faz sentido NA BATERIA: 25 % carregando na tomada é
+        # normal, e virava alerta (B01). A condição também tem de poder cessar,
+        # senão o alerta some para o resto da vida do processo depois da primeira
+        # queda; a folga evita que uma carga oscilando no limiar dispare em rajada.
+        low = snap.state == "ON_BATTERY" and (
+            snap.low_battery or (
+                snap.charge_percent is not None
+                and snap.charge_percent <= self._cfg.low_battery_percent
+            )
         )
         if low and not self._low_battery_reported:
             self._low_battery_reported = True
             events.append("LOW_BATTERY")
+        elif (
+            self._low_battery_reported
+            and not snap.low_battery
+            and snap.charge_percent is not None
+            and snap.charge_percent
+            >= self._cfg.low_battery_percent + LOW_BATTERY_HYSTERESIS_PERCENT
+        ):
+            self._low_battery_reported = False
 
         return events
 
@@ -125,6 +143,23 @@ def poll_once(cfg: BridgeConfig) -> UpsSnapshot:
 EXIT_RESTART_REQUESTED = 75
 
 
+def _detail_do_evento(payload: dict) -> str | None:
+    """O texto que acompanha o evento no histórico.
+
+    Sem ele, o detalhe de uma queda ou de uma restauração aparecia vazio na tela:
+    o motivo só existe no caminho de falha, e o caminho de sucesso mandava `None`.
+    """
+    motivo = payload.get("reason")
+    if motivo:
+        return str(motivo)
+    partes = []
+    if payload.get("state"):
+        partes.append(f"estado={payload['state']}")
+    if payload.get("charge") is not None:
+        partes.append(f"carga={payload['charge']:g}")
+    return " ".join(partes) or None
+
+
 def _record_tracker_events(events: list[str], payload_fn, shared, history) -> None:
     for event in events:
         payload = payload_fn(event)
@@ -132,7 +167,7 @@ def _record_tracker_events(events: list[str], payload_fn, shared, history) -> No
         if shared is not None:
             shared.add_event(event, payload)
         if history is not None:
-            history.record_event(event, payload.get("reason"))
+            history.record_event(event, _detail_do_evento(payload))
 
 
 def _audit_plugins(plugins) -> None:

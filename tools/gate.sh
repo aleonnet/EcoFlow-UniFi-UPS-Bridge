@@ -213,6 +213,13 @@ cena_mutacao S4z src/river_unifi_bridge/api.py \
     'for event in self.state.events()[last_seq + 1:]:' \
     tests/unit/test_api.py::test_sse_delivers_past_the_hundredth_event
 
+# S4aa — bateria baixa só na bateria: sem a condição de estado, carga baixa
+# carregando na tomada vira alerta (B01) na timeline, no SSE e no Home Assistant.
+cena_mutacao S4aa src/river_unifi_bridge/service.py \
+    'low = snap.state == "ON_BATTERY" and (' \
+    'low = True and (' \
+    tests/unit/test_transitions.py::test_low_battery_needs_on_battery
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

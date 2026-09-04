@@ -69,7 +69,9 @@ def _empty_state(name: str, comm_ok: bool, last_error: str | None) -> dict:
             "runtime_seconds": None, "voltage_v": None, "temperature_c": None,
         },
         "health": {
-            "communication_ok": comm_ok, "low_battery": False, "overload": False,
+            # Sem leitura não há bateria baixa nem sobrecarga a afirmar: `null` é o
+            # que o contrato promete ("nulos, nunca invenção"), e `false` era invenção.
+            "communication_ok": comm_ok, "low_battery": None, "overload": None,
             "alarm": [], "unknown_status_tokens": [],
             "last_error": last_error,
         },

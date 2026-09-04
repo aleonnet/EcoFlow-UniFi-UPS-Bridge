@@ -86,6 +86,35 @@ def test_low_battery_fires_once_by_lb_flag_or_threshold():
     assert t2.observe(snap("OB DISCHRG", charge="14")) == ["LOW_BATTERY"]
 
 
+def sem_carga(status):
+    return snapshot_from_nut_vars("r", {"ups.status": status})
+
+
+def test_low_battery_needs_on_battery():
+    """Carga baixa NA TOMADA não é bateria baixa (B01): o River carregando a 10 %
+    é normal, e virava alerta na linha do tempo e no Home Assistant."""
+    clock = FakeClock()
+    t = TransitionTracker(make_cfg(), clock)
+    assert t.observe(snap("OL CHRG", charge="10")) == []
+    assert t.observe(snap("OL CHRG LB", charge="8")) == []
+    # na bateria, o mesmo valor alerta (sem esperar o atraso da queda)
+    assert t.observe(snap("OB DISCHRG", charge="10")) == ["LOW_BATTERY"]
+
+
+def test_low_battery_rearms_after_the_condition_clears():
+    """Duas quedas, dois alertas — e nada de rajada enquanto a carga oscila."""
+    clock = FakeClock()
+    t = TransitionTracker(make_cfg(), clock)          # limiar 15, folga 5 → rearma em 20
+    assert t.observe(snap("OB DISCHRG", charge="14")) == ["LOW_BATTERY"]
+    assert t.observe(snap("OB DISCHRG", charge="16")) == []      # dentro da folga: não rearma
+    assert t.observe(snap("OB DISCHRG", charge="14")) == []      # e por isso não repete
+    assert t.observe(snap("OB DISCHRG", charge="20")) == []      # cessou: rearmado, sem evento
+    assert t.observe(snap("OB DISCHRG", charge="13")) == ["LOW_BATTERY"]   # 2.ª queda alerta
+    # leitura ausente não rearma
+    assert t.observe(sem_carga("OB DISCHRG")) == []
+    assert t.observe(snap("OB DISCHRG", charge="13")) == []
+
+
 def test_comm_lost_debounced_and_restored():
     clock = FakeClock()
     t = TransitionTracker(make_cfg(), clock)
