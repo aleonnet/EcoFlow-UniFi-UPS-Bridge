@@ -126,6 +126,55 @@ def test_loop_feeds_every_plugin_and_health_lists_both(rig):
     assert ids == ["udr7", "fake"]
 
 
+def test_health_lists_devices_before_first_poll(tmp_path, monkeypatch):
+    """O health publica os dispositivos ANTES da primeira leitura do UPS.
+
+    A asserção corre dentro do `poll_once` monkeypatchado, na 1.ª chamada: nesse
+    instante nenhum tick rodou e nenhum caminho de falha passou, então a lista só
+    pode ter vindo da linha do boot. Sem ela, o app subia com o River desligado
+    dizendo "nenhum dispositivo protegido" (medido no Mac mini).
+    """
+    class Terminador(BaseException):     # BaseException: nenhum `except Exception` a apara
+        pass
+
+    visto = {}
+
+    class Servidor:
+        def __init__(self, cfg, shared, *a, **k):
+            visto["shared"] = shared
+
+        def start_in_thread(self):
+            return None
+
+    def olha_e_para(_cfg):
+        visto["health"] = visto["shared"].health()
+        raise Terminador()
+
+    from river_unifi_bridge import api as api_mod
+
+    cfg = make_cfg()
+    cfg.ui_api_enabled = True
+    monkeypatch.setattr(api_mod, "ApiServer", Servidor)
+    monkeypatch.setattr(service, "poll_once", olha_e_para)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+    plugins = visto["health"]["plugins"]
+    assert [p["id"] for p in plugins] == ["udr7"]
+    assert visto["health"]["udr7"] == plugins[0]["state"]
+
+
+def test_health_keeps_devices_when_the_ups_goes_quiet(rig):
+    """A falha de leitura não apaga a lista: ela é configuração, não telemetria."""
+    _process_snapshot(sim_snap(), rig["tracker"], rig["plugins"], rig["shared"], rig["history"])
+    assert len(rig["shared"].health()["plugins"]) == 1
+    _handle_poll_failure(NutError("upsd caiu"), rig["tracker"], rig["plugins"],
+                         rig["shared"], rig["history"])
+    health = rig["shared"].health()
+    assert [p["id"] for p in health["plugins"]] == ["udr7"]
+    assert health["nut"] == "falha"
+
+
 def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):
     """run_loop constrói o REGISTRO, com a config e o diretório de estado certos.
 

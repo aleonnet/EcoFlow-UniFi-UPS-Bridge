@@ -372,6 +372,20 @@ def test_status_carries_name_with_fallback(paths, key_file):
     assert rig.policy.status()["name"] == "UDR7"
 
 
+def test_status_before_first_tick_never_says_dry_run_when_armed(paths, key_file):
+    """Sem nenhum tick, o estado publicado tem de ser verdadeiro.
+
+    Ligada e sem ensaio = armada e não verificada. Dizer "dry_run" aí seria
+    afirmar ensaio para uma instância capaz de desligar o aparelho de verdade.
+    """
+    armada = Rig(paths, armed_overrides(key_file, protect_dry_run=False))
+    assert armada.policy.status()["state"] == "armado_nao_verificado"
+    ensaio = Rig(paths, armed_overrides(key_file, protect_dry_run=True))
+    assert ensaio.policy.status()["state"] == "dry_run"
+    desligada = Rig(paths, armed_overrides(key_file, protect_udr7=False))
+    assert desligada.policy.status()["state"] == "desabilitado"
+
+
 def test_status_keys_match_the_fixture(paths, key_file):
     """A fixture health_udr7.json e o status() real não podem divergir em CHAVES.
 

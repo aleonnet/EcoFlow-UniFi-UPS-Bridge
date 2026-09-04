@@ -198,6 +198,14 @@ cena_mutacao S4v src/river_unifi_bridge/api.py \
 cena_mutacao S4u src/river_unifi_bridge/protect.py 'os.chmod(tmp, 0o600)' 'os.chmod(tmp, 0o644)' \
     tests/unit/test_devices.py::test_store_is_private_0600
 
+# S4y — o health tem de listar os dispositivos ANTES da primeira leitura do UPS.
+# Sem a linha do boot, o app e a contagem do instalador dizem "nenhum dispositivo
+# protegido" enquanto o River estiver desligado (medido no Mac mini, 2026-09-03).
+cena_mutacao S4y src/river_unifi_bridge/service.py \
+    'shared.set_plugins(plugin_statuses(plugins))  # desde o boot' \
+    'pass  # desde o boot' \
+    tests/unit/test_service_loop.py::test_health_lists_devices_before_first_poll
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

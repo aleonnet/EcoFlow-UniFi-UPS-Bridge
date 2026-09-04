@@ -156,6 +156,10 @@ def _handle_poll_failure(exc: Exception, tracker, plugins, shared, history) -> N
     _audit_plugins(plugins)
     if shared is not None:
         shared.record_failure(str(exc))
+        # A lista de dispositivos é CONFIGURAÇÃO: ela não some porque o UPS calou.
+        # Sem esta linha, uma queda do NUT esvaziava o `plugins` do health e o app
+        # (e a contagem do instalador) passavam a dizer "nenhum dispositivo".
+        shared.set_plugins(plugin_statuses(plugins))  # mantém na falha
 
 
 def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> None:
@@ -235,6 +239,10 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
             _log("ERROR", "parada_deliberada", reason="API local não subiu após 3 tentativas")
             return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
         _log("INFO", "api_started", port=cfg.ui_api_port)
+        # O health nasce com os dispositivos: antes desta linha a lista só existia
+        # depois da 1.ª leitura boa do UPS, e o app subia dizendo "nenhum
+        # dispositivo protegido" com o River desligado (medido no Mac mini).
+        shared.set_plugins(plugin_statuses(plugins))  # desde o boot
 
     while True:
         try:

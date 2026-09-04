@@ -744,7 +744,15 @@ class ProtectionPolicy:
         pc = self._holder.get()
         with self._lock:
             bits = self._last_snapshot_bits
-            state = self._last_state or ("desabilitado" if not pc.protect_udr7 else "dry_run")
+            # Antes do 1.º tick não há estado medido. O fallback tem de dizer a
+            # verdade: uma instância LIGADA e sem ensaio está armada e ainda não
+            # verificada — dizer "dry_run" aí seria afirmar ensaio para quem pode
+            # desligar o aparelho de verdade.
+            state = self._last_state or (
+                "desabilitado" if not pc.protect_udr7
+                else "dry_run" if pc.protect_dry_run
+                else "armado_nao_verificado"
+            )
             return {
                 "state": state,
                 # O nome que o usuário deu ao dispositivo. Vazio (PUT "") grava vazio
