@@ -541,9 +541,6 @@ class ProtectionPolicy:
         out: list[str] = []
         if pc.udr7_arm_allowed:
             out.append("lock_open")
-        charge_low = getattr(snap, "battery_charge_low_percent", None) if snap is not None else None
-        if charge_low is not None and pc.udr7_cutoff_percent > 0 and int(charge_low) != pc.udr7_cutoff_percent:
-            out.append("cutoff_diverges")
         if pc.armed:
             if snap is not None and getattr(snap, "charge_percent", None) is None:
                 out.append("charge_missing")

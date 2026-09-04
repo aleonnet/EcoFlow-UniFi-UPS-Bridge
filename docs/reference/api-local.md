@@ -9,7 +9,7 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/v1/version` | `{"version": "0.4.0"}` |
+| GET | `/v1/version` | `{"version": "0.5.0"}` |
 | GET | `/v1/state` | snapshot corrente (nunca valores inventados; `null` honesto) |
 | GET | `/v1/events` | SSE: `event: state` e `event: event` (bridge + eventos de dispositivo; estes levam `device` e `device_name` no payload). Desde a 0.4.0 cada evento leva `seq`, um número que só cresce: o servidor entrega a partir do último `seq` enviado, então a fila cheia (100) deixou de congelar a entrega no centésimo evento, e o app usa o `seq` como identidade da linha |
 | GET | `/v1/events/log?from=&to=&types=&limit=&device=` | histórico persistido; `device` filtra pelo id da instância; cada linha traz `device` (`null` para eventos do bridge e para os gravados antes da 0.3.0) |
@@ -24,6 +24,10 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 | GET | `/v1/devices/{id}` | `{"device": <instância>}` |
 | PUT | `/v1/devices/{id}` | `{name?, enabled?, dry_run?, fields?}` (tudo opcional; `type` e `id` imutáveis) → 200 `{"device": <instância>}` |
 | DELETE | `/v1/devices/{id}` | 204; apaga `<id>_armed.json` e `<id>_runtime.json`, mantém `<id>_known_hosts` |
+| GET | `/v1/river/cabo` | quem está com o River: `{"lendo": <bool\|null>, "pausado": <bool>, "motivo": <texto\|null>}`. `lendo: null` = este serviço não cuida do leitor |
+| POST | `/v1/river/cabo` | `{"acao": "liberar"\|"retomar"}` → o mesmo objeto. `liberar` para o leitor e o servidor do no-break, para que o aplicativo da EcoFlow consiga abrir o aparelho (a interface de no-break aceita **um** leitor por vez); `retomar` os traz de volta |
+| POST | `/v1/river/desligar` | desliga o **próprio River**, cortando a energia de tudo o que está nele. Três cercas: `RIVER_POWEROFF_ALLOWED` aberta no arquivo do serviço (a API nunca a abre), nenhuma proteção armada, e a confirmação da tela. A trava do próprio driver (`driver.flag.allow_killpower`) é aberta pelo tempo do comando e fechada num `finally` |
+| PUT | `/v1/river/aparelho` | `{"battery_charge_low": 0..50}` → grava `battery.charge.low` no aparelho e **confere lendo de volta**; devolve `{"battery_charge_low": <valor lido de volta do aparelho>}`. É o "Low battery reminder" do aplicativo deles: medido no ato em 2026-09-04, o próprio driver o descreve como *"Remaining battery level when UPS switches to LB (percent)"* — é o nível em que o aparelho **avisa**, não o limite físico de descarga (esse fica no aplicativo deles, de 0 % a 100 %, e o no-break não o expõe) |
 
 ## A instância (`<instância>`)
 
@@ -87,6 +91,19 @@ procura a porta e só aceita o aparelho cuja série bate com a que o no-break in
 | 501 | `sem_loja` | serviço rodando sem loja de instâncias (só em `--once`) |
 | 400 | `validacao` (em `/v1/config`) | valor **vazio** em chave numérica ou booleana: recusado com `"<CHAVE>: valor vazio"`. Antes o vazio era gravado a quente e o ciclo seguinte comparava texto com número, derrubando o serviço |
 | 500 | `arquivo_env` | não foi possível gravar o arquivo de configuração do serviço; **nada foi aplicado** |
+
+## Recusas das rotas do River (0.5.0)
+
+| Status | `motivo` | Quando |
+|---|---|---|
+| 409 | `cabo_emprestado` | armar qualquer proteção com o River emprestado ao aplicativo da EcoFlow: sem ler bateria, armar é armar às cegas. **Desarmar continua sempre aceito** |
+| 409 | `armado_emprestimo` | emprestar o cabo com alguma proteção armada (o serviço ficaria sem ver a queda) |
+| 409 | `armado_desligamento` | desligar o River com alguma proteção armada (duas ordens de desligamento ao mesmo tempo) |
+| 409 | `desligamento_bloqueado` | a trava do desligamento está fechada no arquivo do serviço |
+| 409 | `sem_conta_do_aparelho` | o serviço não tem a conta que manda no aparelho (o instalador a cria em `upsd.users` e guarda a senha em `nut-admin.token`, 0600, no diretório de estado) |
+| 501 | `sem_supervisor` | este serviço não cuida do leitor do River (`RIVER_NUT_MANAGED` desligada) |
+| 502 | `aparelho_recusou` | o servidor do no-break respondeu recusa; `erro` traz o motivo em português |
+| 502 | `sem_servidor` | não foi possível falar com o leitor do River |
 
 Regras de armamento (qualquer tipo): armar = `enabled: true` + `dry_run: false`; exige trava
 global aberta, snapshot com `comm_ok`, fonte não sintética e serial da leitura igual ao serial

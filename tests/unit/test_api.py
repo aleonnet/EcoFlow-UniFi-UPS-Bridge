@@ -977,7 +977,9 @@ async def test_lending_the_cable_is_refused_while_a_protection_is_armed(unlocked
 
     resp = await c.post("/v1/river/cabo", json={"acao": "liberar"}, headers=c.auth)
     assert resp.status == 409
-    assert (await resp.json())["motivo"] == "armado"
+    # Motivo próprio: a tela precisa dizer POR QUE emprestar o cabo é recusado
+    # agora, e não repetir a frase das rotas de configuração.
+    assert (await resp.json())["motivo"] == "armado_emprestimo"
     assert srv.supervisor.acoes == []          # nada foi tocado
 
 
@@ -998,15 +1000,34 @@ async def test_turning_the_river_off_is_refused_while_a_protection_is_armed(unlo
     status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
     assert status == 200
     resp = await c.post("/v1/river/desligar", headers=c.auth)
-    assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
+    assert resp.status == 409 and (await resp.json())["motivo"] == "armado_desligamento"
+
+
+async def test_turning_the_river_off_needs_an_account_that_can_command(client, server):
+    """Sem conta de administração, a rota recusa com frase clara.
+
+    Ela era testada só contra dublês e, numa instalação limpa, tentava falar com
+    o servidor do no-break usando senha vazia — recebia "acesso negado" e a tela
+    mostrava 502 (revisão fria da 0.5.0).
+    """
+    server.cfg.river_poweroff_allowed = True
+    resp = await client.post("/v1/river/desligar", headers=client.auth)
+    assert resp.status == 409
+    corpo = await resp.json()
+    assert corpo["motivo"] == "sem_conta_do_aparelho"
+    assert "Rode a instalação" in corpo["erro"]
 
 
 async def test_turning_the_river_off_sends_the_command_and_records_it(client, server, monkeypatch):
-    """Com a trava aberta e nada armado: manda, registra e diz que mandou."""
+    """Com a trava aberta e nada armado: manda, registra e diz que mandou.
+
+    E FECHA a trava do driver ao sair, sempre.
+    """
     from river_unifi_bridge import river_cmd
 
     enviados = []
     server.cfg.river_poweroff_allowed = True
+    monkeypatch.setenv("RUB_NUT_PASSWORD", "conta-de-teste")
     monkeypatch.setattr(river_cmd, "gravar_variavel",
                         lambda alvo, nome, valor, **k: enviados.append((nome, valor)))
     monkeypatch.setattr(river_cmd, "mandar_comando",
@@ -1014,7 +1035,12 @@ async def test_turning_the_river_off_sends_the_command_and_records_it(client, se
 
     resp = await client.post("/v1/river/desligar", headers=client.auth)
     assert resp.status == 200
-    assert enviados == [("driver.flag.allow_killpower", "1"), ("comando", "driver.killpower")]
+    # A trava do driver abre para o comando e FECHA em seguida: deixá-la aberta
+    # tornaria o aparelho desligável por qualquer cliente, com as travas do dono
+    # fechadas e ele sem saber.
+    assert enviados == [("driver.flag.allow_killpower", "1"),
+                        ("comando", "driver.killpower"),
+                        ("driver.flag.allow_killpower", "0")]
     assert [e["event"] for e in server.state.events()] == ["RIVER_POWEROFF_SENT"]
 
 
@@ -1022,7 +1048,10 @@ async def test_a_device_that_refuses_the_shutdown_is_reported_in_portuguese(clie
     from river_unifi_bridge import river_cmd
 
     server.cfg.river_poweroff_allowed = True
-    monkeypatch.setattr(river_cmd, "gravar_variavel", lambda *a, **k: None)
+    monkeypatch.setenv("RUB_NUT_PASSWORD", "conta-de-teste")
+    fechou = []
+    monkeypatch.setattr(river_cmd, "gravar_variavel",
+                        lambda alvo, nome, valor, **k: fechou.append((nome, valor)))
 
     def recusa(*_a, **_k):
         raise river_cmd.RiverCmdError("este aparelho não aceita esse comando")
@@ -1034,11 +1063,14 @@ async def test_a_device_that_refuses_the_shutdown_is_reported_in_portuguese(clie
     assert corpo["motivo"] == "aparelho_recusou"
     assert "não aceita" in corpo["erro"]
     assert server.state.events() == []          # nada registrado: nada aconteceu
+    # E MESMO no erro a trava do driver volta a fechar.
+    assert fechou[-1] == ("driver.flag.allow_killpower", "0")
 
 
 async def test_the_device_low_battery_reminder_is_written_and_read_back(client, monkeypatch):
     from river_unifi_bridge import river_cmd
 
+    monkeypatch.setenv("RUB_NUT_PASSWORD", "conta-de-teste")
     gravados = []
     monkeypatch.setattr(river_cmd, "gravar_variavel",
                         lambda alvo, nome, valor, **k: gravados.append((nome, valor)))
@@ -1060,3 +1092,32 @@ async def test_a_reminder_out_of_range_is_refused_before_touching_the_device(cli
         resp = await client.put("/v1/river/aparelho", json={"battery_charge_low": valor},
                                 headers=client.auth)
         assert resp.status == 400
+
+
+async def test_arming_is_refused_while_the_cable_is_lent(unlocked):
+    """Armar com o River na mão do outro aplicativo é armar às cegas.
+
+    A leitura antiga ainda parece boa por alguns segundos depois do empréstimo —
+    é essa janela, entre um ciclo do laço e o seguinte, que esta cerca fecha.
+    """
+    srv, c = unlocked
+    srv.supervisor = SupervisorFalso()
+    srv.state.update_snapshot(REAL)
+    srv.supervisor.pausar("empréstimo")
+
+    status, corpo = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 409 and corpo["motivo"] == "cabo_emprestado"
+    assert not _os.path.exists(srv.armed_path)
+
+
+async def test_disarming_is_never_refused_by_the_lent_cable(unlocked):
+    """O botão de parada vale sempre — inclusive com o cabo emprestado."""
+    srv, c = unlocked
+    srv.supervisor = SupervisorFalso()
+    srv.state.update_snapshot(REAL)
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200 and _os.path.exists(srv.armed_path)
+
+    srv.supervisor.pausar("empréstimo")
+    status, _ = await _put(c, {"PROTECT_DRY_RUN": "1"})
+    assert status == 200 and not _os.path.exists(srv.armed_path)

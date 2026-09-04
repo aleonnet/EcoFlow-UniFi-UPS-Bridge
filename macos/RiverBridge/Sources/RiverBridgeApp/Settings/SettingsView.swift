@@ -55,6 +55,10 @@ struct SettingsView: View {
     // fraca dele, e os dois diálogos de confirmação.
     @State private var estadoDoCabo: EstadoDoCabo?
     @State private var avisoBateriaAparelho: Int?
+    // O que o dono arrastou, ainda não enviado. Sem isto, cada passo do
+    // arrastar virava uma gravação no aparelho — dezenas de idas ao River para
+    // uma única mudança (revisão fria da 0.5.0).
+    @State private var avisoEditado: Int?
     @State private var confirmacaoRiver: RiverConfirmation.Ato?
     @State private var riverFeedback: String?
     @State private var riverBaseline: [String: String] = [:]
@@ -128,7 +132,9 @@ struct SettingsView: View {
         guard let endpoint = ApiEndpoint.discover() else { return }
         do {
             let atual = try await APIClient(endpoint: endpoint).riverAvisoBateriaBaixa(porcento)
+            // O que vale na tela é o que o APARELHO devolveu, não o que foi pedido.
             if let atual, let n = Int(atual) { avisoBateriaAparelho = n }
+            avisoEditado = nil
             riverFeedback = nil
         } catch let APIError.badStatus(_, body) {
             riverFeedback = ProtectionRefusal.text(body)
@@ -311,14 +317,24 @@ struct SettingsView: View {
                         SettingsRows.sliderRow(
                             "bell.badge", L10n.t("Aviso de bateria fraca do aparelho",
                                                  "Device low-battery reminder"),
-                            value: Binding(get: { aviso },
-                                           set: { novo in
-                                               avisoBateriaAparelho = novo
-                                               Task { await salvarAvisoDoAparelho(novo) }
-                                           }),
+                            value: Binding(get: { avisoEditado ?? aviso },
+                                           set: { avisoEditado = $0 }),
                             range: 0...50, unit: "%",
                             zeroLabel: L10n.t("desligado", "off"), accent: accent,
                             estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
+                        // Só vai ao aparelho quando o dono manda: o mesmo molde
+                        // da linha do corte, logo acima.
+                        if let novo = avisoEditado, novo != aviso {
+                            HStack {
+                                Text(L10n.t("Gravado no próprio River.", "Written into the River itself."))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Button(L10n.t("Salvar", "Save")) {
+                                    Task { await salvarAvisoDoAparelho(novo) }
+                                }
+                                .buttonStyle(.glassProminent).tint(accent)
+                            }
+                        }
                     }
                     if let cabo = estadoDoCabo, cabo.lendo != nil {
                         SettingsRows.divider

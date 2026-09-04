@@ -45,7 +45,7 @@
 # Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.4.1"
+VERSAO="0.5.0"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
@@ -411,6 +411,68 @@ escreve_se_faltar() {   # 1=caminho 2=modo 3=conteúdo
   return 0
 }
 
+# A conta com que o NOSSO serviço manda no River (mudar o lembrete de bateria
+# baixa, desligar o aparelho). É diferente da conta de leitura: aquela é
+# `upsmon secondary` e o servidor do no-break lhe recusa qualquer comando.
+#
+# A senha nasce aqui, aleatória, e mora em DOIS lugares que têm de concordar: a
+# conta no `upsd.users` e um arquivo 0600 do diretório de estado, que só o
+# serviço lê. Fora do `.env` de propósito — a rota de configuração devolve o
+# `.env` inteiro para o aplicativo.
+garantir_conta_do_aparelho() {
+  local arquivo="$NUT_ETC/upsd.users" ficha="$STATE_DIR/nut-admin.token" senha=""
+  # Conta já existente manda: a senha dela é a verdade, e a ficha é reescrita a
+  # partir dela. Gerar outra deixaria os dois lados divergentes, e o serviço
+  # ouviria "acesso negado" sem ninguém entender por quê.
+  if [ -f "$arquivo" ] && grep -q '^\[riverbridge\]' "$arquivo" 2>/dev/null; then
+    senha="$(awk '/^\[riverbridge\]/{d=1;next} /^\[/{d=0}
+                  d && tolower($0) ~ /^[[:space:]]*password[[:space:]]*=/ {
+                    sub(/^[^=]*=[[:space:]]*/, "", $0); gsub(/^"|"$/, "", $0); print; exit }' "$arquivo")"
+    if [ -z "$senha" ]; then
+      # Seção existe e a senha não é legível: acrescentar outra deixaria duas
+      # contas com o mesmo nome e a ficha guardando a que o servidor não usa.
+      nota "conta do aparelho: a seção [riverbridge] existe em $arquivo mas não consegui ler a senha; ajuste-a à mão"
+      return 1
+    fi
+  fi
+  if [ -z "$senha" ]; then
+    senha="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+    man_set "file:$arquivo#riverbridge" pending
+    cat >> "$arquivo" <<EOF
+
+# Conta com que o SERVIÇO manda no aparelho (lembrete de bateria baixa,
+# desligamento). Senha gerada na instalação; o serviço a lê de
+# $ficha. Não a use noutro programa.
+[riverbridge]
+    password = $senha
+    actions = SET
+    instcmds = ALL
+EOF
+    chmod 0640 "$arquivo"
+    [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$arquivo" || true
+    man_set "file:$arquivo#riverbridge" created
+  fi
+  # ESTE é o primeiro ponto do instalador que cria o diretório de estado — e ele
+  # roda como root. Criado sem dono, o serviço (que roda como o usuário) não
+  # conseguia escrever nada lá e morria no primeiro ciclo, em máquina nova
+  # (revisão fria da 0.5.0, 2.ª rodada). 0700 porque guarda senha e estado.
+  if [ ! -d "$STATE_DIR" ]; then
+    mkdir -p "$STATE_DIR"
+    chmod 0700 "$STATE_DIR"
+    [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$STATE_DIR" || true
+  fi
+  # A ficha é reescrita sempre que divergir: é ela que o serviço lê.
+  if [ ! -f "$ficha" ] || [ "$(cat "$ficha" 2>/dev/null)" != "$senha" ]; then
+    man_set "file:$ficha" pending
+    printf '%s' "$senha" > "$ficha"
+    chmod 0600 "$ficha"
+    [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$ficha" || true
+    man_set "file:$ficha" created
+    return 0
+  fi
+  return 1
+}
+
 instalar_leitura_river() {
   jp nut checando
   local ups; ups="$(nut_ups_do_env)"; ups="${ups:-river-office}"
@@ -452,6 +514,7 @@ instalar_leitura_river() {
     password = river-local
     upsmon secondary
 " && mudou=1
+  garantir_conta_do_aparelho && mudou=1
 
   # Quem sobe, vigia e para o driver e o servidor do NUT é o NOSSO SERVIÇO
   # (src/river_unifi_bridge/nut_supervisor.py), não o launchd. Três motivos
@@ -473,10 +536,15 @@ instalar_leitura_river() {
     launchctl bootout "$DOMINIO/$rotulo" 2>/dev/null || true
     rm -f "$alvo"; man_set "plist:$alvo" removido; mudou=1
   done
-  # Leitor solto de uma sessão manual continua com o cabo, e o serviço não
-  # conseguiria abrir o aparelho. O filtro é o nome do NOSSO aparelho.
+  # Leitor solto continua com o cabo, e o serviço não conseguiria abrir o
+  # aparelho. São dois casos, e antes só o primeiro era coberto:
+  #   1. sessão manual ou instalação antiga, com o nome de fábrica do NUT;
+  #   2. FILHO ÓRFÃO de um serviço nosso que morreu sem levá-los junto — esse
+  #      nasce com o nome próprio do `exec -a` e escapava do filtro antigo.
   pkill -f "usbhid-ups -a $ups" 2>/dev/null || true
   pkill -f "upsd -u $SERVICE_USER -F" 2>/dev/null || true
+  pkill -f "river-bridge-ups -a $ups" 2>/dev/null || true
+  pkill -f "river-bridge-upsd -u $SERVICE_USER" 2>/dev/null || true
 
   if [ "$mudou" = "1" ]; then
     diga "leitura do River: configurada; quem a mantém no ar é o próprio serviço (aparelho $ups)"

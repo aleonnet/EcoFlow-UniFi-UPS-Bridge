@@ -51,6 +51,17 @@ def test_a_write_the_device_silently_ignores_is_reported():
         rc.gravar_variavel(ALVO, "battery.charge.low", "15", fala=fala)
 
 
+def test_a_write_that_cannot_be_confirmed_fails_closed():
+    """Não conseguir conferir não é ter conseguido gravar.
+
+    O leitor pode cair entre a escrita e a leitura de volta. Antes desta cerca a
+    tela dizia "salvo" com valor nenhum no aparelho (revisão fria da 0.5.0).
+    """
+    fala = conversa(["OK", "ERR DRIVER-NOT-CONNECTED"])
+    with pytest.raises(rc.RiverCmdError, match="não confirmou"):
+        rc.gravar_variavel(ALVO, "battery.charge.low", "15", fala=fala)
+
+
 def test_a_refused_write_speaks_portuguese():
     fala = conversa(["ERR READONLY"])
     with pytest.raises(rc.RiverCmdError, match="somente leitura"):

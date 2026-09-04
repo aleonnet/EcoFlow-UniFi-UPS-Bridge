@@ -8,7 +8,7 @@
 # as únicas remoções recursivas, após validar caminho literal e não-symlink.
 set -Eeuo pipefail
 
-VERSAO="0.4.1"
+VERSAO="0.5.0"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
 MANIFESTO="$PREFIX/manifest.tsv"
@@ -68,7 +68,12 @@ caminho_seguro() {  # $1=classe $2=caminho
     # A configuração do NUT que o instalador escreve (só quando ela não existia)
     # mora fora do prefixo, no diretório do Homebrew. Sem esta linha o desinstalador
     # recusaria remover o que ele próprio criou, e sairia com falha.
-    file|dir) case "$2" in "$PREFIX"/*) return 0 ;; "$NUT_ETC"/*) return 0 ;; esac ;;
+    # A ficha da senha da conta que manda no aparelho mora no diretório de
+    # estado (é lá que o serviço a lê). Sem esta linha, toda desinstalação
+    # feita depois de uma instalação 0.5.0 saía com falha e deixava a senha
+    # no disco (revisão fria da 0.5.0, 2.ª rodada).
+    file|dir) case "$2" in "$PREFIX"/*) return 0 ;; "$NUT_ETC"/*) return 0 ;;
+                 "$STATE_DIR"/nut-admin.token) return 0 ;; esac ;;
   esac
   return 1
 }

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -334,81 +335,96 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     if not once and cfg.river_nut_managed:
         supervisor = NutSupervisor(cfg.nut_ups, log=_log)
         supervisor.iniciar()
-    if not once and cfg.ui_api_enabled:
-        # Lazy import: aiohttp only loads when the API is actually enabled.
-        from .api import ApiServer
-        from .history import HistoryStore
-        from .state import SharedState
+    # O `finally` abaixo é o que impede leitor órfão: o launchd manda SIGTERM ao
+    # atualizar ou ao desligar a máquina (o `main` converte o sinal em
+    # interrupção), e sem ele os dois processos do no-break ficavam com o cabo.
+    # Tudo o que vem depois de o leitor existir corre DENTRO do `try`: as
+    # saídas daqui até o laço (porta ocupada, histórico que não abre) voltavam
+    # sem passar pelo `finally` e deixavam os dois processos do no-break vivos,
+    # sem pai, COM O CABO — o serviço seguinte não conseguia abrir o aparelho
+    # (revisão fria da 0.5.0, 2.ª rodada: reproduzido com a porta tomada).
+    try:
+        if not once and cfg.ui_api_enabled:
+            # Lazy import: aiohttp only loads when the API is actually enabled.
+            from .api import ApiServer
+            from .history import HistoryStore
+            from .state import SharedState
 
-        shared = SharedState()
-        history = HistoryStore(
-            os.path.join(state_dir(), "history.sqlite"), cfg.history_retention_days,
-            on_error=_log,
-        )
-        api_server = ApiServer(
-            cfg, shared, history, env_path, restart_cb=restart_requested.set,
-            plugins=plugins, store=store, state_dir=state_dir(),
-            supervisor=supervisor,
-        )
-        # Bind failures (e.g. EADDRINUSE) get 3 attempts with backoff; a
-        # persistent failure is config-class → deliberate stop under launchd.
-        api_ok = False
-        for attempt in range(3):
+            shared = SharedState()
+            history = HistoryStore(
+                os.path.join(state_dir(), "history.sqlite"), cfg.history_retention_days,
+                on_error=_log,
+            )
+            api_server = ApiServer(
+                cfg, shared, history, env_path, restart_cb=restart_requested.set,
+                plugins=plugins, store=store, state_dir=state_dir(),
+                supervisor=supervisor,
+            )
+            # Bind failures (e.g. EADDRINUSE) get 3 attempts with backoff; a
+            # persistent failure is config-class → deliberate stop under launchd.
+            api_ok = False
+            for attempt in range(3):
+                try:
+                    api_server.start_in_thread()
+                    api_ok = True
+                    break
+                except Exception as exc:  # noqa: BLE001 — bind/loop startup errors
+                    _log("WARN", "api_start_failed", attempt=attempt + 1, reason=str(exc))
+                    time.sleep(2 * (attempt + 1))
+            if not api_ok:
+                _log("ERROR", "parada_deliberada", reason="API local não subiu após 3 tentativas")
+                return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
+            _log("INFO", "api_started", port=cfg.ui_api_port)
+            # O health nasce com os dispositivos: antes desta linha a lista só existia
+            # depois da 1.ª leitura boa do UPS, e o app subia dizendo "nenhum
+            # dispositivo protegido" com o River desligado (medido no Mac mini).
+            shared.set_plugins(plugin_statuses(plugins))  # desde o boot
+
+        while True:
             try:
-                api_server.start_in_thread()
-                api_ok = True
-                break
-            except Exception as exc:  # noqa: BLE001 — bind/loop startup errors
-                _log("WARN", "api_start_failed", attempt=attempt + 1, reason=str(exc))
-                time.sleep(2 * (attempt + 1))
-        if not api_ok:
-            _log("ERROR", "parada_deliberada", reason="API local não subiu após 3 tentativas")
-            return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
-        _log("INFO", "api_started", port=cfg.ui_api_port)
-        # O health nasce com os dispositivos: antes desta linha a lista só existia
-        # depois da 1.ª leitura boa do UPS, e o app subia dizendo "nenhum
-        # dispositivo protegido" com o River desligado (medido no Mac mini).
-        shared.set_plugins(plugin_statuses(plugins))  # desde o boot
-
-    while True:
-        try:
-            snap = poll_once(cfg)
-        except NutError as exc:
-            _handle_poll_failure(exc, tracker, plugins, shared, history)
-            if once:
-                _log("ERROR", "poll_failed", reason=str(exc))
-                return EXIT_CONNECTION
-        else:
-            # A PROTEÇÃO decide primeiro, com o que o no-break disse. Só depois a
-            # porta serial completa consumo e tomadas, e o estado é republicado.
-            # Ordem invertida, a leitura serial atrasaria em segundos o laço que
-            # decide desligar aparelhos (revisão fria, 2.ª rodada).
-            _process_snapshot(snap, tracker, plugins, shared, history)
-            _completa_pela_serial(snap, cfg)
-            if snap.serial_port_read and shared is not None:
-                shared.update_snapshot(snap.to_dict())
-                if history is not None:
-                    history.record_sample(snap.to_dict())
-            if once:
-                return EXIT_OK
-        # "Manter histórico: N dias" era só um número na tela: a limpeza existia e
-        # nunca era chamada. Roda no 1.º ciclo e a cada hora, e acompanha a
-        # configuração quando ela muda a quente.
-        # Leitor que morre e não volta é pior que leitor que nunca subiu: a tela
-        # continuaria com a última leitura e ninguém avisaria.
-        if supervisor is not None:
-            supervisor.vigiar()
-        if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:
-            last_prune = clock()
-            history.retention_days = cfg.history_retention_days
-            history.prune()  # retenção
-        if restart_requested.wait(timeout=cfg.poll_interval_seconds):
+                snap = poll_once(cfg)
+            except NutError as exc:
+                _handle_poll_failure(exc, tracker, plugins, shared, history)
+                if once:
+                    _log("ERROR", "poll_failed", reason=str(exc))
+                    return EXIT_CONNECTION
+            else:
+                # A PROTEÇÃO decide primeiro, com o que o no-break disse. Só depois a
+                # porta serial completa consumo e tomadas, e o estado é republicado.
+                # Ordem invertida, a leitura serial atrasaria em segundos o laço que
+                # decide desligar aparelhos (revisão fria, 2.ª rodada).
+                _process_snapshot(snap, tracker, plugins, shared, history)
+                _completa_pela_serial(snap, cfg)
+                if snap.serial_port_read and shared is not None:
+                    shared.update_snapshot(snap.to_dict())
+                    if history is not None:
+                        history.record_sample(snap.to_dict())
+                if once:
+                    return EXIT_OK
+            # "Manter histórico: N dias" era só um número na tela: a limpeza existia e
+            # nunca era chamada. Roda no 1.º ciclo e a cada hora, e acompanha a
+            # configuração quando ela muda a quente.
+            # Leitor que morre e não volta é pior que leitor que nunca subiu: a tela
+            # continuaria com a última leitura e ninguém avisaria.
             if supervisor is not None:
-                supervisor.encerrar()
-            # §7A.3 contract: deliberate restart exits 75; launchd
-            # (KeepAlive={SuccessfulExit: false}) relaunches us.
-            _log("INFO", "restart_requested", exit_code=EXIT_RESTART_REQUESTED)
-            return EXIT_RESTART_REQUESTED
+                supervisor.vigiar()
+            if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:
+                last_prune = clock()
+                history.retention_days = cfg.history_retention_days
+                history.prune()  # retenção
+            if restart_requested.wait(timeout=cfg.poll_interval_seconds):
+                # §7A.3 contract: deliberate restart exits 75; launchd
+                # (KeepAlive={SuccessfulExit: false}) relaunches us.
+                _log("INFO", "restart_requested", exit_code=EXIT_RESTART_REQUESTED)
+                return EXIT_RESTART_REQUESTED
+    finally:
+        if supervisor is not None:
+            supervisor.encerrar()
+
+
+def _sinal_de_termino(_sinal, _quadro) -> None:
+    """SIGTERM vira interrupção: o mesmo caminho de saída do Ctrl-C."""
+    raise KeyboardInterrupt
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -440,10 +456,16 @@ def main(argv: list[str] | None = None) -> int:
     for warning in cfg.warnings:
         _log("WARN", "config_warning", reason=warning)
 
+    # O launchd pede a saída com SIGTERM (ao atualizar, ao desligar a máquina).
+    # Sem tratá-lo, o processo morria na hora e os dois processos do NUT ficavam
+    # órfãos COM O CABO — o serviço seguinte não conseguia abrir o aparelho.
+    # Traduzido para interrupção, ele passa pelo `finally` do laço, que os leva
+    # junto.
+    signal.signal(signal.SIGTERM, _sinal_de_termino)
     try:
         return run_loop(cfg, once=args.once, env_path=args.env)
     except KeyboardInterrupt:
-        _log("INFO", "stopped", reason="interrompido pelo usuário")
+        _log("INFO", "stopped", reason="pedido de encerramento")
         return EXIT_OK
 
 

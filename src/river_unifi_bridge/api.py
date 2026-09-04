@@ -81,6 +81,12 @@ def _patch_e_desarme_puro(patch: dict, instancia) -> bool:
     return not (bool(ligado) and not bool(ensaio))
 
 
+def _sem_servidor_humano(exc: OSError) -> str:
+    """Falha de rede em português, sem número de sistema na tela do dono."""
+    return ("não consegui falar com o leitor do River. Ele pode estar parado, ou o "
+            "cabo emprestado ao aplicativo da EcoFlow.")
+
+
 def _empty_state(name: str, comm_ok: bool, last_error: str | None) -> dict:
     """Honest §7.3 shape when no snapshot exists yet: nulls, never invention."""
     return {
@@ -121,8 +127,15 @@ def _authorize(changes: dict, plugins: list, snapshot: dict | None,
     """
     file_only = sorted(set(changes) & FILE_ONLY_KEYS)
     if file_only:
+        # Cada trava tem o SEU nome: a de armamento libera a proteção; a de
+        # desligamento libera cortar a energia do River. Chamar as duas de
+        # "trava de armamento" mandava a pessoa procurar a linha errada.
+        qual = {
+            "UDR7_ARM_ALLOWED": "trava de armamento",
+            "RIVER_POWEROFF_ALLOWED": "trava do desligamento do River",
+        }.get(file_only[0], "trava do dono")
         return 400, "chave_somente_arquivo", (
-            f"{file_only[0]}: somente no arquivo de configuração do serviço (trava de armamento)")
+            f"{file_only[0]}: somente no arquivo de configuração do serviço ({qual})")
     for plugin in plugins:
         refusal = plugin.authorize(changes, snapshot, comm_ok)
         if refusal is not None:
@@ -202,10 +215,48 @@ class ApiServer:
     # -- o River como APARELHO: quem está com o cabo, e o que mandamos nele ---
 
     def _alvo_river(self):
+        """Com que conta falamos com o nosso servidor do no-break.
+
+        A senha mora num arquivo 0600 do diretório de estado, escrito pelo
+        instalador — nunca no `.env`, que a rota de configuração devolve inteiro
+        para o app. Sem o arquivo, as rotas de ação recusam com frase clara, em
+        vez de tentar com senha vazia e receber "acesso negado" (revisão fria).
+        """
         from .river_cmd import Alvo
+        senha = os.environ.get("RUB_NUT_PASSWORD")
+        if senha is None and self.state_dir:
+            try:
+                with open(os.path.join(self.state_dir, "nut-admin.token"), encoding="utf-8") as fh:
+                    senha = fh.read().strip()
+            except OSError:
+                senha = None
         return Alvo(ups=self.cfg.nut_ups, host=self.cfg.nut_host, porta=self.cfg.nut_port,
                     usuario=os.environ.get("RUB_NUT_USER", "riverbridge"),
-                    senha=os.environ.get("RUB_NUT_PASSWORD", ""))
+                    senha=senha or "")
+
+    def _cabo_emprestado(self, arma: bool) -> web.Response | None:
+        """Armar com o cabo na mão do outro aplicativo é armar às cegas.
+
+        Enquanto o River está emprestado, ninguém lê bateria nem autonomia aqui:
+        a última leitura ainda parece boa por alguns segundos, e é essa janela
+        que esta recusa fecha (revisão fria da 0.5.0). Desarmar continua sempre
+        permitido — o botão de parada nunca é recusado.
+        """
+        if not arma or self.supervisor is None:
+            return None
+        if not self.supervisor.estado().pausado_pelo_dono:
+            return None
+        return self._refuse(409, "cabo_emprestado",
+                            "o River está emprestado ao aplicativo da EcoFlow: não dá para "
+                            "armar sem ler a bateria. Retome o cabo primeiro.")
+
+    def _sem_conta_de_admin(self) -> web.Response | None:
+        """Recusa clara quando a conta que manda no aparelho não foi configurada."""
+        if self._alvo_river().senha:
+            return None
+        return self._refuse(409, "sem_conta_do_aparelho",
+                            "o serviço ainda não tem uma conta para mandar no River. "
+                            "Rode a instalação de novo para criá-la.")
 
     async def _h_river_cabo_get(self, _req: web.Request) -> web.Response:
         if self.supervisor is None:
@@ -232,12 +283,18 @@ class ApiServer:
         if acao == "liberar":
             # Com proteção armada, largar o cabo é ficar cego para a queda.
             if any(plugin.armed for plugin in self.plugins):
-                return self._refuse(409, "armado",
+                # Motivo PRÓPRIO, não o "armado" das rotas de configuração: o
+                # app traduz pelo motivo, e a frase de lá ("ligue o ensaio antes
+                # de mudar estes campos") não diz nada sobre emprestar o cabo.
+                return self._refuse(409, "armado_emprestimo",
                                     "há proteção armada: desligue-a (modo ensaio) antes de "
                                     "emprestar o cabo, senão o serviço fica sem ver a queda")
-            estado = self.supervisor.pausar("liberado pelo app")
+            # Fora do laço de eventos: parar os dois processos com educação leva
+            # até 10 s, e nesse tempo a API inteira (inclusive o fluxo de eventos
+            # do app) ficaria muda (revisão fria da 0.5.0, 2.ª rodada).
+            estado = await asyncio.to_thread(self.supervisor.pausar, "liberado pelo app")
         elif acao == "retomar":
-            estado = self.supervisor.retomar()
+            estado = await asyncio.to_thread(self.supervisor.retomar)
         else:
             return self._refuse(400, "validacao", "ação desconhecida: use liberar ou retomar")
         return web.json_response(estado.to_dict())
@@ -257,20 +314,50 @@ class ApiServer:
                                 "desligar o River está bloqueado no arquivo do serviço. "
                                 "Abra a trava e reinicie para poder usar este botão.")
         if any(plugin.armed for plugin in self.plugins):
-            return self._refuse(409, "armado",
+            return self._refuse(409, "armado_desligamento",
                                 "há proteção armada: desligue-a antes, para não haver duas "
                                 "ordens de desligamento ao mesmo tempo")
+        recusa = self._sem_conta_de_admin()
+        if recusa is not None:
+            return recusa
         alvo = self._alvo_river()
+        from .river_cmd import gravar_variavel
+
+        def conversa_com_o_aparelho() -> None:
+            """As três conversas de soquete, fora do laço de eventos.
+
+            Cada uma espera até 5 s; no laço, isso deixava a API muda justamente
+            enquanto o dono acompanha o desligamento na tela.
+            """
+            try:
+                # A trava do próprio driver fica aberta pelo TEMPO DO COMANDO e não
+                # um segundo a mais. Sem o `finally`, uma tentativa que falhasse
+                # deixava o aparelho desligável por qualquer cliente do no-break —
+                # com as duas travas do dono fechadas, e ele sem saber.
+                gravar_variavel(alvo, "driver.flag.allow_killpower", "1")
+                mandar_comando(alvo, "driver.killpower")
+            finally:
+                try:
+                    gravar_variavel(alvo, "driver.flag.allow_killpower", "0")
+                except (RiverCmdError, OSError) as exc:
+                    # Não é só registro: isto vai à linha do tempo do app, porque
+                    # o aparelho ficou desligável por qualquer programa desta
+                    # máquina e o dono precisa saber para reiniciar o leitor.
+                    log_json("ERROR", "killpower_flag_aberta", reason=str(exc)[:200])
+                    self.state.add_event("RIVER_KILLPOWER_FLAG_ABERTA", {
+                        "detail": "não consegui fechar a trava de desligamento do "
+                                  "leitor; reinicie o serviço"})
+                    if self.history is not None:
+                        self.history.record_event(
+                            "RIVER_KILLPOWER_FLAG_ABERTA",
+                            "não consegui fechar a trava de desligamento do leitor")
+
         try:
-            # A trava do próprio driver: sem ela o comando é recusado por desenho.
-            from .river_cmd import gravar_variavel
-            gravar_variavel(alvo, "driver.flag.allow_killpower", "1")
-            mandar_comando(alvo, "driver.killpower")
+            await asyncio.to_thread(conversa_com_o_aparelho)
         except RiverCmdError as exc:
             return self._refuse(502, "aparelho_recusou", str(exc))
         except OSError as exc:
-            return self._refuse(502, "sem_servidor",
-                                f"não alcancei o servidor do no-break: {exc}")
+            return self._refuse(502, "sem_servidor", _sem_servidor_humano(exc))
         self.state.add_event("RIVER_POWEROFF_SENT", {"detail": "enviado pelo app"})
         if self.history is not None:
             self.history.record_event("RIVER_POWEROFF_SENT", "enviado pelo app")
@@ -287,22 +374,28 @@ class ApiServer:
             return self._refuse(400, "validacao", "esperado um objeto com o ajuste")
         if "battery_charge_low" not in corpo:
             return self._refuse(400, "validacao",
-                                "único ajuste aceito por aqui: battery_charge_low")
+                                "o único ajuste do aparelho que esta versão muda é o aviso "
+                                "de bateria fraca")
         try:
             valor = int(corpo["battery_charge_low"])
         except (TypeError, ValueError):
             return self._refuse(400, "validacao", "o aviso de bateria fraca é um número")
         if not 0 <= valor <= 50:
             return self._refuse(400, "validacao", "o aviso de bateria fraca vai de 0 a 50")
+        recusa = self._sem_conta_de_admin()
+        if recusa is not None:
+            return recusa
         alvo = self._alvo_river()
-        try:
+        def grava_e_confere() -> str | None:
             gravar_variavel(alvo, "battery.charge.low", str(valor))
-            atual = ler_variavel(alvo, "battery.charge.low")
+            return ler_variavel(alvo, "battery.charge.low")
+
+        try:
+            atual = await asyncio.to_thread(grava_e_confere)
         except RiverCmdError as exc:
             return self._refuse(502, "aparelho_recusou", str(exc))
         except OSError as exc:
-            return self._refuse(502, "sem_servidor",
-                                f"não alcancei o servidor do no-break: {exc}")
+            return self._refuse(502, "sem_servidor", _sem_servidor_humano(exc))
         return web.json_response({"battery_charge_low": atual})
 
     # -- handlers ----------------------------------------------------------
@@ -419,6 +512,10 @@ class ApiServer:
         # Order is a fence: validate -> authorize -> write -> apply. A refusal never
         # leaves a trace in the .env file.
         _version, snapshot, comm_ok, _err = self.state.get()
+        recusa = self._cabo_emprestado(
+            parsed.get("PROTECT_UDR7") is True or parsed.get("PROTECT_DRY_RUN") is False)
+        if recusa is not None:
+            return recusa
         refusal = _authorize(parsed, self.plugins, snapshot, comm_ok)
         if refusal is not None:
             status, motivo, mensagem = refusal
@@ -627,6 +724,10 @@ class ApiServer:
                 and self.store.name_taken(instances, patch["name"], except_id=plugin.id):
             return self._refuse(409, "nome_duplicado", "já existe um dispositivo com este nome")
         _version, snapshot, comm_ok, _err = self.state.get()
+        recusa = self._cabo_emprestado(
+            patch.get("enabled") is True or patch.get("dry_run") is False)
+        if recusa is not None:
+            return recusa
         refusal = plugin.authorize_update(patch, snapshot, comm_ok)
         if refusal is not None:
             return self._refuse(*refusal)

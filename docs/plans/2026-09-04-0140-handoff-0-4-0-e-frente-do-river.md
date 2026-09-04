@@ -1,6 +1,6 @@
 # Handoff — 0.4.0 publicada e a frente do River aberta
 
-status: aceito
+status: superado por 2026-09-04-1140-handoff-0-5-0-o-servico-manda-no-river.md
 data: 2026-09-04 (madrugada)
 supera: `2026-09-03-1413-handoff-0-3-3-folhas-na-janela.md`
 

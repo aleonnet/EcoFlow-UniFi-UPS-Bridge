@@ -13,8 +13,29 @@ ok()   { printf '[OK]   %s\n' "$1"; }
 # gate escreve em prefixos de mentira; se algum ambiente esquecer o seam, ele
 # escreve AQUI — e a cena S22, no fim, acusa.
 NUT_REAL_ETC="${RUB_NUT_ETC_REAL:-/opt/homebrew/etc/nut}"
-impressao_nut_real() { ls -1 "$NUT_REAL_ETC" 2>/dev/null | sort | shasum -a 256 | cut -d" " -f1; }
+# O diretório de estado REAL do dono. O instalador escreve a ficha da conta do
+# aparelho aqui; uma cena sem RUB_STATE_DIR a escreveria na máquina de quem roda
+# o portão (a cena S23, no fim, acusa).
+ESTADO_REAL="${RUB_STATE_DIR_REAL:-$HOME/Library/Application Support/river-unifi-bridge}"
+impressao_estado_real() {
+  { ls -1 "$ESTADO_REAL" 2>/dev/null | sort
+    find "$ESTADO_REAL" -maxdepth 1 -type f 2>/dev/null | sort | while read -r arq; do
+      printf '%s  %s\n' "$(shasum -a 256 <"$arq" 2>/dev/null | cut -d' ' -f1)" "${arq##*/}"
+    done
+  } | shasum -a 256 | cut -d" " -f1
+}
+# Nomes E CONTEÚDO: a versão anterior só via a lista de arquivos, então uma cena
+# que reescrevesse `ups.conf` do dono passava batida (revisão fria da 0.5.0).
+# Arquivo ilegível entra com impressão vazia — estável entre as duas medições.
+impressao_nut_real() {
+  { ls -1 "$NUT_REAL_ETC" 2>/dev/null | sort
+    find "$NUT_REAL_ETC" -maxdepth 1 -type f 2>/dev/null | sort | while read -r arq; do
+      printf '%s  %s\n' "$(shasum -a 256 <"$arq" 2>/dev/null | cut -d' ' -f1)" "${arq##*/}"
+    done
+  } | shasum -a 256 | cut -d" " -f1
+}
 NUT_REAL_ANTES="$(impressao_nut_real)"
+ESTADO_REAL_ANTES="$(impressao_estado_real)"
 erro() { printf '[ERRO] %s\n' "$1"; FALHAS=$((FALHAS + 1)); }
 
 # S0 — interpretador exigido pela spec (>= 3.13)
@@ -318,17 +339,15 @@ cena_mutacao S4al src/river_unifi_bridge/api.py \
 # serviço deixaria de ver a bateria acabar justamente com a proteção ligada.
 cena_mutacao S4am src/river_unifi_bridge/api.py \
     'if any(plugin.armed for plugin in self.plugins):
-                return self._refuse(409, "armado",
-                                    "há proteção armada: desligue-a (modo ensaio) antes de "' \
+                # Motivo PRÓPRIO' \
     'if False:
-                return self._refuse(409, "armado",
-                                    "há proteção armada: desligue-a (modo ensaio) antes de "' \
+                # Motivo PRÓPRIO' \
     tests/unit/test_api.py::test_lending_the_cable_is_refused_while_a_protection_is_armed
 
 # S4an — gravação no aparelho que não volta na leitura seguinte NÃO aconteceu: o
 # River responde OK e ignora, e a tela mostraria um valor que o aparelho não tem.
 cena_mutacao S4an src/river_unifi_bridge/river_cmd.py \
-    'if de_volta is not None and de_volta.strip() != valor.strip():' \
+    'if de_volta.strip() != valor.strip():' \
     'if False:' \
     tests/unit/test_river_cmd.py::test_a_write_the_device_silently_ignores_is_reported
 
@@ -337,11 +356,73 @@ cena_mutacao S4an src/river_unifi_bridge/river_cmd.py \
 cena_mutacao S4ao src/river_unifi_bridge/nut_supervisor.py \
     'if self._pausado:
                 return
-            for nome, proc' \
+            caiu = False' \
     'if False:
                 return
-            for nome, proc' \
+            caiu = False' \
     tests/unit/test_nut_supervisor.py::test_pausing_frees_the_cable_and_does_not_resurrect
+
+# S4ap — gravação que não pode ser CONFERIDA falha fechada. O leitor pode cair
+# entre a escrita e a leitura de volta; sem isto a tela dizia "salvo" com valor
+# nenhum no aparelho.
+cena_mutacao S4ap src/river_unifi_bridge/river_cmd.py \
+    'if de_volta is None:' \
+    'if False:' \
+    tests/unit/test_river_cmd.py::test_a_write_that_cannot_be_confirmed_fails_closed
+
+# S4aq — leitor que não sobe (cabo solto) não pode virar tempestade de processos.
+# Medido na máquina do dono antes do recuo: 173 processos em 5min44s.
+cena_mutacao S4aq src/river_unifi_bridge/nut_supervisor.py \
+    'if self._clock() < self._proxima_tentativa:' \
+    'if False:' \
+    tests/unit/test_nut_supervisor.py::test_a_reader_that_never_comes_up_does_not_become_a_process_storm
+
+# S4ar — serviço que sai leva o leitor junto. Sem isto, o launchd manda SIGTERM
+# ao atualizar, o pai morre, e os dois processos do NUT ficam órfãos COM O CABO:
+# o serviço seguinte não consegue abrir o aparelho.
+cena_mutacao S4ar src/river_unifi_bridge/service.py \
+    '    finally:
+        if supervisor is not None:
+            supervisor.encerrar()' \
+    '    finally:
+        if False:
+            supervisor.encerrar()' \
+    tests/unit/test_service_loop.py::test_the_reader_is_taken_along_when_the_service_stops
+
+# S4as — armar com o cabo emprestado ao aplicativo da EcoFlow é armar às cegas: a
+# última leitura ainda parece boa por alguns segundos depois do empréstimo.
+cena_mutacao S4as src/river_unifi_bridge/api.py \
+    'if not self.supervisor.estado().pausado_pelo_dono:' \
+    'if True:' \
+    tests/unit/test_api.py::test_arming_is_refused_while_the_cable_is_lent
+
+# S4at — o serviço leva o leitor junto TAMBÉM quando ele para antes do laço
+# (porta ocupada, histórico que não abre). Sem isto, os dois processos do
+# no-break ficavam vivos, sem pai, com o cabo.
+# O mutante NÃO pode ser a remoção da parada deliberada: sem ela o laço roda para
+# sempre e o portão trava (aconteceu, 29 min). O defeito plantado é o `finally`
+# deixar de valer para a saída normal — que é exatamente o defeito de origem.
+cena_mutacao S4at src/river_unifi_bridge/service.py \
+    '    finally:
+        if supervisor is not None:' \
+    '    except BaseException:
+        if supervisor is not None:' \
+    tests/unit/test_service_loop.py::test_the_reader_is_taken_along_when_the_api_cannot_start
+
+# S4au — o recuo só zera quando o par SOBREVIVEU a uma volta inteira. Zerando no
+# lançamento, um servidor que morre sempre reiniciava o contador a cada volta:
+# 451 lançamentos por hora, sem recuo nenhum.
+cena_mutacao S4au src/river_unifi_bridge/nut_supervisor.py \
+    'elif self._de_pe():' \
+    'elif True:' \
+    tests/unit/test_nut_supervisor.py::test_a_server_that_never_survives_also_makes_the_backoff_grow
+
+# S4av — o daemon obedece à mesma costura do NUT que o instalador. Sem ela, uma
+# cena do portão lançava o leitor REAL contra o River do dono e tomava o cabo.
+cena_mutacao S4av src/river_unifi_bridge/nut_supervisor.py \
+    'self._prefixo = prefixo or os.environ.get("RUB_NUT_PREFIX") or PREFIXO_PADRAO' \
+    'self._prefixo = prefixo or PREFIXO_PADRAO' \
+    tests/unit/test_nut_supervisor.py::test_the_nut_seam_is_respected_by_the_daemon_too
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
@@ -412,7 +493,7 @@ chmod +x "$INST/bin/brew" "$INST/bin/launchctl"
 mkdir -p "$INST/nut/bin" "$INST/nut/sbin" "$INST/nutetc"
 printf '#!/bin/sh\nexit 0\n' > "$INST/nut/bin/usbhid-ups"; chmod +x "$INST/nut/bin/usbhid-ups"
 printf '#!/bin/sh\nexit 0\n' > "$INST/nut/sbin/upsd"; chmod +x "$INST/nut/sbin/upsd"
-INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1 RUB_NUT_PREFIX=$INST/nut RUB_NUT_ETC=$INST/nutetc RUB_API_PORT=35991"
+INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1 RUB_NUT_PREFIX=$INST/nut RUB_NUT_ETC=$INST/nutetc RUB_API_PORT=35991 RUB_STATE_DIR=$INST/state"
 
 # S8 — dry-run não escreve nada
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_dry.log 2>&1
@@ -458,6 +539,22 @@ if [ ! -f "$INST/ld/com.river.nut-driver.plist" ] \
 else
     erro "S9k leitura do River: sobrou registro de NUT ou a configuração mudou — cauda:"
     tail -5 /tmp/gate_inst_9k.log; ls -1 "$INST/ld" 2>/dev/null | head -5
+fi
+
+# S9m — a conta com que o SERVIÇO manda no aparelho existe, e a senha guardada
+# para ele é a MESMA da conta. Sem isto, as ações do aplicativo (lembrete de
+# bateria baixa, desligar o River) recebiam "acesso negado" do próprio servidor,
+# ou pior: eram tentadas com senha vazia. A ficha é 0600 porque é uma senha.
+# Refutada em 2026-09-04: com a gravação da ficha desligada, a cena fica vermelha.
+S9M_SENHA="$(awk '/^\[riverbridge\]/{d=1;next} /^\[/{d=0} d && $1=="password"{print $3; exit}' "$INST/nutetc/upsd.users" 2>/dev/null)"
+S9M_FICHA="$(cat "$INST/state/nut-admin.token" 2>/dev/null)"
+S9M_MODO="$(stat -f '%Lp' "$INST/state/nut-admin.token" 2>/dev/null)"
+if [ -n "$S9M_SENHA" ] && [ "$S9M_SENHA" = "$S9M_FICHA" ] && [ "$S9M_MODO" = "600" ] \
+   && grep -q '^    actions = SET$' "$INST/nutetc/upsd.users" \
+   && [ "$(grep -c '^\[riverbridge\]$' "$INST/nutetc/upsd.users")" = "1" ]; then
+    ok "S9m conta do aparelho: criada uma vez, senha e ficha 0600 concordando"
+else
+    erro "S9m conta do aparelho: conta=${S9M_SENHA:+ok} ficha=${S9M_FICHA:+ok} modo=${S9M_MODO:-ausente} seções=$(grep -c '^\[riverbridge\]$' "$INST/nutetc/upsd.users" 2>/dev/null)"
 fi
 
 # S9b — guarda pré-atualização (D12, 2026-09-03)# S9b — guarda pré-atualização (D12, 2026-09-03): serviço carregado + uma
@@ -659,14 +756,20 @@ fi
 # inclusive a si mesmo e o scripts/, e PRESERVA arquivo alheio.
 echo alheio > "$INST/prefix/arquivo-do-dono.txt"
 env $INSTALL_ENV "$INST/prefix/scripts/uninstall.sh" --confirm >/tmp/gate_inst_un.log 2>&1
-if [ -f "$INST/prefix/arquivo-do-dono.txt" ] \
+RC_UN=$?
+# O código de saída ENTRA na cena: a desinstalação recusava a ficha da senha do
+# aparelho (fora do prefixo) e saía 1, deixando a senha no disco — e a cena, que
+# só olhava arquivos do prefixo, continuava verde (revisão fria da 0.5.0).
+if [ "$RC_UN" = "0" ] && [ -f "$INST/prefix/arquivo-do-dono.txt" ] \
    && [ ! -d "$INST/prefix/src" ] && [ ! -d "$INST/prefix/venv" ] \
    && [ ! -e "$INST/prefix/scripts" ] \
+   && [ ! -e "$INST/state/nut-admin.token" ] \
    && [ ! -f "$INST/ld/com.river.unifi-bridge.plist" ] \
    && [ ! -f "$INST/ld/.carregado" ]; then
-    ok "S10 uninstall (cópia instalada): só o nosso saiu, scripts/ inclusive; o alheio ficou"
+    ok "S10 uninstall (cópia instalada): saiu 0, levou o nosso (ficha da senha inclusive), deixou o alheio"
 else
-    erro "S10 uninstall — estado final inesperado:"; find "$INST/prefix" "$INST/ld" 2>/dev/null | head -8
+    erro "S10 uninstall — rc=$RC_UN, estado final inesperado:"; find "$INST/prefix" "$INST/ld" "$INST/state" 2>/dev/null | head -8
+    tail -3 /tmp/gate_inst_un.log
 fi
 rm -rf "$INST"
 
@@ -1033,6 +1136,16 @@ if [ "$(impressao_nut_real)" = "$NUT_REAL_ANTES" ]; then
 else
     erro "S22 o gate MEXEU em $NUT_REAL_ETC — alguma cena está sem RUB_NUT_ETC:"
     ls -1 "$NUT_REAL_ETC" 2>/dev/null | grep -v sample | head -5
+fi
+
+# S23 — mesmo princípio para o diretório de estado do dono: o instalador passou a
+# escrever ali a ficha da conta que manda no aparelho, e uma cena sem o seam
+# deixaria essa senha na máquina de quem roda o portão.
+if [ "$(impressao_estado_real)" = "$ESTADO_REAL_ANTES" ]; then
+    ok "S23 diretório de estado real do dono intocado pelo gate"
+else
+    erro "S23 o gate MEXEU em $ESTADO_REAL — alguma cena está sem RUB_STATE_DIR:"
+    ls -1 "$ESTADO_REAL" 2>/dev/null | head -5
 fi
 
 # S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.

@@ -14,15 +14,16 @@ Como filhos do nosso serviço, os três problemas somem: sobem quando o serviço
 sobe (que é do sistema, logo no boot), param e voltam sem root, e nascem com nome
 próprio (`river-bridge-ups`), fora da mira daquele `pkill`.
 
-O nome próprio é dado por `exec -a` do shell — é o mesmo mecanismo que o NUT usa
-para rebatizar drivers, e o único portátil no macOS sem reescrever o binário.
+O nome próprio é dado por `exec -a` do shell, que escolhe o `argv[0]` do processo:
+medido em 2026-09-04, `ps -o comm=` mostra `river-bridge-ups` e o `pkill` pelo nome
+de fábrica não o alcança. É o caminho portátil no macOS sem reescrever o binário.
 """
 
 from __future__ import annotations
 
 import os
+import pwd
 import shutil
-import signal
 import subprocess
 import threading
 import time
@@ -35,6 +36,11 @@ NOME_SERVIDOR = "river-bridge-upsd"
 
 # Onde o Homebrew instala o NUT no Apple Silicon. Caminho estável (`opt`), não a
 # pasta com número de versão, que muda a cada atualização.
+#
+# A variável de ambiente é a MESMA costura que o instalador já respeitava. Sem ela
+# aqui, uma cena do portão que sobe o serviço de verdade lançava o `usbhid-ups`
+# REAL contra o River do dono e tomava o cabo dele — medido na revisão fria da
+# 0.5.0, com os processos registrados no diário do daemon descartável.
 PREFIXO_PADRAO = "/opt/homebrew/opt/nut"
 
 # Tempo que damos ao processo para sair com educação antes do sinal duro.
@@ -42,6 +48,22 @@ ESPERA_TERMINO = 5.0
 # Quanto esperar entre subir o driver e subir o servidor: o servidor procura o
 # soquete do driver e reclama se ele ainda não existe.
 ATRASO_SERVIDOR = 2.0
+# Recuo entre tentativas depois de um processo cair, em segundos.
+RECUO_BASE = 2.0
+RECUO_MAXIMO = 60.0
+
+
+def _usuario_do_processo() -> str:
+    """Quem somos, pelo sistema — nunca pela variável de ambiente.
+
+    Um serviço do sistema pode subir sem `USER` no ambiente, e a queda para
+    "nobody" fazia o leitor nascer com o dono errado (e a limpeza de órfão do
+    instalador, que filtra pelo nome do usuário, deixava de casar).
+    """
+    try:
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except KeyError:                                   # uid sem entrada: raro, mas existe
+        return os.environ.get("USER") or "nobody"
 
 
 @dataclass
@@ -64,11 +86,11 @@ class NutSupervisor:
     """Sobe, vigia e para o driver e o servidor do NUT como processos filhos."""
 
     def __init__(self, ups: str, *, usuario: str | None = None,
-                 prefixo: str = PREFIXO_PADRAO, log=None,
+                 prefixo: str | None = None, log=None,
                  spawn=subprocess.Popen, clock=time.monotonic) -> None:
         self._ups = ups
-        self._usuario = usuario or os.environ.get("USER") or "nobody"
-        self._prefixo = prefixo
+        self._usuario = usuario or _usuario_do_processo()
+        self._prefixo = prefixo or os.environ.get("RUB_NUT_PREFIX") or PREFIXO_PADRAO
         self._log = log or (lambda *_a, **_k: None)
         self._spawn = spawn
         self._clock = clock
@@ -76,6 +98,10 @@ class NutSupervisor:
         self._driver: subprocess.Popen | None = None
         self._servidor: subprocess.Popen | None = None
         self._pausado = False
+        # Recuo: um leitor que não sobe (cabo solto, aparelho desligado) não pode
+        # virar tempestade de processos. Cada falha seguida espera mais, até o teto.
+        self._falhas = 0
+        self._proxima_tentativa = float("-inf")
 
     # -- o que existe na máquina -------------------------------------------
     @property
@@ -99,6 +125,8 @@ class NutSupervisor:
         if not self.disponivel:
             self._log("WARN", "nut_ausente", prefixo=self._prefixo)
             return
+        if self._clock() < self._proxima_tentativa:
+            return
         if self._driver is None or self._driver.poll() is not None:
             self._driver = self._spawn(
                 self._comando(NOME_DRIVER, f"{self._prefixo}/bin/usbhid-ups",
@@ -106,7 +134,11 @@ class NutSupervisor:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             self._log("INFO", "nut_driver_iniciado", pid=self._driver.pid, ups=self._ups)
-            time.sleep(ATRASO_SERVIDOR)
+            # O servidor procura o soquete do driver e reclama se ele ainda não
+            # existe — então ele sobe na volta SEGUINTE do laço. Dormir aqui
+            # atrasava em 2 s cada ciclo da vigilância, justamente quando o
+            # leitor está falhando (revisão fria da 0.5.0).
+            return
         if self._servidor is None or self._servidor.poll() is not None:
             self._servidor = self._spawn(
                 self._comando(NOME_SERVIDOR, f"{self._prefixo}/sbin/upsd",
@@ -124,11 +156,42 @@ class NutSupervisor:
         with self._lock:
             if self._pausado:
                 return
-            for nome, proc in (("driver", self._driver), ("servidor", self._servidor)):
+            caiu = False
+            for nome in ("driver", "servidor"):
+                proc = self._driver if nome == "driver" else self._servidor
                 rc = proc.poll() if proc is not None else None
-                if proc is not None and rc is not None:
-                    self._log("WARN", "nut_processo_caiu", qual=nome, rc=rc)
+                if proc is None or rc is None:
+                    continue
+                self._log("WARN", "nut_processo_caiu", qual=nome, rc=rc)
+                # Soltar o morto é o que faz o recuo AVANÇAR. Guardando o
+                # cadáver, cada volta o via morrer de novo, contava outra falha
+                # e empurrava a próxima tentativa para depois do relógio — o
+                # leitor nunca mais voltava.
+                if nome == "driver":
+                    self._driver = None
+                else:
+                    self._servidor = None
+                caiu = True
+            if caiu:
+                # Uma falha por volta, não uma por processo: os dois caem juntos
+                # quando o cabo sai, e isso é UM problema, não dois.
+                self._falhas += 1
+                espera = min(RECUO_MAXIMO, RECUO_BASE * (2 ** min(self._falhas, 6)))
+                self._proxima_tentativa = self._clock() + espera
+            elif self._de_pe():
+                # O recuo zera quando o par SOBREVIVEU a uma volta inteira, não
+                # quando foi lançado. Zerando no lançamento, um servidor que
+                # morria sempre (outro `upsd` já na porta) reiniciava o contador
+                # a cada volta e o recuo nunca crescia: 451 lançamentos por hora,
+                # medido na revisão fria da 0.5.0.
+                self._falhas = 0
+                self._proxima_tentativa = float("-inf")
             self._subir_se_preciso()
+
+    def _de_pe(self) -> bool:
+        """Os dois processos vivos agora."""
+        return (self._driver is not None and self._driver.poll() is None
+                and self._servidor is not None and self._servidor.poll() is None)
 
     def _parar(self, proc: subprocess.Popen | None) -> None:
         if proc is None or proc.poll() is not None:

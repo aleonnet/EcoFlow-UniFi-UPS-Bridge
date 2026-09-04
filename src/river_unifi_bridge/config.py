@@ -248,7 +248,6 @@ HOT_RELOAD_KEYS = frozenset(
         "HISTORY_RETENTION_DAYS",
         "RIVER_SERIAL_ENABLED",
         "RIVER_SERIAL_PORT",
-        "RIVER_NUT_MANAGED",
         # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
         "PROTECT_UDR7",
         "PROTECT_DRY_RUN",

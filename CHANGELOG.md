@@ -9,6 +9,71 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-04
+
+O serviço deixa de só **ler** o River e passa a **mandar** nele, com cerca dupla em cada ato
+destrutivo, e deixa de depender da senha do dono para o dia a dia: quem cuida do leitor do
+no-break agora é o próprio serviço.
+
+### Adicionado
+- **O serviço cuida do leitor do River.** O driver e o servidor do no-break passam a ser
+  processos filhos do nosso serviço, com nome próprio. Resolve quatro coisas de uma vez:
+  sobem no reinício mesmo sem ninguém logado (o Mac mini ficou uma hora sem vigia em
+  2026-09-04 por causa disso), param e voltam **sem senha**, somem dos itens de segundo plano,
+  e escapam do `pkill -9 usbhid-ups` que o aplicativo da EcoFlow roda com poder de
+  administrador ao abrir. Liga e desliga pela chave `RIVER_NUT_MANAGED`, com reinício
+  do serviço.
+- **Botão para entregar o River ao aplicativo da EcoFlow, e para tomá-lo de volta.** A
+  interface de no-break do aparelho aceita um leitor por vez — a tela diz quem está com ele,
+  em vez de esconder a disputa. Rotas `GET`/`POST /v1/river/cabo`.
+- **Botão de desligar o próprio River**, com trava dupla: a chave `RIVER_POWEROFF_ALLOWED`,
+  que só muda no arquivo do serviço, e a confirmação na tela nomeando o que será cortado.
+  Rota `POST /v1/river/desligar`.
+- **Aviso de bateria fraca do aparelho, editável na tela** — o "Low battery reminder" do
+  aplicativo deles. Gravado no próprio River e conferido lendo de volta. Rota
+  `PUT /v1/river/aparelho`.
+- **Conta própria para mandar no aparelho.** O instalador cria a conta no servidor do no-break
+  e guarda a senha num arquivo 0600 do diretório de estado — fora do arquivo de configuração,
+  que a tela lê inteiro. A conta de leitura do aplicativo da EcoFlow continua existindo e
+  continua sem poder mandar o River desligar.
+
+### Removido
+- **O alerta que comparava o aviso de bateria fraca do aparelho com o corte físico
+  configurado.** Os dois números não são a mesma coisa — o aparelho não publica o corte
+  físico —, e agora que o aviso é editável pela nossa tela o alerta viraria acusação
+  falsa a cada mudança.
+
+### Corrigido
+- **Leitor que não sobe não vira mais tempestade de processos.** Com o cabo solto, o serviço
+  lançava dois processos a cada volta do laço, sem teto. Agora cada falha seguida espera mais,
+  até um minuto, e a tentativa continua acontecendo.
+- **Serviço que sai leva o leitor junto.** O pedido de encerramento do sistema virava morte
+  súbita, e os dois processos do no-break ficavam órfãos **com o cabo**: o serviço seguinte não
+  conseguia abrir o aparelho.
+- **A trava do próprio driver volta a fechar mesmo quando o desligamento falha.** Sem isso, uma
+  tentativa malsucedida deixava o River desligável por qualquer programa desta máquina, com as
+  duas travas do dono fechadas e ele sem saber.
+- **Gravação no aparelho que não pode ser conferida falha fechada.** Antes, um leitor que
+  caísse entre a escrita e a leitura de volta deixava a tela dizer "salvo" com valor nenhum.
+- **Armar deixou de ser possível com o cabo emprestado.** A leitura antiga ainda parece boa por
+  alguns segundos depois do empréstimo — armar ali é armar às cegas. Desarmar continua sempre
+  aceito.
+- **O aviso de bateria fraca só vai ao aparelho quando o dono manda.** Cada passo do arrastar
+  virava uma gravação no River.
+- **Cada trava é chamada pelo próprio nome** na recusa: a de armamento e a do desligamento do
+  River deixam de ser a mesma frase, que mandava a pessoa procurar a linha errada.
+- **A desinstalação voltou a terminar limpa.** Ela recusava remover a ficha da senha do
+  aparelho (que mora fora do prefixo), saía com falha e deixava a senha no disco.
+- **Instalação em máquina nova**: o diretório de estado passa a nascer com o dono certo.
+  Criado pelo administrador, o serviço não conseguia escrever nada nele e não subia.
+- **Nenhuma ação do River trava mais a tela.** Emprestar o cabo e desligar o aparelho
+  esperam segundos por processos e soquetes; isso corria no mesmo laço que atende o app,
+  que ficava mudo justamente enquanto o dono acompanha o ato.
+- **Se a trava de desligamento do leitor não fechar, isso vira aviso na linha do tempo**,
+  não só uma linha de registro que ninguém lê.
+- **A leitura do River deixa de ficar sem dono na atualização**: o instalador reconhece e
+  encerra também os leitores com o nome próprio novo, não só os de fábrica.
+
 ## [0.4.1] — 2026-09-04
 
 Consertos que a segunda rodada da revisão fria do diff encontrou, todos na mesma noite da

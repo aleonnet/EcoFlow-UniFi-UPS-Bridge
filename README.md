@@ -69,6 +69,8 @@ do usuário do serviço). O jeito normal de editar é pelo app → **Ajustes**; 
 | API local | `UI_API_ENABLED`, `UI_API_PORT`, `HISTORY_RETENTION_DAYS` | porta da API (35493) e retenção do histórico |
 | River (núcleo da proteção) | `UDR7_EXPECTED_SERIAL`, `UDR7_CUTOFF_PERCENT` | número de série esperado do RIVER e corte físico da saída — valem para todos os dispositivos protegidos (Ajustes → River) |
 | Trava de armamento | `UDR7_ARM_ALLOWED` | global e somente arquivo: o app nunca a muda |
+| O River como aparelho | `RIVER_SERIAL_ENABLED`, `RIVER_SERIAL_PORT`, `RIVER_NUT_MANAGED` | consumo por tomada pela porta serial do mesmo cabo, e quem cuida do leitor do no-break (por padrão, o próprio serviço) |
+| Trava do desligamento do River | `RIVER_POWEROFF_ALLOWED` | somente arquivo, como a de armamento: sem ela aberta, o botão de desligar o aparelho recusa |
 | Espelho da instância `udr7` | `PROTECT_UDR7`, `PROTECT_DRY_RUN`, `UDR7_*` restantes, `UDR7_NAME` | desde a 0.3.0 os dispositivos são instâncias em `devices.json`, editadas pelo app; este bloco é lido uma vez na migração e depois só espelha a instância `udr7` |
 
 Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige três passos seus

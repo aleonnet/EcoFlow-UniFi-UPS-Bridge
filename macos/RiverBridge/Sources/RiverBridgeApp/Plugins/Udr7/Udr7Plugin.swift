@@ -62,9 +62,7 @@ enum SshEngineText {
             case "charge_missing": parts.append(L10n.t("sem leitura de carga", "no charge reading"))
             case "margin_unknown": parts.append(L10n.t("margem desconhecida (taxa não medida)", "margin unknown (rate not measured)"))
             case "margin_short": parts.append(L10n.t("margem curta", "short margin"))
-            case "cutoff_diverges": parts.append(L10n.t("o corte que o River informa é diferente do configurado aqui",
-                                                         "the cutoff the River reports differs from the one set here"))
-            default: break        // aviso que este app ainda não conhece: melhor calar que exibir código
+                        default: break        // aviso que este app ainda não conhece: melhor calar que exibir código
             }
         }
         if let last = d.lastEvent {

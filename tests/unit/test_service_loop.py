@@ -487,3 +487,78 @@ def test_a_mute_machine_is_not_scanned_every_tick(rig):
     relogio["agora"] += service.VARREDURA_INTERVALO_SEGUNDOS
     service._completa_pela_serial(sim_snap(), cfg, ler=ler, clock=lambda: relogio["agora"])
     assert len(tentativas) == 2        # passada a janela, tenta de novo
+
+
+def test_the_reader_is_taken_along_when_the_service_stops(tmp_path, monkeypatch):
+    """Serviço que sai leva o leitor junto — senão ele fica órfão com o cabo.
+
+    O launchd pede a saída com SIGTERM ao atualizar ou ao desligar a máquina.
+    Sem isto, os dois processos do NUT continuavam segurando o River e o serviço
+    seguinte não conseguia abrir o aparelho (medido no Mac mini em 2026-09-04).
+    """
+    class Termino(BaseException):        # nenhum `except Exception` a apara
+        pass
+
+    def cai(_cfg):
+        raise Termino()
+
+    cfg = make_cfg()
+    cfg.river_nut_managed = True
+    monkeypatch.setattr(service, "poll_once", cai)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    criados = []
+    original = service.NutSupervisor
+
+    def registra(*a, **k):
+        s = original(*a, **k)
+        criados.append(s)
+        return s
+
+    monkeypatch.setattr(service, "NutSupervisor", registra)
+    with pytest.raises(Termino):
+        run_loop(cfg, once=False)
+    assert criados and criados[0].acoes[-1] == "encerrar"
+
+
+def test_sigterm_is_a_clean_exit_not_a_sudden_death(monkeypatch, tmp_path):
+    """O sinal do launchd tem de virar saída pelo caminho normal.
+
+    É o que faz o `finally` do laço rodar; morrer no sinal deixava o cabo preso.
+    """
+    env = tmp_path / "bridge.env"
+    env.write_text("RIVER_NAME=River\nNUT_HOST=127.0.0.1\nNUT_PORT=3493\nNUT_UPS=river\n")
+    instalado = {}
+    monkeypatch.setattr(service.signal, "signal",
+                        lambda sig, fn: instalado.setdefault(sig, fn))
+    monkeypatch.setattr(service, "run_loop", lambda *a, **k: service.EXIT_OK)
+    assert service.main(["--env", str(env)]) == service.EXIT_OK
+    with pytest.raises(KeyboardInterrupt):
+        instalado[service.signal.SIGTERM](service.signal.SIGTERM, None)
+
+
+def test_the_reader_is_taken_along_when_the_api_cannot_start(tmp_path, monkeypatch):
+    """Porta ocupada: o serviço para de propósito — e leva o leitor junto.
+
+    Este é o caminho que a 2.ª rodada da revisão fria reproduziu: a saída
+    acontecia ANTES do `finally`, e os dois processos do no-break ficavam vivos,
+    sem pai, com o cabo. O serviço seguinte não conseguia abrir o aparelho.
+    """
+    from river_unifi_bridge import api as api_mod
+
+    class ServidorQueNaoSobe:
+        def __init__(self, *_a, **_k): pass
+        def start_in_thread(self): raise OSError("porta ocupada")
+
+    cfg = make_cfg()
+    cfg.ui_api_enabled = True
+    cfg.river_nut_managed = True
+    monkeypatch.setattr(api_mod, "ApiServer", ServidorQueNaoSobe)
+    monkeypatch.setattr(service.time, "sleep", lambda _s: None)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    criados = []
+    original = service.NutSupervisor
+    monkeypatch.setattr(service, "NutSupervisor",
+                        lambda *a, **k: criados.append(original(*a, **k)) or criados[-1])
+
+    run_loop(cfg, once=False)
+    assert criados and criados[0].acoes[-1] == "encerrar"

@@ -38,6 +38,32 @@ enum ProtectionRefusal {
         case "dispositivo_ausente":
             return L10n.t("Este dispositivo já não existe no serviço — a lista será recarregada.",
                           "This device no longer exists in the service — the list will reload.")
+        // Rotas do River (0.5.0). Cada recusa tem MOTIVO próprio para caber numa
+        // frase que diz o que fazer — "armado" das rotas de configuração fala de
+        // campos e reinício, que não é o assunto aqui.
+        case "cabo_emprestado":
+            return L10n.t("O River está com o aplicativo da EcoFlow: sem ler a bateria não dá para armar. Retome o cabo primeiro.",
+                          "The River is with the EcoFlow app: without reading the battery there is no arming. Take the cable back first.")
+        case "armado_emprestimo":
+            return L10n.t("Há proteção armada. Enquanto ela estiver, entregar o River ao aplicativo da EcoFlow deixaria o serviço sem enxergar a queda de energia — ligue o modo ensaio antes.",
+                          "A protection is armed. While it is, handing the River to the EcoFlow app would leave the service blind to an outage — turn rehearsal on first.")
+        case "armado_desligamento":
+            return L10n.t("Há proteção armada. Desligue-a antes, para não haver duas ordens de desligamento ao mesmo tempo.",
+                          "A protection is armed. Turn it off first, so there are not two shutdown orders at once.")
+        case "desligamento_bloqueado":
+            return L10n.t("Desligar o River está bloqueado no arquivo do serviço. Abra a trava e reinicie para usar este botão (veja o guia).",
+                          "Turning the River off is blocked in the service file. Open the lock and restart to use this button (see the guide).")
+        case "sem_conta_do_aparelho":
+            return L10n.t("O serviço ainda não tem uma conta para mandar no River. Rode a instalação de novo para criá-la.",
+                          "The service does not have an account to command the River yet. Run the installation again to create it.")
+        case "sem_servidor":
+            return L10n.t("O leitor do River não está no ar — nada foi enviado ao aparelho.",
+                          "The River reader is not running — nothing was sent to the device.")
+        case "aparelho_recusou":
+            return L10n.t("O River recusou: ", "The River refused: ") + (parsed?.erro ?? "")
+        case "sem_supervisor":
+            return L10n.t("Este serviço não cuida do leitor do River — rode o instalador para atualizar.",
+                          "This service does not manage the River reader — run the installer to update.")
         case "sem_loja":
             return L10n.t("O serviço instalado não gerencia dispositivos — rode o instalador para atualizar.",
                           "The installed service does not manage devices — run the installer to update.")

@@ -53,10 +53,12 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | `guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md` | aceito | **Runbook** da proteção do UDR7 como instância: preparar, medir, armar em 3 passos, desarmar, recuperar, reverter para a 0.2.0 |
 | `guides/2026-09-03-1720-runbook-host-ssh.md` | aceito | **Runbook** do tipo "Computador ou servidor via SSH": chave por instância, `known_hosts`, `sudoers`, ensaio e armamento |
 | `decisions/2026-09-04-0110-river-3-plus-o-que-o-cabo-entrega.md` | aceito | **O River 3 Plus medido**: o que o cabo entrega e o que não entrega (com o driver do NUT como fonte), a porta serial que traz potência e tomadas, o que aproveitamos do `r3pcomms` (MIT), como o app da EcoFlow mata leitores com root, e os três modos de convivência |
+| `decisions/2026-09-04-1130-o-servico-manda-no-river.md` | aceito | **A 0.5.0**: o serviço passa a cuidar do leitor do no-break (e por que), os três atos sobre o aparelho com as cercas de cada um, o que `battery.charge.low` é de verdade (medido no ato) e por que tomada não entra |
 | `reference/api-local.md` | — | **Contrato vivo** da API local daemon ↔ app: todas as rotas, inclusive `/v1/devices` e `/v1/device-types` |
 | `plans/2026-09-03-1730-handoff-dispositivos-por-instancia.md` | superado por `plans/2026-09-03-1413-…` | Handoff da 0.3.0–0.3.2 (dispositivos por instância, instaladores revistos) |
 | `plans/2026-09-03-1413-handoff-0-3-3-folhas-na-janela.md` | superado por `plans/2026-09-04-0140-…` | Handoff da 0.3.3 (folhas contidas na janela) |
-| `plans/2026-09-04-0140-handoff-0-4-0-e-frente-do-river.md` | aceito | **Handoff vivo**: 0.4.0 com os vinte consertos, o River 3 Plus medido no Mac mini, o que está instalado à mão lá, e a frente do River (B30–B41) |
+| `plans/2026-09-04-0140-handoff-0-4-0-e-frente-do-river.md` | superado por `plans/2026-09-04-1140-…` | **Handoff vivo**: 0.4.0 com os vinte consertos, o River 3 Plus medido no Mac mini, o que está instalado à mão lá, e a frente do River (B30–B41) |
+| `plans/2026-09-04-1140-handoff-0-5-0-o-servico-manda-no-river.md` | aceito | **Handoff vivo**: a 0.5.0 entregue, os seis bloqueadores da revisão fria já corrigidos, o que ficou fora com o motivo, e a bancada que falta no Mac mini |
 | `API_LOCAL_20260831.md` | superado por `reference/api-local.md` | Contrato da API local até a 0.2.0 (sem as rotas de dispositivos) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |

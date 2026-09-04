@@ -42,7 +42,7 @@ class Alvo:
     senha: str = ""
 
 
-def _linha(sock: socket.socket, arquivo) -> str:
+def _linha(arquivo) -> str:
     resposta = arquivo.readline()
     if not resposta:
         raise RiverCmdError("o servidor do no-break fechou a conversa sem responder")
@@ -63,7 +63,7 @@ def _fala(alvo: Alvo, comandos: list[str], *, conectar=socket.create_connection)
             def manda(texto: str) -> str:
                 arquivo.write(texto + "\n")
                 arquivo.flush()
-                return _linha(sock, arquivo)
+                return _linha(arquivo)
 
             if alvo.usuario:
                 if not manda(f"USERNAME {alvo.usuario}").startswith("OK"):
@@ -93,9 +93,15 @@ def gravar_variavel(alvo: Alvo, nome: str, valor: str, *, fala=_fala) -> None:
     if not resposta.startswith("OK"):
         raise RiverCmdError(_humano(resposta))
     de_volta = ler_variavel(alvo, nome, fala=fala)
-    if de_volta is not None and de_volta.strip() != valor.strip():
+    if de_volta is None:
+        # Falha FECHADA: não conseguir conferir não é ter conseguido gravar. O
+        # driver pode ter caído entre a escrita e a leitura, e a tela mostraria
+        # sucesso com valor nenhum (revisão fria da 0.5.0).
+        raise RiverCmdError("gravei, mas o aparelho não confirmou o valor novo — "
+                            "não posso dizer que valeu")
+    if de_volta.strip() != valor.strip():
         raise RiverCmdError(
-            f"o aparelho aceitou o pedido mas continua com {de_volta!r}")
+            f"o aparelho aceitou o pedido e continua com {de_volta}")
 
 
 def mandar_comando(alvo: Alvo, comando: str, *, fala=_fala) -> None:
@@ -118,4 +124,4 @@ def _humano(resposta: str) -> str:
         "DRIVER-NOT-CONNECTED": "o leitor do aparelho não está no ar",
         "INSTCMD-FAILED": "o aparelho recusou o comando",
         "SET-FAILED": "o aparelho recusou a mudança",
-    }.get(codigo, f"o servidor do no-break recusou ({codigo or 'sem motivo'})")
+    }.get(codigo, "o servidor do no-break recusou o pedido")
