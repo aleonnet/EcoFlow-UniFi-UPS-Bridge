@@ -138,7 +138,9 @@ import Testing
     let velho = try decoder.decode(BridgeEvent.self, from: Data(
         #"{"ts": "2026-09-03T10:00:00-0300", "event": "COMM_LOST"}"#.utf8))
     #expect(velho.seq == nil)
-    #expect(velho.id == "2026-09-03T10:00:00-0300COMM_LOST")
+    // Sem sequência, a identidade junta o que distingue duas linhas do histórico:
+    // instante, tipo, dono e detalhe (dois dispositivos do mesmo tipo colidiam).
+    #expect(velho.id == "2026-09-03T10:00:00-0300-COMM_LOST----")
 }
 
 @MainActor
@@ -220,4 +222,35 @@ import Testing
                            data: #"{"power": {"state": "ONLINE"}, "battery": {"charge_percent": 90}}"#))
     #expect(store.temTomadas == false)
     #expect(store.tomadas.isEmpty)
+}
+
+@Test func machineDetailFromTheServiceNeverReachesTheScreenRaw() {
+    // O serviço grava o detalhe dos eventos do bridge em forma de máquina
+    // (`estado=ON_BATTERY carga=42`). Isso é bom no registro e péssimo na tela:
+    // a linha "Detalhe" mostrava o token cru duas linhas abaixo do mesmo estado
+    // já escrito em português.
+    let linha = EventLogRow(ts: 1788490805, type: "POWER_LOSS",
+                            detail: "estado=ON_BATTERY carga=42", device: nil)
+    let evento = linha.asBridgeEvent
+    #expect(evento.state == "ON_BATTERY")      // vai para a linha "Estado", traduzida
+    #expect(evento.charge == 42)               // e para a linha "Bateria"
+    #expect(evento.reason == nil)              // nada de token cru em "Detalhe"
+
+    // Detalhe que NÃO é desse formato continua indo inteiro (motivo de falha, host).
+    let outra = EventLogRow(ts: 1788490805, type: "UDR7_SHUTDOWN_FAILED",
+                            detail: "host_desconhecido", device: "udr7")
+    #expect(outra.asBridgeEvent.reason == "host_desconhecido")
+    #expect(outra.asBridgeEvent.state == nil)
+}
+
+@Test func twoDevicesOfTheSameTypeInTheSameSecondKeepBothRows() {
+    // Dois dispositivos do mesmo tipo emitem o MESMO tipo de evento no mesmo
+    // segundo. Com a identidade antiga (instante + tipo) as duas linhas
+    // colidiam e a lista mostrava uma só.
+    let a = EventLogRow(ts: 1788490805, type: "SSH_HOST_SHUTDOWN_DRYRUN",
+                        detail: "ensaio", device: "sshhost_1")
+    let b = EventLogRow(ts: 1788490805, type: "SSH_HOST_SHUTDOWN_DRYRUN",
+                        detail: "ensaio", device: "sshhost_2")
+    #expect(a.id != b.id)
+    #expect(a.asBridgeEvent.id != b.asBridgeEvent.id)
 }

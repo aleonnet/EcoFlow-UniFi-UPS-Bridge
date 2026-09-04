@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 
 from ..devices import DevicesError, validate_fields
+from ..protect import ESTADOS
 from .base import DevicePlugin, FieldSpec
 from .ssh_host import SshHostPlugin
 from .udr7_ssh import Udr7SshPlugin
@@ -73,6 +74,10 @@ def type_catalog() -> list[dict]:
             "default_name": cls.default_name,
             "event_prefix": cls.event_prefix,
             "fields": [spec.to_json() for spec in cls.fields],
+            # O vocabulário fechado de estados que este tipo pode publicar. O app
+            # confere que sabe desenhar todos: estado sem selo vira dispositivo
+            # bloqueado e silencioso na tela.
+            "states": list(ESTADOS),
         }
         for cls in TYPES.values()
     ]

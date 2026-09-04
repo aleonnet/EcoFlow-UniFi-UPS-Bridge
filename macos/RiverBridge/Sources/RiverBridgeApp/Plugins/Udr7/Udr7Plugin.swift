@@ -46,7 +46,9 @@ enum SshEngineText {
             }
             parts.append(text)
         }
-        if let detail = d.sourceDetail, detail != "telemetria_sintetica" { parts.append(detail) }
+        if let detail = d.sourceDetail, detail != "telemetria_sintetica" {
+            parts.append(SshEngineText.motivoDaFonte(detail))
+        }
         if d.missingKey != nil {
             parts.append(L10n.t("falta configurar um campo obrigatório",
                                 "a required field is not filled in"))
@@ -62,7 +64,7 @@ enum SshEngineText {
             case "margin_short": parts.append(L10n.t("margem curta", "short margin"))
             case "cutoff_diverges": parts.append(L10n.t("o corte que o River informa é diferente do configurado aqui",
                                                          "the cutoff the River reports differs from the one set here"))
-            default: parts.append(w)
+            default: break        // aviso que este app ainda não conhece: melhor calar que exibir código
             }
         }
         if let last = d.lastEvent {
@@ -71,33 +73,38 @@ enum SshEngineText {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// Por que a fonte não foi aceita, em português. Motivo desconhecido vira
+    /// uma frase honesta, nunca o código cru.
+    static func motivoDaFonte(_ motivo: String) -> String {
+        switch motivo {
+        case "serial_nao_registrado":
+            return L10n.t("o número de série do River ainda não foi informado",
+                          "the River's serial number has not been entered yet")
+        case "serial_divergente":
+            return L10n.t("a leitura vem de outro aparelho, não do River registrado",
+                          "the reading comes from another device, not the registered River")
+        case "sem_leitura":
+            return L10n.t("sem leitura do River agora", "no reading from the River right now")
+        default:
+            return L10n.t("a leitura não foi aceita", "the reading was not accepted")
+        }
+    }
+
     /// `console`: o UDR7 fala em "console"; o host genérico em "máquina".
+    /// O vocabulário mora no núcleo (`DeviceStateText`), que é onde o contrato com
+    /// o serviço é testado; aqui fica só a cor.
     static func badge(state: String?, console: Bool) -> (String, Color)? {
-        let alvo = console ? L10n.t("console", "console") : L10n.t("máquina", "machine")
-        switch state {
-        case "desabilitado": return (L10n.t("Desligada", "Off"), .secondary)
-        case "dry_run": return (L10n.t("Modo ensaio", "Rehearsal"), .blue)
-        case "armado_nao_verificado": return (L10n.t("Armada — alcance não verificado", "Armed — reach unverified"), .orange)
-        case "enviado": return (L10n.t("Desligamento enviado", "Shutdown sent"), .red)
-        case "fonte_nao_real": return (L10n.t("Bloqueada — fonte não aceita", "Blocked — source not accepted"), .purple)
-        case "fonte_nao_local": return (L10n.t("Bloqueada — NUT não é local", "Blocked — NUT not local"), .purple)
-        case "corte_nao_configurado": return (L10n.t("Bloqueada — corte do River não configurado", "Blocked — River cutoff not set"), .purple)
-        case "limiar_nao_configurado": return (L10n.t("Bloqueada — limiar não configurado", "Blocked — threshold not set"), .purple)
-        case "limiar_abaixo_do_corte": return (L10n.t("Bloqueada — o limiar precisa ficar acima do corte do River",
-                                                      "Blocked — the threshold must sit above the River cutoff"), .purple)
-        case "config_incompleta": return (L10n.t("Bloqueada — configuração incompleta", "Blocked — incomplete config"), .purple)
-        case "chave_insegura": return (L10n.t("Bloqueada — chave SSH ausente/insegura", "Blocked — SSH key missing/insecure"), .purple)
-        case "host_desconhecido": return (L10n.t("Bloqueada — identidade do \(alvo) não registrada",
-                                                 "Blocked — the \(alvo)'s identity is not registered"), .purple)
-        case "calibrando": return (L10n.t("Bloqueada — calibrando", "Blocked — calibrating"), .purple)
-        case "armamento_ausente": return (L10n.t("Bloqueada — o armamento não foi concluído", "Blocked — arming was not completed"), .purple)
-        case "config_trocada": return (L10n.t("Bloqueada — configuração mudou após armar", "Blocked — config changed after arming"), .purple)
-        case "aguardando_restauracao": return (L10n.t("Aguardando energia voltar", "Waiting for power to return"), .orange)
-        case nil:
-            // O serviço ainda não disse nada sobre este dispositivo: a linha
-            // mostra espera, nunca um estado inventado.
-            return (L10n.t("Aguardando o estado do serviço…", "Waiting for the service's state…"), .secondary)
-        default: return nil
+        guard let selo = DeviceStateText.badge(state: state, console: console) else { return nil }
+        return (selo.texto, cor(selo.tom))
+    }
+
+    private static func cor(_ tom: DeviceStateText.Tom) -> Color {
+        switch tom {
+        case .secondary: .secondary
+        case .blue: .blue
+        case .orange: .orange
+        case .red: .red
+        case .purple: .purple
         }
     }
 }

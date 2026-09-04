@@ -1484,7 +1484,7 @@ river-unifi-bridge/
 │       ├── protect.py      # Fase 3'-EXP — política de proteção do UDR7 (raiz do
 │       │                   # pacote, não em unifi/: era erro da spec até 2026-09-01)
 │       ├── plugins/        # contrato de dispositivo protegido, registro estático
-│       │   ├── __init__.py #   PLUGINS, build_plugins, plugin_statuses
+│       │   ├── __init__.py #   TYPES, build_plugins, plugin_statuses
 │       │   ├── base.py     #   DevicePlugin (ABC)
 │       │   └── udr7_ssh.py #   1º plugin: adaptador fino sobre protect.py
 │       └── unifi/

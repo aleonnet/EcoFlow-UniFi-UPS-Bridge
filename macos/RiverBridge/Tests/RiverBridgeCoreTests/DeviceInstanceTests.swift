@@ -217,3 +217,20 @@ private let tres = [
     #expect(queda.matches(eventType: "POWER_LOSS", device: nil, devices: tres))
     #expect(!queda.matches(eventType: "UDR7_SHUTDOWN_SENT", device: nil, devices: tres))
 }
+
+@Test func everyStateTheServiceCanPublishHasABadge() throws {
+    // O serviço publica o vocabulário fechado de estados em /v1/device-types.
+    // Se ele ganhar um estado e o app não ganhar o selo, o dispositivo aparece
+    // bloqueado e MUDO na tela. Esta cerca reprova antes disso chegar ao dono.
+    let dados = try Data(contentsOf: fixture("device_types"))
+    let catalogo = try JSONCoding.decoder().decode(DeviceTypesResponse.self, from: dados)
+    #expect(catalogo.types.isEmpty == false)
+    for tipo in catalogo.types {
+        let estados = try #require(tipo.states, "o serviço parou de publicar os estados")
+        #expect(estados.count == 16)
+        for estado in estados {
+            #expect(DeviceStateText.badge(state: estado, console: true) != nil,
+                    "estado sem selo no app: \(estado)")
+        }
+    }
+}

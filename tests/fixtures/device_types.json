@@ -91,6 +91,24 @@
           "required": false,
           "pattern": "[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\\1){4}[0-9A-Fa-f]{2}"
         }
+      ],
+      "states": [
+        "desabilitado",
+        "fonte_nao_real",
+        "fonte_nao_local",
+        "corte_nao_configurado",
+        "limiar_nao_configurado",
+        "limiar_abaixo_do_corte",
+        "config_incompleta",
+        "chave_insegura",
+        "host_desconhecido",
+        "calibrando",
+        "armamento_ausente",
+        "config_trocada",
+        "aguardando_restauracao",
+        "dry_run",
+        "armado_nao_verificado",
+        "enviado"
       ]
     },
     {
@@ -193,6 +211,24 @@
             "sudo -n systemctl poweroff"
           ]
         }
+      ],
+      "states": [
+        "desabilitado",
+        "fonte_nao_real",
+        "fonte_nao_local",
+        "corte_nao_configurado",
+        "limiar_nao_configurado",
+        "limiar_abaixo_do_corte",
+        "config_incompleta",
+        "chave_insegura",
+        "host_desconhecido",
+        "calibrando",
+        "armamento_ausente",
+        "config_trocada",
+        "aguardando_restauracao",
+        "dry_run",
+        "armado_nao_verificado",
+        "enviado"
       ]
     }
   ]

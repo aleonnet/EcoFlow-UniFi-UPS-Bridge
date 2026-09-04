@@ -86,17 +86,19 @@ class SharedState:
         with self._lock:
             return self._version, self._snapshot, self._comm_ok, self._last_error
 
-    def clear_events(self, ts_to: int) -> int:
+    def clear_events(self, ts_to: int, ts_from: int = 0) -> int:
         """Esquece os eventos até `ts_to` (inclusive). Devolve quantos saíram.
 
         Limpar o histórico gravado não bastava: esta fila é o que o SSE entrega
         a QUEM CONECTA, então os eventos apagados voltavam à tela na reconexão
-        seguinte. Evento com carimbo ilegível fica — nunca apago o que não sei
-        datar.
+        seguinte. A faixa é a MESMA do banco (`from`..`to`): esquecer da memória o
+        que o banco manteve seria outra divergência. Evento com carimbo ilegível
+        fica — nunca apago o que não sei datar.
         """
         with self._lock:
             antes = len(self._events)
-            mantidos = [e for e in self._events if _epoca(e.get("ts")) > ts_to]
+            mantidos = [e for e in self._events
+                        if not (ts_from <= _epoca(e.get("ts")) <= ts_to)]
             self._events = deque(mantidos, maxlen=self._events.maxlen)
             self._version += 1
             return antes - len(self._events)

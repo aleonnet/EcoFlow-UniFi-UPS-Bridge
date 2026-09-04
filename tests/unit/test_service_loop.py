@@ -164,15 +164,26 @@ def test_health_lists_devices_before_first_poll(tmp_path, monkeypatch):
     assert visto["health"]["udr7"] == plugins[0]["state"]
 
 
-def test_health_keeps_devices_when_the_ups_goes_quiet(rig):
-    """A falha de leitura não apaga a lista: ela é configuração, não telemetria."""
+def test_health_refreshes_the_device_state_when_the_ups_goes_quiet(rig):
+    """Com o UPS mudo, a tela mostra o estado NOVO do dispositivo, não o velho.
+
+    A lista nunca é esvaziada por ninguém (medido: nenhum caminho a apaga). O que
+    a republicação na falha conserta é outra coisa — o ESTADO de cada dispositivo
+    muda quando a política fica cega, e sem republicar a tela ficaria congelada no
+    estado anterior à queda.
+    """
     _process_snapshot(sim_snap(), rig["tracker"], rig["plugins"], rig["shared"], rig["history"])
-    assert len(rig["shared"].health()["plugins"]) == 1
+    antes = rig["shared"].health()["plugins"][0]["detail"]
+    assert antes["last_event"] == EV_DRYRUN            # o ensaio do tick bom
+
+    rig["clock"].now += 30
     _handle_poll_failure(NutError("upsd caiu"), rig["tracker"], rig["plugins"],
                          rig["shared"], rig["history"])
     health = rig["shared"].health()
     assert [p["id"] for p in health["plugins"]] == ["udr7"]
     assert health["nut"] == "falha"
+    # Sem a republicação, este campo continuaria em UDR7_SHUTDOWN_DRYRUN.
+    assert health["plugins"][0]["detail"]["last_event"] == EV_BLIND
 
 
 def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):

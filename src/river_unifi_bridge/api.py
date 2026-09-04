@@ -55,6 +55,32 @@ def ensure_loopback(host: str) -> None:
         raise ConfigError(f"bind não-loopback recusado: {host} (API é local por desenho)")
 
 
+# Chaves legadas que formam o predicado de armamento no PUT de configuração.
+_DESARME_CHAVES = frozenset({"PROTECT_UDR7", "PROTECT_DRY_RUN"})
+
+
+def _e_desarme_puro(mudancas: dict) -> bool:
+    """O PUT só desliga a proteção (ou liga o ensaio) e não toca em mais nada?
+
+    Desarmar é o botão de parada do dono: ele vale mesmo quando o disco falha.
+    Qualquer chave fora do predicado tira o PUT desta categoria.
+    """
+    if not mudancas or not set(mudancas) <= _DESARME_CHAVES:
+        return False
+    if "PROTECT_UDR7" in mudancas and not bool(mudancas["PROTECT_UDR7"]):
+        return True
+    return bool(mudancas.get("PROTECT_DRY_RUN", False))
+
+
+def _patch_e_desarme_puro(patch: dict, instancia) -> bool:
+    """O mesmo, para o PUT de uma instância: `armed` tem de ficar falso."""
+    if not patch or not set(patch) <= {"enabled", "dry_run"}:
+        return False
+    ligado = patch.get("enabled", instancia.enabled)
+    ensaio = patch.get("dry_run", instancia.dry_run)
+    return not (bool(ligado) and not bool(ensaio))
+
+
 def _empty_state(name: str, comm_ok: bool, last_error: str | None) -> dict:
     """Honest §7.3 shape when no snapshot exists yet: nulls, never invention."""
     return {
@@ -234,7 +260,7 @@ class ApiServer:
             removed = self.history.delete_events(ts_from, ts_to)
             # A fila da memória é o que o SSE entrega a quem conecta: sem isto os
             # eventos apagados reapareciam na tela na reconexão seguinte.
-            self.state.clear_events(ts_to)
+            self.state.clear_events(ts_to, ts_from=ts_from)
         except ValueError as exc:
             return web.json_response({"erro": str(exc)}, status=400)
         return web.json_response({"removidos": removed})
@@ -287,12 +313,18 @@ class ApiServer:
         try:
             update_env_file(self.env_path, {k: str(v) if not isinstance(v, bool) else ("1" if v else "0") for k, v in parsed.items()})
         except (EnvFileError, OSError) as exc:
-            # Nada foi aplicado ainda: o arquivo é o primeiro a ser escrito. Dizer
-            # 500 aqui é a verdade — a mudança não valeu, nem agora nem no reinício.
             log_json("ERROR", "env_write_failed", path=self.env_path, reason=str(exc)[:200])
-            return self._refuse(500, "arquivo_env",
-                                "não consegui gravar a configuração do serviço no disco; "
-                                "nada foi alterado")
+            if not _e_desarme_puro(parsed):
+                # Nada foi aplicado ainda: o arquivo é o primeiro a ser escrito.
+                # 500 aqui é a verdade — a mudança não valeu, nem agora nem no reinício.
+                return self._refuse(500, "arquivo_env",
+                                    "não consegui gravar a configuração do serviço no disco; "
+                                    "nada foi alterado")
+            # DESARMAR NUNCA É RECUSADO. Disco cheio é exatamente quando o dono
+            # aperta o botão de parada; recusar aí seria travar a proteção armada
+            # por causa de um arquivo. O estado em memória vale, e o arquivo fica
+            # divergente com aviso — o próximo PUT que gravar o corrige.
+            log_json("WARN", "desarme_aplicado_sem_gravar", keys=sorted(parsed))
 
         applied_hot: list[str] = []
         restart_required = False
@@ -484,6 +516,13 @@ class ApiServer:
                 self.store.save([new if i.id == old.id else i for i in instances])
             except DevicesError as exc:
                 return self._refuse(400, "validacao", str(exc))
+            except OSError as exc:
+                log_json("ERROR", "devices_write_failed", reason=str(exc)[:200])
+                if not _patch_e_desarme_puro(patch, old):
+                    return self._refuse(500, "arquivo_dispositivos",
+                                        "não consegui gravar a lista de dispositivos no disco; "
+                                        "nada foi alterado")
+                log_json("WARN", "desarme_aplicado_sem_gravar", device=old.id)
         _emit(plugin.apply_patch(new), self.state, self.history)
         if plugin.id == "udr7":
             self._mirror_udr7_to_env(new, patch)

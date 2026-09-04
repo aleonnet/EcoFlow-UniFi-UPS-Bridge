@@ -253,9 +253,11 @@ def _handle_poll_failure(exc: Exception, tracker, plugins, shared, history) -> N
     _audit_plugins(plugins)
     if shared is not None:
         shared.record_failure(str(exc))
-        # A lista de dispositivos é CONFIGURAÇÃO: ela não some porque o UPS calou.
-        # Sem esta linha, uma queda do NUT esvaziava o `plugins` do health e o app
-        # (e a contagem do instalador) passavam a dizer "nenhum dispositivo".
+        # O ESTADO de cada dispositivo muda quando o UPS cala (a política passa a
+        # "cega"), e é este ponto que republica a lista com esse estado novo. A
+        # lista em si nunca é esvaziada por ninguém — dizer que ela "sumia na
+        # falha" era enunciado errado meu, corrigido depois da revisão fria.
+        # Sem esta linha, a tela continuaria mostrando o estado ANTERIOR à queda.
         shared.set_plugins(plugin_statuses(plugins))  # mantém na falha
 
 

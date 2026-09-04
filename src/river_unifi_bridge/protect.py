@@ -58,6 +58,19 @@ EV_ARMED = "UDR7_ARMED"
 EV_DISARMED = "UDR7_DISARMED"
 EV_WOL_SENT = "UDR7_WOL_SENT"
 EV_WOL_DRYRUN = "UDR7_WOL_DRYRUN"
+# O vocabulário FECHADO que a política publica em `state`. Existe porque o app
+# desenha um selo por estado (`SshEngineText.badge`): um estado novo aqui, sem
+# selo lá, aparece como dispositivo SEM observação nenhuma — bloqueado e mudo. É
+# publicado em /v1/device-types justamente para o app poder conferir.
+PORTOES = (
+    "fonte_nao_real", "fonte_nao_local", "corte_nao_configurado",
+    "limiar_nao_configurado", "limiar_abaixo_do_corte", "config_incompleta",
+    "chave_insegura", "host_desconhecido", "calibrando", "armamento_ausente",
+    "config_trocada", "aguardando_restauracao",
+)
+ESTADOS = ("desabilitado",) + PORTOES + ("dry_run", "armado_nao_verificado", "enviado")
+
+
 def _rotulo_da_fonte(first_fail: str | None, source_detail: str | None,
                      ja_observou: bool) -> str | None:
     """Como a leitura do UPS foi julgada — para o health e para o payload do evento.

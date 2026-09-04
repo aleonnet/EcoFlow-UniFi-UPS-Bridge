@@ -256,7 +256,7 @@ cena_mutacao S4ae src/river_unifi_bridge/protect.py \
 # o SSE entrega a quem conecta: sem isso os eventos apagados voltavam à tela na
 # reconexão seguinte (o dono limpava e eles reapareciam).
 cena_mutacao S4af src/river_unifi_bridge/api.py \
-    'self.state.clear_events(ts_to)' \
+    'self.state.clear_events(ts_to, ts_from=ts_from)' \
     'pass  # clear_events' \
     tests/unit/test_api.py::test_clearing_events_also_forgets_them_in_memory
 
@@ -273,6 +273,20 @@ cena_mutacao S4ah src/river_unifi_bridge/service.py \
     'snap.outlets = leitura.to_dict()' \
     'snap.outlets = None' \
     tests/unit/test_service_loop.py::test_serial_reading_fills_power_and_outlets
+
+# S4ai — com o UPS mudo, a tela tem de mostrar o estado NOVO do dispositivo. Sem
+# a republicação no caminho de falha, ela congela no estado anterior à queda.
+cena_mutacao S4ai src/river_unifi_bridge/service.py \
+    'shared.set_plugins(plugin_statuses(plugins))  # mantém na falha' \
+    'pass  # mantém na falha' \
+    tests/unit/test_service_loop.py::test_health_refreshes_the_device_state_when_the_ups_goes_quiet
+
+# S4aj — DESARMAR NUNCA É RECUSADO, nem com o disco cheio: é o botão de parada do
+# dono, e disco cheio é exatamente quando ele o aperta.
+cena_mutacao S4aj src/river_unifi_bridge/api.py \
+    'if not _e_desarme_puro(parsed):' \
+    'if True:' \
+    tests/unit/test_api.py::test_disarming_is_never_refused_by_a_full_disk
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1

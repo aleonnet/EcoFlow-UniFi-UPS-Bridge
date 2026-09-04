@@ -1018,3 +1018,30 @@ def test_disarm_still_wins_when_the_armed_file_cannot_be_deleted(paths, key_file
     avisos = [json.loads(l) for l in capsys.readouterr().out.splitlines()
               if '"armed_file_unlink_failed"' in l]
     assert len(avisos) == 1
+
+
+def test_the_published_state_vocabulary_is_closed_and_complete():
+    """O que a política publica em `state` é um conjunto FECHADO, e o app o espelha.
+
+    A cerca existe porque um estado novo aqui, sem selo no app, aparece como um
+    dispositivo bloqueado e SEM observação nenhuma na tela — o pior tipo de
+    silêncio. O catálogo publica esta lista para o app poder conferir.
+    """
+    from river_unifi_bridge.plugins import type_catalog
+
+    assert len(protect.PORTOES) == 12
+    assert set(protect.PORTOES) < set(protect.ESTADOS)
+    assert protect.ESTADOS[0] == "desabilitado"
+    assert {"dry_run", "armado_nao_verificado", "enviado"} <= set(protect.ESTADOS)
+    # Todo tipo de dispositivo publica o mesmo vocabulário: o motor é o mesmo.
+    for tipo in type_catalog():
+        assert tipo["states"] == list(protect.ESTADOS)
+
+
+def test_every_state_a_gate_can_produce_is_in_the_vocabulary(paths, key_file):
+    """Cada portão que a política sabe reprovar tem de estar na lista publicada."""
+    rig = Rig(paths, armed_overrides(key_file))
+    for portao in protect.PORTOES:
+        assert portao in protect.ESTADOS
+    rig.tick()
+    assert rig.policy.status()["state"] in protect.ESTADOS

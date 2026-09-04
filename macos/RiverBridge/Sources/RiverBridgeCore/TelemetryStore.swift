@@ -212,14 +212,22 @@ public final class TelemetryStore {
         }
     }
 
-    public var isOnBattery: Bool { latest?.power?.state == "ON_BATTERY" }
-    public var isCharging: Bool { latest?.power?.states?.contains("CHARGING") == true }
-    public var isLowBattery: Bool { latest?.health?.lowBattery == true }
+    // Também passam pela guarda: sem leitura viva, o desenho não pode animar
+    // "na bateria" nem a leitura de acessibilidade afirmar de onde vem a energia.
+    public var isOnBattery: Bool { lendoAgora && latest?.power?.state == "ON_BATTERY" }
+    public var isCharging: Bool { lendoAgora && latest?.power?.states?.contains("CHARGING") == true }
+    public var isLowBattery: Bool { lendoAgora && latest?.health?.lowBattery == true }
 
     /// Com o serviço fora do ar, a última leitura NÃO é o presente: ela some da
     /// tela em vez de continuar sendo mostrada como se fosse de agora. A guarda
     /// mora aqui, num lugar só — cada tela que copiasse a regra esqueceria uma.
-    private var lendoAgora: Bool { phase == .live }
+    private var lendoAgora: Bool {
+        // Duas condições, não uma: o app tem de estar recebendo do serviço E o
+        // serviço tem de estar conseguindo ler o no-break. Com o serviço vivo e o
+        // aparelho mudo, o stream reenvia o último quadro e a tela mostrava
+        // números velhos como se fossem de agora.
+        phase == .live && health?.nut != "falha"
+    }
 
     public var chargeFraction: Double? {
         guard lendoAgora, let charge = latest?.battery?.chargePercent else { return nil }

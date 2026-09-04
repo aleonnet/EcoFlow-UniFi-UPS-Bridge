@@ -833,3 +833,60 @@ async def test_clearing_a_window_keeps_what_is_outside_it(client, server):
     resp = await client.delete(f"/v1/events/log?to={antigo}", headers=client.auth)
     assert resp.status == 200
     assert [e["event"] for e in server.state.events()] == ["COMM_LOST"]
+
+
+async def test_disarming_is_never_refused_by_a_full_disk(client, server, monkeypatch):
+    """O botão de parada vale mesmo com o disco cheio.
+
+    Disco cheio é exatamente quando o dono quer desarmar. Recusar aí deixaria a
+    proteção armada por causa de um arquivo — o pior desfecho possível.
+    """
+    from river_unifi_bridge import api as api_mod
+
+    def disco_cheio(*_a, **_k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(api_mod, "update_env_file", disco_cheio)
+
+    # Desarme puro: aceito, aplicado a quente, com aviso no log.
+    resp = await client.put("/v1/config", json={"PROTECT_DRY_RUN": "1"}, headers=client.auth)
+    assert resp.status == 200
+    assert server.cfg.protect_dry_run is True
+
+    resp = await client.put("/v1/config", json={"PROTECT_UDR7": "0"}, headers=client.auth)
+    assert resp.status == 200
+    assert server.cfg.protect_udr7 is False
+
+    # Qualquer outra mudança continua sendo 500 sem aplicar nada.
+    antes = server.cfg.low_battery_percent
+    resp = await client.put("/v1/config", json={"LOW_BATTERY_PERCENT": 33}, headers=client.auth)
+    assert resp.status == 500 and (await resp.json())["motivo"] == "arquivo_env"
+    assert server.cfg.low_battery_percent == antes
+
+    # Desarme MISTURADO com outra chave não é desarme puro: recusa.
+    resp = await client.put("/v1/config",
+                            json={"PROTECT_DRY_RUN": "1", "LOW_BATTERY_PERCENT": 44},
+                            headers=client.auth)
+    assert resp.status == 500
+
+
+async def test_clearing_a_window_leaves_the_memory_in_step_with_the_database(client, server):
+    """A faixa apagada da memória é a mesma do banco, nos dois lados."""
+    import time as _t
+
+    agora = int(_t.time())
+    server.state.add_event("POWER_LOSS", {})
+    # Faixa que TERMINA antes do evento: nada some.
+    resp = await client.delete(f"/v1/events/log?from=0&to={agora - 3600}", headers=client.auth)
+    assert resp.status == 200
+    assert len(server.state.events()) == 1
+    # Faixa que COMEÇA depois do evento: também não some (era o defeito).
+    resp = await client.delete(f"/v1/events/log?from={agora + 60}&to={agora + 120}",
+                               headers=client.auth)
+    assert resp.status == 200
+    assert len(server.state.events()) == 1
+    # Faixa que contém o evento: some.
+    resp = await client.delete(f"/v1/events/log?from={agora - 60}&to={agora + 60}",
+                               headers=client.auth)
+    assert resp.status == 200
+    assert server.state.events() == []

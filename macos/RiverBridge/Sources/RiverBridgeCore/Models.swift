@@ -139,9 +139,13 @@ public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
     /// e em serviços anteriores.
     public var seq: Int?
 
-    /// A identidade da linha na tela. Com a sequência, dois eventos iguais no
-    /// mesmo segundo deixam de disputar o mesmo id (a lista descartava um).
-    public var id: String { seq.map(String.init) ?? (ts + event) }
+    /// A identidade da linha na tela. A sequência do serviço distingue dois
+    /// eventos iguais no mesmo segundo; sem ela (linhas vindas do histórico), o
+    /// dono do evento e o detalhe entram na conta, porque dois dispositivos do
+    /// mesmo tipo colidiam e a lista descartava um.
+    public var id: String {
+        seq.map(String.init) ?? "\(ts)-\(event)-\(device ?? "-")-\(reason ?? "-")"
+    }
 
     /// O instante do evento, quando o carimbo é legível.
     public var date: Date? { parsedDate }
@@ -233,16 +237,43 @@ public struct EventLogRow: Codable, Equatable, Sendable, Identifiable {
     public var detail: String?
     public var device: String?
 
-    public var id: String { "\(ts)-\(type)" }
+    public var id: String { "\(ts)-\(type)-\(device ?? "-")-\(detail ?? "-")" }
 
-    /// Same instant reshaped as the SSE event type, so the UI renders a
-    /// single row kind. state/charge are not persisted in the log — nil.
+    /// O mesmo instante na forma do evento do stream, para a lista desenhar um
+    /// tipo de linha só.
+    ///
+    /// O serviço grava o detalhe dos eventos do bridge em forma de máquina
+    /// (`estado=ON_BATTERY carga=42`), que é ótima no registro e **péssima na
+    /// tela**. Aqui ela é decodificada nos campos que a tela já mostra em
+    /// português; o que não casa com esse formato continua indo como veio.
     public var asBridgeEvent: BridgeEvent {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         let iso = formatter.string(from: Date(timeIntervalSince1970: Double(ts)))
-        return BridgeEvent(ts: iso, event: type, state: nil, charge: nil, reason: detail, device: device)
+        let (estado, carga, resto) = EventLogRow.decodeDetalhe(detail)
+        return BridgeEvent(ts: iso, event: type, state: estado, charge: carga,
+                           reason: resto, device: device)
+    }
+
+    /// `estado=ON_BATTERY carga=42` → ("ON_BATTERY", 42, nil). Sem esse formato,
+    /// devolve o texto intacto no terceiro item.
+    static func decodeDetalhe(_ detalhe: String?) -> (String?, Double?, String?) {
+        guard let detalhe, !detalhe.isEmpty else { return (nil, nil, nil) }
+        var estado: String?
+        var carga: Double?
+        var sobrou: [String] = []
+        for pedaco in detalhe.split(separator: " ") {
+            if pedaco.hasPrefix("estado=") {
+                estado = String(pedaco.dropFirst("estado=".count))
+            } else if pedaco.hasPrefix("carga="), let n = Double(pedaco.dropFirst("carga=".count)) {
+                carga = n
+            } else {
+                sobrou.append(String(pedaco))
+            }
+        }
+        if estado == nil && carga == nil { return (nil, nil, detalhe) }
+        return (estado, carga, sobrou.isEmpty ? nil : sobrou.joined(separator: " "))
     }
 }
 
@@ -307,6 +338,10 @@ public struct DeviceTypeInfo: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var labelPt: String
     public var fields: [DeviceTypeField]
+    /// O vocabulário fechado de estados que o serviço pode publicar para este
+    /// tipo. O app confere que sabe desenhar todos — estado sem selo apareceria
+    /// como dispositivo bloqueado e sem explicação nenhuma.
+    public var states: [String]?
 
     public func defaultValue(for field: String) -> ConfigValue? {
         fields.first { $0.name == field }?.defaultValue
