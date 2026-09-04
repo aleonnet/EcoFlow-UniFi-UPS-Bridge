@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from river_unifi_bridge import protect
+from river_unifi_bridge import protect, river_serial, service
 
 
 def _forbidden(*_args, **_kwargs):
@@ -27,4 +27,21 @@ def _no_spawn(request, monkeypatch):
     monkeypatch.setattr(protect, "SSH_KEYGEN", "/nonexistent/river-test/ssh-keygen")
     if request.node.get_closest_marker("spawn_ok") is None:
         monkeypatch.setattr(subprocess, "run", _forbidden)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _sem_porta_serial(monkeypatch):
+    """Nenhum teste abre uma porta serial de verdade.
+
+    A leitura do River percorre `/dev/cu.usbmodem*` da máquina que roda a suíte;
+    sem esta cerca, o teste falava com o aparelho de quem estivesse rodando — e a
+    memória de porta do módulo vazava de um teste para o outro.
+    """
+    def _proibido(*_a, **_k):
+        raise AssertionError("porta serial proibida em teste (fixture de tests/unit)")
+
+    monkeypatch.setattr(river_serial, "_conversa", _proibido)
+    monkeypatch.setattr(service, "_porta_serial_lembrada", None, raising=False)
+    monkeypatch.setattr(service, "_ultima_varredura", float("-inf"), raising=False)
     yield

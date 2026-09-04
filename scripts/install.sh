@@ -45,7 +45,7 @@
 # Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.4.0"
+VERSAO="0.4.1"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
@@ -488,6 +488,14 @@ instalar_leitura_river() {
     launchctl bootout "$DOMINIO/$rotulo" 2>/dev/null || true
     launchctl bootstrap "$DOMINIO" "$alvo" 2>/dev/null || true
   done
+  # Leitor NOSSO deixado por uma sessão manual continua com o cabo, e o serviço
+  # novo não conseguiria abrir o aparelho ("Access denied"). O filtro é o nome do
+  # NOSSO aparelho na linha de comando: o driver de outro programa não casa.
+  # Sem kickstart: os serviços têm KeepAlive, então o launchd os relança sozinho
+  # quando o cabo é liberado. Chamar kickstart aqui também poluiria a contagem da
+  # cena S12, que prova que o instalador reinicia o serviço UMA vez.
+  pkill -f "usbhid-ups -a $ups" 2>/dev/null || true
+  pkill -f "upsd -u $SERVICE_USER -F" 2>/dev/null || true
   rm -f "$tmpd" "$tmps"
 
   if [ "$mudou" = "1" ]; then

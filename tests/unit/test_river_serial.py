@@ -72,20 +72,32 @@ def test_auto_discovery_takes_the_port_that_answers():
         vistas.append(porta)
         return QUADRO if porta == "/dev/cu.river" else b""
 
-    leitura, porta = rs.ler("auto", conversa=conversa, portas=portas)
+    leitura, porta = rs.ler("auto", serie_esperada="R631ZBBAWH270046",
+                            conversa=conversa, portas=portas)
     assert porta == "/dev/cu.river"
     assert leitura.carga_total_w == 110.6
     assert vistas == portas          # tentou a muda antes, e não parou nela
 
 
-def test_wrong_device_on_the_port_is_skipped():
+def test_discovery_refuses_the_neighbour_device():
     """Com dois aparelhos, ler o vizinho é pior que não ler: a série decide."""
-    resultado = rs.ler("/dev/cu.river", serie_esperada="OUTRO-SERIAL",
-                       conversa=lambda _p: QUADRO)
-    assert resultado is None
-    leitura, _ = rs.ler("/dev/cu.river", serie_esperada="R631ZBBAWH270046",
-                        conversa=lambda _p: QUADRO)
-    assert leitura.serie == "R631ZBBAWH270046"
+    assert rs.ler("auto", serie_esperada="OUTRO-SERIAL",
+                  conversa=lambda _p: QUADRO, portas=["/dev/cu.river"]) is None
+
+
+def test_discovery_refuses_when_there_is_no_serial_to_compare():
+    """Sem série esperada, a descoberta não adivinha: recusa.
+
+    Atribuir a outro aparelho os watts que aparecem na tela do dono é pior que
+    não mostrar watt nenhum (revisão fria, 2.ª rodada).
+    """
+    assert rs.ler("auto", conversa=lambda _p: QUADRO, portas=["/dev/cu.river"]) is None
+
+
+def test_a_port_chosen_by_hand_is_the_owner_s_call():
+    """Porta escolhida na configuração vale mesmo sem série: a escolha é do dono."""
+    leitura, porta = rs.ler("/dev/cu.river", conversa=lambda _p: QUADRO)
+    assert porta == "/dev/cu.river" and leitura.serie == "R631ZBBAWH270046"
 
 
 def test_a_port_that_explodes_never_breaks_the_caller():

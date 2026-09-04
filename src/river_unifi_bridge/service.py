@@ -147,9 +147,14 @@ def poll_once(cfg: BridgeConfig) -> UpsSnapshot:
 # A porta serial que respondeu na última vez. Procurar de novo a cada leitura
 # custaria abrir todas as portas do Mac por ciclo.
 _porta_serial_lembrada: str | None = None
+# Quando a última varredura completa aconteceu. Sem isto, uma máquina sem River
+# abriria todas as portas seriais a cada ciclo, para nada.
+_ultima_varredura: float = float("-inf")
+VARREDURA_INTERVALO_SEGUNDOS = 300
 
 
-def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial.ler) -> None:
+def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial.ler,
+                          clock=time.monotonic) -> None:
     """Preenche consumo e tomadas pela porta serial do aparelho, quando ela existe.
 
     O perfil de no-break do River 3 Plus não publica potência (medido; ver
@@ -157,16 +162,25 @@ def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial
     as duas convivem. Falha aqui **não** é falha de leitura do UPS: o ciclo segue
     com o que o NUT deu, e os campos ficam nulos, que é a verdade.
     """
-    global _porta_serial_lembrada
+    global _porta_serial_lembrada, _ultima_varredura
     if not cfg.river_serial_enabled:
         return
-    porta = cfg.river_serial_port or "auto"
-    if porta == "auto" and _porta_serial_lembrada:
+    escolhida = cfg.river_serial_port or "auto"
+    porta = escolhida
+    if escolhida == "auto" and _porta_serial_lembrada:
         porta = _porta_serial_lembrada
+    # Varrer todas as portas do Mac é caro; só acontece de tempos em tempos.
+    pode_varrer = clock() - _ultima_varredura >= VARREDURA_INTERVALO_SEGUNDOS
     try:
+        if porta == "auto" and not pode_varrer:
+            return
+        if porta == "auto":
+            _ultima_varredura = clock()
         resultado = ler(porta, serie_esperada=snap.serial or None)
-        if resultado is None and porta != "auto":
+        if resultado is None and porta != "auto" and escolhida == "auto" and pode_varrer:
             # A porta lembrada calou (cabo trocado de lugar): procura de novo.
+            _ultima_varredura = clock()
+            _porta_serial_lembrada = None
             resultado = ler("auto", serie_esperada=snap.serial or None)
     except Exception as exc:  # serial_read_failed: o vigia não depende disto
         _log("WARN", "serial_read_failed", reason=f"{type(exc).__name__}: {exc}")
@@ -349,14 +363,22 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     while True:
         try:
             snap = poll_once(cfg)
-            _completa_pela_serial(snap, cfg)
         except NutError as exc:
             _handle_poll_failure(exc, tracker, plugins, shared, history)
             if once:
                 _log("ERROR", "poll_failed", reason=str(exc))
                 return EXIT_CONNECTION
         else:
+            # A PROTEÇÃO decide primeiro, com o que o no-break disse. Só depois a
+            # porta serial completa consumo e tomadas, e o estado é republicado.
+            # Ordem invertida, a leitura serial atrasaria em segundos o laço que
+            # decide desligar aparelhos (revisão fria, 2.ª rodada).
             _process_snapshot(snap, tracker, plugins, shared, history)
+            _completa_pela_serial(snap, cfg)
+            if snap.serial_port_read and shared is not None:
+                shared.update_snapshot(snap.to_dict())
+                if history is not None:
+                    history.record_sample(snap.to_dict())
             if once:
                 return EXIT_OK
         # "Manter histórico: N dias" era só um número na tela: a limpeza existia e

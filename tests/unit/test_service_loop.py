@@ -395,7 +395,8 @@ def test_serial_reading_fills_power_and_outlets(rig):
     snap = sim_snap()
     assert snap.output_power_w is None            # o cabo do no-break não deu potência
     cfg = make_cfg()
-    service._completa_pela_serial(snap, cfg, ler=lambda *a, **k: (leitura, "/dev/cu.river"))
+    service._completa_pela_serial(snap, cfg, ler=lambda *a, **k: (leitura, "/dev/cu.river"),
+                                  clock=lambda: 10_000.0)
 
     assert snap.output_power_w == 110.6
     assert snap.input_power_w == 110.6
@@ -411,7 +412,8 @@ def test_serial_reading_fills_power_and_outlets(rig):
 def test_without_the_serial_port_the_fields_stay_null(rig):
     """Sem porta serial, nada é inventado: nulo é a verdade."""
     snap = sim_snap()
-    service._completa_pela_serial(snap, make_cfg(), ler=lambda *a, **k: None)
+    service._completa_pela_serial(snap, make_cfg(), ler=lambda *a, **k: None,
+                                  clock=lambda: 20_000.0)
     d = snap.to_dict()
     assert d["power"]["output_power_w"] is None
     assert d["outlets"] is None
@@ -424,7 +426,7 @@ def test_a_broken_serial_port_never_breaks_the_tick(rig, capsys):
         raise OSError(6, "Device not configured")
 
     snap = sim_snap()
-    service._completa_pela_serial(snap, make_cfg(), ler=explode)
+    service._completa_pela_serial(snap, make_cfg(), ler=explode, clock=lambda: 30_000.0)
     assert snap.outlets is None
     assert snap.charge_percent == 12.0            # o que veio do NUT continua lá
     avisos = [l for l in capsys.readouterr().out.splitlines() if '"serial_read_failed"' in l]
@@ -436,5 +438,52 @@ def test_the_serial_reading_can_be_turned_off(rig):
     snap = sim_snap()
     cfg = make_cfg()
     cfg.river_serial_enabled = False
-    service._completa_pela_serial(snap, cfg, ler=lambda *a, **k: chamou.append(1))
+    service._completa_pela_serial(snap, cfg, ler=lambda *a, **k: chamou.append(1),
+                                  clock=lambda: 40_000.0)
     assert chamou == [] and snap.outlets is None
+
+
+def test_the_protection_decides_before_the_serial_port_is_read(rig, monkeypatch):
+    """A ordem importa: primeiro a proteção, depois o consumo.
+
+    A leitura serial pode levar centenas de milissegundos por porta. Se ela viesse
+    antes, atrasaria em todo ciclo o laço que decide desligar aparelhos numa queda
+    (revisão fria, 2.ª rodada).
+    """
+    from fake_plugin import FakePlugin
+
+    ordem = []
+
+    class Vigia(FakePlugin):
+        def observe(self, snap, tracker_events):
+            ordem.append("proteção")
+            return []
+
+    monkeypatch.setattr(service, "poll_once", lambda _c: sim_snap("OL CHRG", "80"))
+    monkeypatch.setattr(service, "_completa_pela_serial",
+                        lambda *a, **k: ordem.append("serial"))
+
+    plugin = Vigia()
+    _process_snapshot(sim_snap(), rig["tracker"], [plugin], rig["shared"], rig["history"])
+    service._completa_pela_serial(sim_snap(), make_cfg())
+    assert ordem == ["proteção", "serial"]
+
+
+def test_a_mute_machine_is_not_scanned_every_tick(rig):
+    """Sem River, o serviço não abre todas as portas do Mac a cada ciclo."""
+    tentativas = []
+    relogio = {"agora": 0.0}
+    cfg = make_cfg()
+
+    def ler(*_a, **_k):
+        tentativas.append(1)
+        return None
+
+    for _ in range(5):
+        service._completa_pela_serial(sim_snap(), cfg, ler=ler, clock=lambda: relogio["agora"])
+        relogio["agora"] += 2          # cinco ciclos de 2 s
+    assert len(tentativas) == 1        # uma varredura, não cinco
+
+    relogio["agora"] += service.VARREDURA_INTERVALO_SEGUNDOS
+    service._completa_pela_serial(sim_snap(), cfg, ler=ler, clock=lambda: relogio["agora"])
+    assert len(tentativas) == 2        # passada a janela, tenta de novo

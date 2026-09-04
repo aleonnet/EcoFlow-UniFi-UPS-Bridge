@@ -35,7 +35,10 @@ OFUSCACAO_INICIO = 18
 SEQUENCIA_INICIO = 6
 SEGMENTOS_INICIO = 22
 BAUD = termios.B115200
-ESPERA_SEGUNDOS = 2.0
+# Quanto esperar por porta. O aparelho responde em milissegundos (medido: 197
+# bytes de volta na primeira leitura); o valor alto só castigava o ciclo quando a
+# porta está muda. O laço que decide desligar aparelhos não pode ficar parado.
+ESPERA_SEGUNDOS = 0.6
 
 # Tipo de segmento → (campo, sinal). O aparelho manda as CARGAS negativas.
 _CAMPOS_W = {
@@ -152,7 +155,7 @@ def _abre(porta: str) -> int:
         atributos = termios.tcgetattr(fd)
         controle = list(atributos[6])
         controle[termios.VMIN] = 0
-        controle[termios.VTIME] = 10          # 1 s de espera por leitura
+        controle[termios.VTIME] = 3           # 0,3 s por leitura
         termios.tcsetattr(
             fd, termios.TCSANOW,
             [0, 0, termios.CS8 | termios.CREAD | termios.CLOCAL, 0, BAUD, BAUD, controle],
@@ -199,12 +202,15 @@ def ler(porta: str = "auto", *, serie_esperada: str | None = None,
         ) -> tuple[LeituraRiver, str] | None:
     """A leitura e a porta que respondeu, ou `None` quando ninguém respondeu.
 
-    `porta="auto"` percorre as portas seriais do Mac e aceita a primeira que
-    devolver um quadro válido — e, se `serie_esperada` for dada, só a que trouxer
-    ESSA série. Com dois aparelhos na mesma máquina, ler o vizinho seria pior que
-    não ler nada.
+    A **série é cerca, não preferência**: só é aceito o quadro que traga a MESMA
+    série do aparelho que o no-break identificou. Sem série esperada, ou com
+    quadro que não a traga, a leitura é recusada — atribuir a outro aparelho os
+    watts que aparecem na tela do dono seria pior que não mostrar watt nenhum.
+    A única exceção é a porta escolhida À MÃO na configuração: aí a escolha é do
+    dono, e ela vale mesmo sem série (aparelho que não a publica).
     """
-    alvos = [porta] if porta and porta != "auto" else (
+    escolhida_a_mao = bool(porta) and porta != "auto"
+    alvos = [porta] if escolhida_a_mao else (
         portas_candidatas() if portas is None else portas)
     for candidata in alvos:
         try:
@@ -214,7 +220,8 @@ def ler(porta: str = "auto", *, serie_esperada: str | None = None,
             leitura = interpreta(quadro)
         except (OSError, RiverSerialError, struct.error):
             continue
-        if serie_esperada and leitura.serie and leitura.serie != serie_esperada:
-            continue
+        if not escolhida_a_mao:
+            if not serie_esperada or leitura.serie != serie_esperada:
+                continue          # aparelho errado, ou sem como saber: recusa
         return leitura, candidata
     return None

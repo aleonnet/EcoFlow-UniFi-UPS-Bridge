@@ -835,6 +835,38 @@ async def test_clearing_a_window_keeps_what_is_outside_it(client, server):
     assert [e["event"] for e in server.state.events()] == ["COMM_LOST"]
 
 
+async def test_disarming_is_never_refused_by_a_full_disk_with_the_real_wiring(unlocked, monkeypatch):
+    """A cerca do desarme, agora na fiação de PRODUÇÃO: com loja e com plugin.
+
+    A primeira versão deste teste usava um servidor sem loja de dispositivos e
+    não tocava a SEGUNDA gravação em disco do mesmo pedido — que existia e
+    devolvia 500 cru, com a proteção já desarmada por dentro (revisão fria, 2.ª
+    rodada). As chaves do desarme são chaves legadas: elas passam pelos dois
+    caminhos de escrita.
+    """
+    from river_unifi_bridge import api as api_mod
+
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    # Arma de verdade primeiro, para o desarme ter o que desfazer.
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200
+    assert _os.path.exists(srv.armed_path)
+
+    def disco_cheio(*_a, **_k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(api_mod, "update_env_file", disco_cheio)
+    if srv.store is not None:
+        monkeypatch.setattr(type(srv.store), "save", disco_cheio)
+
+    status, corpo = await _put(c, {"PROTECT_DRY_RUN": "1"})
+    assert status == 200, corpo            # o botão de parada não é recusado
+    assert not _os.path.exists(srv.armed_path)   # e desarmou de verdade
+    # E a tela recebe o estado novo: o health foi republicado no fim do PUT.
+    assert srv.state.health()["plugins"][0]["detail"]["dry_run"] is True
+
+
 async def test_disarming_is_never_refused_by_a_full_disk(client, server, monkeypatch):
     """O botão de parada vale mesmo com o disco cheio.
 

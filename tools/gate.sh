@@ -283,10 +283,22 @@ cena_mutacao S4ai src/river_unifi_bridge/service.py \
 
 # S4aj — DESARMAR NUNCA É RECUSADO, nem com o disco cheio: é o botão de parada do
 # dono, e disco cheio é exatamente quando ele o aperta.
+# Duas âncoras, dois caminhos de escrita: o arquivo do serviço e a loja de
+# dispositivos. O segundo só apareceu na 2.ª rodada da revisão — o desarme
+# passava pelo primeiro e morria no outro, com 500 cru na tela.
 cena_mutacao S4aj src/river_unifi_bridge/api.py \
-    'if not _e_desarme_puro(parsed):' \
-    'if True:' \
+    'if not _e_desarme_puro(parsed):
+                # Nada foi aplicado ainda' \
+    'if True:
+                # Nada foi aplicado ainda' \
     tests/unit/test_api.py::test_disarming_is_never_refused_by_a_full_disk
+
+cena_mutacao S4ak src/river_unifi_bridge/api.py \
+    'if not _e_desarme_puro(parsed):
+                    return self._refuse(500, "arquivo_dispositivos"' \
+    'if True:
+                    return self._refuse(500, "arquivo_dispositivos"' \
+    tests/unit/test_api.py::test_disarming_is_never_refused_by_a_full_disk_with_the_real_wiring
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1

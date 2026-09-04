@@ -341,7 +341,20 @@ class ApiServer:
         # espelho não divergirem. Sem loja (fixtures antigas), nada a gravar.
         if self.store is not None and any(
                 key in getattr(plugin, "legacy_keys", ()) for plugin in self.plugins for key in parsed):
-            self.store.save([plugin.instance for plugin in self.plugins if hasattr(plugin, "instance")])
+            try:
+                self.store.save([plugin.instance for plugin in self.plugins if hasattr(plugin, "instance")])
+            except OSError as exc:
+                # MESMA regra da gravação do .env, e pelo mesmo motivo: aqui já
+                # está aplicado em memória, e as chaves do desarme SÃO chaves
+                # legadas — sem esta guarda, todo desarme com disco cheio saía
+                # 500 cru, com a proteção desarmada por dentro e a tela dizendo
+                # o contrário (revisão fria, 2.ª rodada).
+                log_json("ERROR", "devices_write_failed", reason=str(exc)[:200])
+                if not _e_desarme_puro(parsed):
+                    return self._refuse(500, "arquivo_dispositivos",
+                                        "a mudança valeu agora, mas não consegui gravá-la no "
+                                        "disco; ela se perde no próximo reinício do serviço")
+                log_json("WARN", "desarme_aplicado_sem_gravar", keys=sorted(parsed))
         # O health é atualizado no fim do PUT: sem isto a tela mostraria o estado
         # anterior até o próximo tick do laço (≤ POLL_INTERVAL_SECONDS).
         self.state.set_plugins(plugin_statuses(self.plugins))

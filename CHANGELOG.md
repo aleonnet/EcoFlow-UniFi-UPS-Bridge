@@ -9,6 +9,25 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-04
+
+Consertos que a segunda rodada da revisão fria do diff encontrou, todos na mesma noite da
+0.4.0. Quem instalar a 0.4.0 deve pular direto para esta.
+
+### Corrigido
+- **Desarmar deixou de poder ser recusado por falha de disco também no segundo caminho.** O
+  pedido passa por duas gravações — o arquivo do serviço e a lista de dispositivos — e só a
+  primeira estava protegida. Com o disco cheio, a proteção desarmava por dentro e a resposta
+  era um erro cru em inglês, com a tela continuando a mostrar o dispositivo armado.
+- **A leitura de potência não fala mais com o aparelho errado.** A série passou a ser cerca, e
+  não preferência: só é aceito o quadro cuja série é a mesma que o no-break informou. Sem série
+  para comparar, a leitura é recusada em vez de adivinhar. Porta escolhida à mão na
+  configuração continua valendo, porque aí a escolha é do dono.
+- **A leitura de potência saiu da frente da decisão de desligamento.** Ela acontecia antes da
+  proteção decidir e podia atrasar o ciclo em segundos por porta muda. Agora a proteção decide
+  primeiro, o consumo entra depois, a espera por porta caiu para 0,6 s e uma máquina sem River
+  deixa de varrer todas as portas a cada ciclo.
+
 ## [0.4.0] — 2026-09-04
 
 Vinte defeitos que a leitura integral do código achou, mais a leitura real do River 3 Plus.
