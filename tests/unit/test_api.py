@@ -801,3 +801,35 @@ async def test_config_put_reports_a_disk_failure_instead_of_a_silent_500(client,
     assert body["motivo"] == "arquivo_env"
     assert "nada foi alterado" in body["erro"]
     assert server.cfg.low_battery_percent != 33      # nada aplicado a quente
+
+
+async def test_clearing_events_also_forgets_them_in_memory(client, server):
+    """Limpar tem de valer para quem conectar depois, não só para o banco.
+
+    A fila da memória é o que o SSE entrega a QUEM CONECTA. Sem limpá-la, os
+    eventos apagados voltavam à tela na reconexão seguinte — o dono limpava e
+    eles reapareciam.
+    """
+    import time as _t
+
+    server.state.add_event("POWER_LOSS", {"reason": "queda"})
+    server.history.record_event("POWER_LOSS", "queda")
+    assert len(server.state.events()) == 1
+
+    agora = int(_t.time()) + 1
+    resp = await client.delete(f"/v1/events/log?to={agora}", headers=client.auth)
+    assert resp.status == 200
+    assert server.state.events() == []          # a fila do SSE esqueceu junto
+    rows = await (await client.get("/v1/events/log", headers=client.auth)).json()
+    assert rows["rows"] == []
+
+
+async def test_clearing_a_window_keeps_what_is_outside_it(client, server):
+    """Limpar 'anteriores a 7 dias' não pode levar o evento de agora junto."""
+    import time as _t
+
+    server.state.add_event("COMM_LOST", {"reason": "upsd fora"})
+    antigo = int(_t.time()) - 30 * 86400
+    resp = await client.delete(f"/v1/events/log?to={antigo}", headers=client.auth)
+    assert resp.status == 200
+    assert [e["event"] for e in server.state.events()] == ["COMM_LOST"]

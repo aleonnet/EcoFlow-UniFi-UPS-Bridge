@@ -15,6 +15,12 @@ struct ChartsView: View {
     @State private var metric: Metric = ChartsView.initialMetric()
     @State private var rows: [HistoryRow] = []
     @State private var eventRows: [EventLogRow] = []
+    /// A busca não chegou ao serviço. Diferente de "respondeu vazio" — a tela
+    /// diz qual dos dois é, como a linha do tempo já fazia.
+    @State private var loadFailed = false
+    /// Já decidi a aba inicial olhando o que ESTE aparelho publica. Uma vez só:
+    /// depois disso a escolha é de quem está usando.
+    @State private var abaInicialDecidida = false
     @State private var scrubTS: Int?
     @State private var narrow = false
     // Time-scale state (owner-approved SOTA blend, 2026-08-31): segmented
@@ -114,14 +120,46 @@ struct ChartsView: View {
         (metric == .eventos ? L10n.t("Eventos — ", "Events — ") : L10n.t("Consumo — ", "Usage — ")) + scope.eyebrowSuffix
     }
 
+    /// Os números do canto: os que ESTE aparelho publica. Sem uso nem tensão de
+    /// saída, entra a tensão da bateria, que ele publica — melhor um dado real
+    /// do que dois traços fixos.
+    @ViewBuilder
+    private var chipsDeLeitura: some View {
+        if store.temUsoESaida {
+            chip(L10n.t("Uso", "Load"), store.loadText)
+            chip(L10n.t("Saída", "Output"), store.outputVoltageText)
+        } else if store.temTensaoDaBateria {
+            chip(L10n.t("Bateria", "Battery"), store.batteryVoltageText)
+        }
+    }
+
     private var isEmpty: Bool {
         metric == .eventos ? filteredEventRows.isEmpty : rows.isEmpty
+    }
+
+    /// O aparelho respondeu, e na resposta não vem potência. É diferente de
+    /// "ainda não coletei": o River 3 Plus, por exemplo, publica carga e
+    /// autonomia pelo cabo, e nunca potência (medido no Mac mini, 2026-09-04).
+    private var aparelhoNaoInformaPotencia: Bool {
+        metric == .powerW && store.latest != nil && store.latest?.power?.outputPowerW == nil
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
-            if isEmpty {
+            if loadFailed {
+                Text(L10n.t("Histórico indisponível — o app não está falando com o serviço.",
+                            "History unavailable — the app is not talking to the service."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else if aparelhoNaoInformaPotencia {
+                Text(L10n.t("Este no-break não informa potência — ele publica bateria e autonomia.",
+                            "This UPS does not report power — it publishes battery and runtime."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else if isEmpty {
                 Text(metric == .eventos
                      ? L10n.t("Nenhum evento nesse recorte — bom sinal.", "No events in this window — a good sign.")
                      : L10n.t("Sem histórico ainda — os dados aparecem conforme o serviço coleta.", "No history yet — data appears as the service collects."))
@@ -143,6 +181,17 @@ struct ChartsView: View {
             narrow = width < 960
         }
         .task(id: "\(metric.rawValue)|\(scope.rawValue)|\(fetchBucket)") { await load() }
+        .onChange(of: store.eventsGeneration) { Task { await load() } }   // limpou: recarrega
+        .onChange(of: store.beat, initial: true) {
+            // Abrir numa aba que este aparelho nunca vai preencher é mostrar uma
+            // tela vazia como se fosse falta de dados. Com a 1.ª leitura na mão,
+            // a aba inicial vai para Bateria quando não há potência.
+            guard !abaInicialDecidida, store.latest != nil else { return }
+            abaInicialDecidida = true
+            if metric == .powerW && store.latest?.power?.outputPowerW == nil {
+                metric = .charge
+            }
+        }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
@@ -251,8 +300,7 @@ struct ChartsView: View {
                         }
                     }
                     Spacer(minLength: 8)
-                    chip(L10n.t("Uso", "Load"), store.loadText)
-                    chip(L10n.t("Saída", "Output"), store.outputVoltageText)
+                    chipsDeLeitura
                 }
                 // Side by side, CENTERED, and sized to FIT the min width
                 // (owner: "7 d" clipped + gray blotch — the horizontal
@@ -286,8 +334,7 @@ struct ChartsView: View {
                     }
                 }
                 Spacer()
-                chip(L10n.t("Uso", "Load"), store.loadText)
-                chip(L10n.t("Saída", "Output"), store.outputVoltageText)
+                chipsDeLeitura
                 picker
                 scopePicker
             }
@@ -373,8 +420,8 @@ struct ChartsView: View {
         case "POWER_LOSS": L10n.t("Queda", "Loss")
         case "POWER_RESTORED": L10n.t("Restaurada", "Restored")
         case "LOW_BATTERY": L10n.t("Bateria baixa", "Low battery")
-        case "COMM_LOST": "Comm down"
-        case "COMM_RESTORED": "Comm up"
+        case "COMM_LOST": L10n.t("Sem comunicação", "Comm lost")
+        case "COMM_RESTORED": L10n.t("Comunicação de volta", "Comm back")
         default: type
         }
     }
@@ -661,19 +708,32 @@ struct ChartsView: View {
         return formatter.string(from: Date(timeIntervalSince1970: Double(ts)))
     }
 
+    /// Busca o histórico. "Vazio" e "não consegui perguntar" são coisas
+    /// diferentes: sem esta separação, o serviço parado aparecia como "sem
+    /// histórico ainda", e a pessoa concluía que o serviço estava coletando.
     private func load() async {
-        guard let endpoint = ApiEndpoint.discover() else { return }
+        guard let endpoint = ApiEndpoint.discover() else {
+            loadFailed = true
+            return
+        }
         chartNow = .now
         let client = APIClient(endpoint: endpoint)
         let from = Int(Date().addingTimeInterval(-scope.seconds).timeIntervalSince1970)
         if metric == .eventos {
-            if let result = try? await client.eventsLog(from: from, limit: 1000) {
-                eventRows = result
+            guard let result = try? await client.eventsLog(from: from, limit: 1000) else {
+                loadFailed = true
+                return
             }
-        } else if let response = try? await client.history(
-            metric: metric.apiName, bucketSeconds: fetchBucket, from: from
-        ) {
+            eventRows = result
+        } else {
+            guard let response = try? await client.history(
+                metric: metric.apiName, bucketSeconds: fetchBucket, from: from
+            ) else {
+                loadFailed = true
+                return
+            }
             rows = response.rows
         }
+        loadFailed = false
     }
 }

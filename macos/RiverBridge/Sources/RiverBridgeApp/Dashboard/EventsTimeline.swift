@@ -133,6 +133,9 @@ struct EventsTimeline: View {
         .onChange(of: store.events.count) {
             Task { await load() }
         }
+        .onChange(of: store.eventsGeneration) {
+            Task { await load() }      // limpou: a lista recarrega na hora
+        }
     }
 
     private func load() async {
@@ -162,6 +165,12 @@ struct EventsTimeline: View {
         } catch {
             loadFailed = true
         }
+    }
+
+    /// O rótulo humano quando não há lista de dispositivos à mão (detalhe de
+    /// saúde, por exemplo): o nome do tipo entra no lugar do nome da instância.
+    static func label(for event: String) -> String {
+        label(for: event, device: nil, names: DeviceNames(byPluginID: [:]), devices: [])
     }
 
     static func label(for event: String, device: String?, names: DeviceNames,
@@ -280,6 +289,17 @@ private struct EventRow: View {
 struct EventDetailInline: View {
     let event: BridgeEvent
 
+    /// O estado que o serviço grava é palavra de máquina; na tela ele vira a
+    /// mesma frase que o painel usa.
+    static func estadoHumano(_ state: String) -> String {
+        switch state {
+        case "ONLINE": return L10n.t("Na tomada", "On grid")
+        case "ON_BATTERY": return L10n.t("Na bateria", "On battery")
+        case "OUTPUT_OFF": return L10n.t("Saída desligada", "Output off")
+        default: return L10n.t("Sem leitura", "No reading")
+        }
+    }
+
     private var friendlyWhen: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
@@ -296,18 +316,15 @@ struct EventDetailInline: View {
             // No title here: the row above already carries icon + label.
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
                 detailRow(L10n.t("Quando", "When"), friendlyWhen)
-                if let state = event.state { detailRow(L10n.t("Estado do UPS", "UPS state"), state) }
+                if let state = event.state {
+                    detailRow(L10n.t("Estado do River", "River state"), Self.estadoHumano(state))
+                }
                 if let charge = event.charge {
                     detailRow(L10n.t("Bateria", "Battery"), TelemetryStore.percentText(charge))
                 }
                 if let reason = event.reason { detailRow(L10n.t("Detalhe", "Detail"), reason) }
             }
 
-            Text(event.ts + " · " + event.event)
-                .font(.caption2)
-                .monospacedDigit()
-                .foregroundStyle(.tertiary)
-                .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

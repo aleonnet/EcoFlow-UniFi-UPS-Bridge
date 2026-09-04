@@ -102,7 +102,7 @@ struct ArmConfirmation {
     }
 
     var message: String {
-        L10n.t("O serviço só arma com a trava aberta, leitura corrente do River registrado e fonte não sintética. Siga o runbook (docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md).",
-               "The service only arms with the lock open, a current reading from the registered River and a non-synthetic source. Follow the runbook (docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md).")
+        L10n.t("O serviço só arma com a trava de armamento aberta, uma leitura recente do River registrado e telemetria real. O guia de proteção mostra os passos.",
+               "The service only arms with the arming lock open, a recent reading from the registered River and real telemetry. The protection guide shows the steps.")
     }
 }

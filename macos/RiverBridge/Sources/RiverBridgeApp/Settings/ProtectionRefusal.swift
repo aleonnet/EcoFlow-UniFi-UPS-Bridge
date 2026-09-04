@@ -10,17 +10,17 @@ enum ProtectionRefusal {
         let parsed = try? JSONDecoder().decode(Refusal.self, from: Data(body.utf8))
         switch parsed?.motivo {
         case "armamento_bloqueado":
-            return L10n.t("Trava fechada: UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie.",
-                          "Lock closed: set UDR7_ARM_ALLOWED=1 in the service file and restart.")
+            return L10n.t("A trava de armamento está fechada. Abra-a no arquivo do serviço e reinicie (veja o guia).",
+                          "The arming lock is closed. Open it in the service file and restart (see the guide).")
         case "armado":
-            return L10n.t("Armada: ligue o modo ensaio antes de mudar estas chaves ou reiniciar.",
-                          "Armed: turn rehearsal on before changing these keys or restarting.")
+            return L10n.t("Esta proteção está armada: ligue o modo ensaio antes de mudar estes campos ou reiniciar.",
+                          "This protection is armed: turn rehearsal on before changing these fields or restarting.")
         case "fonte_nao_real":
-            return L10n.t("Fonte recusada: a leitura corrente não é do River registrado (serial) ou é sintética.",
-                          "Source refused: the current reading is not the registered River (serial) or is synthetic.")
+            return L10n.t("Leitura recusada: ela não vem do River registrado, ou é simulada.",
+                          "Reading refused: it does not come from the registered River, or it is simulated.")
         case "sem_snapshot":
-            return L10n.t("Sem leitura corrente do NUT — não há como verificar a fonte.",
-                          "No current NUT reading — the source cannot be verified.")
+            return L10n.t("Sem leitura do River agora — não há como conferir de onde ela vem.",
+                          "No reading from the River right now — there is no way to check where it comes from.")
         case "chave_somente_arquivo":
             return L10n.t("Essa chave só muda no arquivo do serviço.", "That key only changes in the service file.")
         // Rotas /v1/devices (2026-09-03). `validacao` traz no `erro` o campo e a
@@ -42,7 +42,9 @@ enum ProtectionRefusal {
             return L10n.t("O serviço instalado não gerencia dispositivos — rode o instalador para atualizar.",
                           "The installed service does not manage devices — run the installer to update.")
         default:
-            return L10n.t("Recusado: ", "Refused: ") + (parsed?.erro ?? body)
+            // Só o motivo desconhecido chega aqui: o texto do serviço vem
+            // prefixado, para a pessoa saber que a frase é dele e não do app.
+            return L10n.t("O serviço recusou: ", "The service refused: ") + (parsed?.erro ?? body)
         }
     }
 

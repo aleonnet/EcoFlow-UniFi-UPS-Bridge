@@ -121,6 +121,9 @@ public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
     /// mesmo segundo deixam de disputar o mesmo id (a lista descartava um).
     public var id: String { seq.map(String.init) ?? (ts + event) }
 
+    /// O instante do evento, quando o carimbo é legível.
+    public var date: Date? { parsedDate }
+
     private var parsedDate: Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"

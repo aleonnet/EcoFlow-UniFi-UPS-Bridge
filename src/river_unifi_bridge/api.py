@@ -230,6 +230,9 @@ class ApiServer:
             ts_from = int(q.get("from", "0"))
             ts_to = int(q["to"])
             removed = self.history.delete_events(ts_from, ts_to)
+            # A fila da memória é o que o SSE entrega a quem conecta: sem isto os
+            # eventos apagados reapareciam na tela na reconexão seguinte.
+            self.state.clear_events(ts_to)
         except ValueError as exc:
             return web.json_response({"erro": str(exc)}, status=400)
         return web.json_response({"removidos": removed})

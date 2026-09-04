@@ -72,8 +72,8 @@ struct DeviceSheetFrame<Content: View>: View {
             Button(L10n.t("Remover", "Remove"), role: .destructive) { onRemove?() }
             Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
         } message: {
-            Text(L10n.t("Os eventos gravados continuam no histórico. A chave SSH e o known_hosts semeados por você não são apagados.",
-                        "Recorded events stay in the history. The SSH key and the known_hosts you seeded are not deleted."))
+            Text(L10n.t("Os eventos gravados continuam no histórico. A chave e a identidade registrada do aparelho, que você mesmo criou, não são apagadas.",
+                        "Recorded events stay in the history. The key and the device's registered identity, which you created yourself, are not deleted."))
         }
     }
 
@@ -191,10 +191,10 @@ struct ArmingRow: View {
                 .font(.system(.body, design: .rounded))
                 .fixedSize(horizontal: false, vertical: true)
             Text(armAllowed
-                 ? L10n.t("Trava aberta (UDR7_ARM_ALLOWED=1). Feche-a no arquivo do serviço depois de armar.",
-                          "Lock open (UDR7_ARM_ALLOWED=1). Close it in the service file after arming.")
-                 : L10n.t("Trava fechada: para armar, UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie.",
-                          "Lock closed: to arm, set UDR7_ARM_ALLOWED=1 in the service file and restart."))
+                 ? L10n.t("A trava de armamento está aberta. Feche-a no arquivo do serviço depois de armar (veja o guia).",
+                          "The arming lock is open. Close it in the service file after arming (see the guide).")
+                 : L10n.t("A trava de armamento está fechada. Para armar, abra-a no arquivo do serviço e reinicie (veja o guia).",
+                          "The arming lock is closed. To arm, open it in the service file and restart (see the guide)."))
                 .font(.caption)
                 .foregroundStyle(armAllowed ? Color.orange : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)

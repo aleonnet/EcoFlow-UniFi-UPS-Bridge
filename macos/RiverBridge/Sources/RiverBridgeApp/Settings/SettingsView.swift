@@ -18,6 +18,9 @@ struct SettingsView: View {
     @State private var pollInterval = 2
     @State private var retentionDays = 7
     @State private var loaded = false
+    /// A leitura da configuração não voltou (serviço parado ou sem resposta).
+    /// Enquanto for verdade, os controles desta tela não valem nada e dizem isso.
+    @State private var configFailed = false
     @State private var feedback: String?
     @State private var notice: String?
     @State private var restartRequired = false
@@ -109,6 +112,25 @@ struct SettingsView: View {
                     }
                 }
 
+                if configFailed {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(L10n.t("Sem resposta do serviço — os valores abaixo não foram carregados.",
+                                    "No answer from the service — the values below were not loaded."))
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button(L10n.t("Tentar de novo", "Try again")) {
+                            Task { await loadCurrent() }
+                        }
+                        .buttonStyle(.glass)
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.orange.opacity(0.12)))
+                }
+
                 SettingsRows.group(L10n.t("Alarmes", "Alarms")) {
                     SettingsRows.presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
                               value: $powerLossDelay, presets: [0, 3, 6, 10, 30, 60])
@@ -122,11 +144,13 @@ struct SettingsView: View {
                     SettingsRows.sliderRow("battery.25percent", L10n.t("Bateria baixa", "Low battery"),
                               value: $lowBattery, range: 5...50, unit: "%", accent: accent)
                 }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("Coleta", "Sampling")) {
                     SettingsRows.presetRow("timer", L10n.t("Intervalo de leitura", "Poll interval"),
                               value: $pollInterval, presets: [1, 2, 5, 10, 30, 60])
                 }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("Histórico", "History")) {
                     HStack(spacing: 10) {
@@ -168,9 +192,10 @@ struct SettingsView: View {
                         .buttonStyle(.borderless)
                     }
                 }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("River", "River")) {
-                    SettingsRows.textRow("barcode", L10n.t("Número de série esperado (upsc device.serial)", "Expected serial (upsc device.serial)"),
+                    SettingsRows.textRow("barcode", L10n.t("Número de série esperado do River", "Expected River serial number"),
                                          $expectedSerial, placeholder: "R3P…", estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
                     SettingsRows.divider
                     SettingsRows.sliderRow("battery.0percent", L10n.t("Corte físico da saída", "Physical output cutoff"),
@@ -187,6 +212,7 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("Dispositivos protegidos", "Protected devices")) {
                     if case .unsupported(let why) = store.deviceSupport {
@@ -471,7 +497,10 @@ struct SettingsView: View {
             ))
             .labelsHidden()
             .toggleStyle(.switch)
-            .disabled(store.health == nil || optimistic[instance.id] != nil)
+            // `detail == nil`: o serviço respondeu, mas ainda não disse nada sobre
+            // ESTE dispositivo. Habilitado, o interruptor convidava a armar no
+            // escuro — e nascia desligado, dando a impressão de proteção parada.
+            .disabled(store.health == nil || detail == nil || optimistic[instance.id] != nil)
         }
         .scaleEffect(highlightID == instance.id ? 1.02 : 1)
         .shadow(color: accent.opacity(highlightID == instance.id ? 0.30 : 0), radius: 14)
@@ -538,9 +567,22 @@ struct SettingsView: View {
 
     // MARK: - IO (unchanged contract: everything via the daemon's API)
 
+    /// Lê a configuração VIVA do serviço. Enquanto ela não chega, a tela não
+    /// pode mostrar os valores de fábrica como se fossem os do serviço: era o
+    /// que acontecia — a chamada falhava em silêncio e os padrões ficavam ali,
+    /// com aparência de verdade. Sem resposta, a faixa avisa e os controles
+    /// ficam desabilitados; a tela tenta de novo a cada vez que aparece.
     private func loadCurrent() async {
-        guard !loaded, let endpoint = ApiEndpoint.discover() else { return }
-        guard let response = try? await APIClient(endpoint: endpoint).config() else { return }
+        guard !loaded else { return }
+        guard let endpoint = ApiEndpoint.discover() else {
+            configFailed = true
+            return
+        }
+        guard let response = try? await APIClient(endpoint: endpoint).config() else {
+            configFailed = true
+            return
+        }
+        configFailed = false
         let cfg = response.config
         powerLossDelay = cfg["power_loss_delay_seconds"]?.intValue ?? powerLossDelay
         restoreDelay = cfg["restore_delay_seconds"]?.intValue ?? restoreDelay
@@ -561,10 +603,13 @@ struct SettingsView: View {
         }
         do {
             let removed = try await APIClient(endpoint: endpoint).deleteEvents(to: cutoff)
+            // O serviço apagou; a tela tem de esquecer no mesmo ato. Sem isto a
+            // lista continuava lá até chegar um evento novo.
+            store.forgetEvents(upTo: Date(timeIntervalSince1970: TimeInterval(cutoff)))
             feedback = nil
             notice = removed == 1 ? L10n.t("1 evento removido.", "1 event removed.") : "\(removed) " + L10n.t("eventos removidos.", "events removed.")
         } catch let APIError.badStatus(_, body) {
-            feedback = L10n.t("Recusado: ", "Refused: ") + body
+            feedback = ProtectionRefusal.text(body)
         } catch {
             feedback = L10n.t("Falha ao limpar: ", "Clear failed: ") + error.localizedDescription
         }
@@ -588,7 +633,7 @@ struct SettingsView: View {
             restartRequired = result.restartRequired
             feedback = nil   // success is silent; the restart button is the notice
         } catch let APIError.badStatus(_, body) {
-            feedback = L10n.t("Recusado: ", "Refused: ") + body
+            feedback = ProtectionRefusal.text(body)
         } catch {
             feedback = L10n.t("Falha ao salvar: ", "Save failed: ") + error.localizedDescription
         }
@@ -598,7 +643,7 @@ struct SettingsView: View {
         guard let endpoint = ApiEndpoint.discover() else { return }
         do {
             try await APIClient(endpoint: endpoint).restartService()
-            feedback = L10n.t("Reinício agendado (202).", "Restart scheduled (202).")
+            notice = L10n.t("Reinício do serviço agendado.", "Service restart scheduled.")
             restartRequired = false
         } catch let APIError.badStatus(_, body) {
             feedback = ProtectionRefusal.text(body)   // 409 armado: disarm first, or kickstart from the terminal

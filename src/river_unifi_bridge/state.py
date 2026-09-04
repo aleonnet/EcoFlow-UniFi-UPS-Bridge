@@ -17,6 +17,16 @@ from collections import deque
 UDR7_ALIAS_ID = "udr7"
 
 
+def _epoca(ts: str | None) -> float:
+    """O carimbo do evento em segundos. Ilegível vira infinito: na dúvida, mantém."""
+    if not ts:
+        return float("inf")
+    try:
+        return time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S"))
+    except (ValueError, TypeError):
+        return float("inf")
+
+
 class SharedState:
     def __init__(self, events_maxlen: int = 100) -> None:
         self._lock = threading.Lock()
@@ -75,6 +85,21 @@ class SharedState:
     def get(self) -> tuple[int, dict | None, bool, str | None]:
         with self._lock:
             return self._version, self._snapshot, self._comm_ok, self._last_error
+
+    def clear_events(self, ts_to: int) -> int:
+        """Esquece os eventos até `ts_to` (inclusive). Devolve quantos saíram.
+
+        Limpar o histórico gravado não bastava: esta fila é o que o SSE entrega
+        a QUEM CONECTA, então os eventos apagados voltavam à tela na reconexão
+        seguinte. Evento com carimbo ilegível fica — nunca apago o que não sei
+        datar.
+        """
+        with self._lock:
+            antes = len(self._events)
+            mantidos = [e for e in self._events if _epoca(e.get("ts")) > ts_to]
+            self._events = deque(mantidos, maxlen=self._events.maxlen)
+            self._version += 1
+            return antes - len(self._events)
 
     def events(self, after: int = -1) -> list[dict]:
         """Os eventos posteriores a `after` (a sequência, não o índice)."""

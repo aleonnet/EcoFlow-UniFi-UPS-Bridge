@@ -252,6 +252,14 @@ cena_mutacao S4ae src/river_unifi_bridge/protect.py \
     tests/unit/test_protect.py::test_retry_max_zero_never_spawns \
     tests/unit/test_protect.py::test_retry_max_is_the_number_of_attempts
 
+# S4af — limpar eventos tem de valer também para a fila da memória, que é o que
+# o SSE entrega a quem conecta: sem isso os eventos apagados voltavam à tela na
+# reconexão seguinte (o dono limpava e eles reapareciam).
+cena_mutacao S4af src/river_unifi_bridge/api.py \
+    'self.state.clear_events(ts_to)' \
+    'pass  # clear_events' \
+    tests/unit/test_api.py::test_clearing_events_also_forgets_them_in_memory
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys
@@ -791,6 +799,47 @@ else
     tail -3 "$REL/limpo.log" "$REL/mutante.log"
 fi
 rm -rf "$REL"
+
+# S21 — a tela do app não fala em chave, arquivo nem código. Duas buscas, as duas
+# exigindo ZERO, sobre macos/RiverBridge/Sources:
+#   (a) os quatro termos que são jargão puro e não têm razão de existir no app;
+#   (b) frase de tela escrita fora do tradutor (o app é bilíngue: texto solto
+#       aparece em português para quem escolheu inglês).
+# A própria cena é refutada a cada rodada: numa CÓPIA com o jargão replantado, as
+# mesmas buscas têm de acusar — busca que nunca acusaria não é cerca.
+JARG_DIR="$RAIZ/macos/RiverBridge/Sources"
+JARG_TERMOS="UDR7_ARM_ALLOWED|known_hosts|upsc device.serial|(202)"
+conta_jargao() {   # 1 = diretório a varrer; imprime o total das duas buscas
+    local dir="$1" total=0 termo antigo_ifs="$IFS"
+    IFS='|'
+    for termo in $JARG_TERMOS; do
+        total=$((total + $(/usr/bin/grep -rF -o -- "$termo" "$dir" 2>/dev/null | wc -l)))
+    done
+    IFS="$antigo_ifs"
+    total=$((total + $(/usr/bin/grep -rnE '\.serviceDown\("' "$dir" 2>/dev/null | wc -l)))
+    printf '%s' "$total"
+}
+JARG_LIMPO="$(conta_jargao "$JARG_DIR")"
+JARG_M="$(mktemp -d)"
+cp -R "$JARG_DIR" "$JARG_M/Sources"
+cat > "$JARG_M/Sources/JargaoPlantado.swift" <<'EOF'
+// Arquivo do mutante da cena S21 — nunca existe na árvore.
+enum JargaoPlantado {
+    static let trava = "Trava UDR7_ARM_ALLOWED=1 no arquivo do serviço"
+    static let host = "console fora do known_hosts"
+    static let serial = "Número de série (upsc device.serial)"
+    static let reinicio = "Reinício agendado (202)."
+    static func cai(_ store: Qualquer) { store.phase = .serviceDown("Sem comunicação") }
+}
+EOF
+JARG_MUT="$(conta_jargao "$JARG_M/Sources")"
+if [ "$JARG_LIMPO" = "0" ] && [ "$JARG_MUT" -ge 5 ]; then
+    ok "S21 tela sem jargão: 0 ocorrência na árvore; $JARG_MUT no mutante com o jargão replantado"
+else
+    erro "S21 tela sem jargão: árvore=$JARG_LIMPO (esperado 0), mutante=$JARG_MUT (esperado >= 5) — ocorrências:"
+    /usr/bin/grep -rnE 'UDR7_ARM_ALLOWED|known_hosts|upsc device\.serial|\(202\)|\.serviceDown\("' "$JARG_DIR" | head -10
+fi
+rm -rf "$JARG_M"
 
 # S14 — abertura num pty de 80 colunas: asserção estrutural (o quadro bate com a
 # LG_MASK do próprio script, bordas incluídas) + snapshot do quadro final.

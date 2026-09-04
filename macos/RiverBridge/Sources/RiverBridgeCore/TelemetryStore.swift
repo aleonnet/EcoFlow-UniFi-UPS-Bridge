@@ -18,6 +18,10 @@ public final class TelemetryStore {
     public private(set) var phase: ConnectionPhase = .connecting
     /// Increments on every applied state reading — the UI's data heartbeat.
     public private(set) var beat: Int = 0
+    /// Sobe a cada limpeza de eventos. As telas que listam eventos observam este
+    /// número: sem ele, limpar apagava o banco e a lista continuava na tela até
+    /// chegar um evento novo (medido com o dono em 2026-09-04).
+    public private(set) var eventsGeneration: Int = 0
     /// The integration chain, polled here instead of by each view: the health is
     /// what carries the plugin list and the names the user gave, and two pollers
     /// would show two different truths on the same screen.
@@ -135,7 +139,8 @@ public final class TelemetryStore {
             var backoff: Double = 0.5
             while !Task.isCancelled {
                 guard let endpoint = ApiEndpoint.discover(environment: environment) else {
-                    self?.phase = .serviceDown("Serviço não instalado ou nunca iniciado")
+                    self?.phase = .serviceDown(L10n.t("Serviço não instalado ou nunca iniciado",
+                                                     "Service not installed or never started"))
                     try? await Task.sleep(for: .seconds(2))
                     continue
                 }
@@ -147,12 +152,23 @@ public final class TelemetryStore {
                         self?.apply(message)
                     }
                 } catch {
-                    self?.phase = .serviceDown("Sem comunicação com o serviço")
+                    self?.phase = .serviceDown(L10n.t("Sem comunicação com o serviço",
+                                                      "No communication with the service"))
                 }
                 try? await Task.sleep(for: .seconds(backoff))
                 backoff = min(backoff * 2, 10)
             }
         }
+    }
+
+    /// O serviço apagou os eventos até `upTo`. A lista viva esquece os mesmos, e
+    /// quem mostra eventos recarrega pelo `eventsGeneration`.
+    public func forgetEvents(upTo cutoff: Date) {
+        events.removeAll { evento in
+            guard let quando = evento.date else { return true }
+            return quando <= cutoff
+        }
+        eventsGeneration += 1
     }
 
     public func apply(_ message: SSEMessage) {
@@ -233,6 +249,22 @@ public final class TelemetryStore {
     public var outputVoltageText: String {
         guard lendoAgora else { return "—" }
         return Self.voltageText(latest?.power?.outputVoltageV)
+    }
+
+    public var batteryVoltageText: String {
+        guard lendoAgora else { return "—" }
+        return Self.voltageText(latest?.battery?.voltageV)
+    }
+
+    /// Nem todo no-break publica uso e tensão de saída: o River 3 Plus, pelo
+    /// cabo, manda só bateria, autonomia e situação (medido em 2026-09-04).
+    /// A tela mostra o que ESTE aparelho manda, em vez de fileiras de traços.
+    public var temUsoESaida: Bool {
+        lendoAgora && (latest?.power?.loadPercent != nil || latest?.power?.outputVoltageV != nil)
+    }
+
+    public var temTensaoDaBateria: Bool {
+        lendoAgora && latest?.battery?.voltageV != nil
     }
 
     // MARK: - Pure formatters (unit-tested)

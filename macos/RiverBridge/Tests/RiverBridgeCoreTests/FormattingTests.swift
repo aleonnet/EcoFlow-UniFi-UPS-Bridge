@@ -140,3 +140,51 @@ import Testing
     #expect(velho.seq == nil)
     #expect(velho.id == "2026-09-03T10:00:00-0300COMM_LOST")
 }
+
+@MainActor
+@Test func readingsShownFollowWhatTheDevicePublishes() {
+    // O River 3 Plus publica bateria e autonomia pelo cabo, e NÃO publica uso
+    // nem tensão de saída (medido no Mac mini em 2026-09-04). A tela mostra o
+    // que chega, em vez de fileiras de trações fixos.
+    let store = TelemetryStore()
+    store.apply(SSEMessage(
+        event: "state",
+        data: #"{"power": {"state": "ON_BATTERY"}, "battery": {"charge_percent": 97, "voltage_v": 13.0}}"#
+    ))
+    #expect(store.temUsoESaida == false)
+    #expect(store.temTensaoDaBateria)
+    #expect(store.batteryVoltageText == "13 V")
+
+    // Um no-break que publica uso volta a mostrar uso e saída.
+    let completo = TelemetryStore()
+    completo.apply(SSEMessage(
+        event: "state",
+        data: #"{"power": {"state": "ONLINE", "load_percent": 12, "output_voltage_v": 120}, "battery": {"charge_percent": 80}}"#
+    ))
+    #expect(completo.temUsoESaida)
+    #expect(completo.loadText == "12%")
+}
+
+@MainActor
+@Test func clearingEventsForgetsThemAndTellsTheScreens() {
+    // Limpar apagava o banco e a lista ficava na tela até chegar evento novo
+    // (medido com o dono em 2026-09-04). Agora a memória esquece junto e o
+    // contador avisa quem lista eventos para recarregar.
+    let store = TelemetryStore()
+    store.apply(SSEMessage(event: "event",
+                           data: #"{"ts": "2026-09-04T00:00:05-0300", "event": "POWER_LOSS"}"#))
+    store.apply(SSEMessage(event: "event",
+                           data: #"{"ts": "2026-09-04T02:00:00-0300", "event": "COMM_LOST"}"#))
+    #expect(store.events.count == 2)
+    let geracao = store.eventsGeneration
+
+    // Limpa só o que é anterior à 01:00 daquele dia.
+    var partes = DateComponents()
+    partes.year = 2026; partes.month = 9; partes.day = 4; partes.hour = 1
+    partes.timeZone = TimeZone(secondsFromGMT: -3 * 3600)
+    let corte = Calendar(identifier: .gregorian).date(from: partes)!
+    store.forgetEvents(upTo: corte)
+
+    #expect(store.events.map(\.event) == ["COMM_LOST"])   // o de depois fica
+    #expect(store.eventsGeneration == geracao + 1)        // as telas recarregam
+}
