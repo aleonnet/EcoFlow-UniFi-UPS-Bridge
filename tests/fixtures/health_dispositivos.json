@@ -110,6 +110,7 @@
   ],
   "ha": "nao_observavel",
   "last_error": null,
+  "last_tick_error": null,
   "has_snapshot": false,
   "version": 0
 }

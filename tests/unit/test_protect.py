@@ -911,3 +911,39 @@ def test_status_name_falls_back_to_the_policy_default_name(paths, key_file):
     policy = ProtectionPolicy(holder, runner=Spy(), keygen_runner=FakeKeygen(0),
                               default_name="Servidor SSH", **paths)
     assert policy.status()["name"] == "Servidor SSH"
+
+
+def test_runtime_write_failure_still_resets_outage_and_records_sent(paths, key_file, monkeypatch, capsys):
+    """Disco cheio na hora de anotar não pode travar nem calar a proteção.
+
+    O arquivo de memória ("já enviei nesta queda") é conveniência entre reinícios;
+    o estado em memória é o que decide. Antes, a exceção subia pelo tick; com a
+    rede do laço aparando, a instância ficaria travada em silêncio — o pior dos
+    dois mundos.
+    """
+    escrita_real = protect._write_private_json
+
+    def disco_cheio(path, data):
+        raise OSError(28, "No space left on device")
+
+    # 1) No ENVIO: o evento sai e o comando é chamado, mesmo sem conseguir anotar.
+    rig = armed_rig(paths, key_file)
+    monkeypatch.setattr(protect, "_write_private_json", disco_cheio)
+    actions = rig.outage()
+    assert events_of(actions) == [EV_SENT]
+    assert len(rig.spy.calls) == 1
+    assert not os.path.exists(paths["runtime_path"])
+    avisos = [json.loads(l) for l in capsys.readouterr().out.splitlines()
+              if '"runtime_write_failed"' in l]
+    assert len(avisos) == 1
+
+    # 2) Na RESTAURAÇÃO: a queda é zerada e a instância volta a poder disparar.
+    rig.clock.now += 100
+    # REARMED: a política estava travada pelo envio e volta a ficar elegível.
+    assert events_of(rig.tick(snap(**{"ups.status": "OL CHRG"}), ["POWER_RESTORED"])) == [EV_REARMED]
+    # Volta a escrever (o `undo` do monkeypatch levaria junto a cerca anti-spawn
+    # do conftest, que compartilha a mesma instância da fixture).
+    monkeypatch.setattr(protect, "_write_private_json", escrita_real)
+    rig.clock.now += 100
+    assert events_of(rig.outage()) == [EV_SENT]        # nova queda, novo envio
+    assert len(rig.spy.calls) == 2

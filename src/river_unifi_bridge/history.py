@@ -45,9 +45,13 @@ def _event_row(r: tuple) -> dict:
 
 
 class HistoryStore:
-    def __init__(self, path: str, retention_days: int = 7) -> None:
+    def __init__(self, path: str, retention_days: int = 7, on_error=None) -> None:
         self.path = path
         self.retention_days = retention_days
+        # Gravar histórico é registro, não vigilância: uma falha aqui (base
+        # bloqueada, disco cheio) é avisada e o laço segue. Antes ela subia pelo
+        # tick e podia derrubar o serviço que vigia a bateria.
+        self._on_error = on_error or (lambda *_a, **_k: None)
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
@@ -68,10 +72,19 @@ class HistoryStore:
         conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
+    def _falhou(self, op: str, exc: Exception) -> None:
+        self._on_error("WARN", "history_write_failed", op=op, reason=str(exc))
+
     def record_sample(self, snapshot: dict, ts: int | None = None) -> None:
         ts = int(ts if ts is not None else time.time())
         battery = snapshot.get("battery", {})
         power = snapshot.get("power", {})
+        try:
+            self._insert_sample(ts, battery, power)
+        except (sqlite3.Error, OSError) as exc:
+            self._falhou("record_sample", exc)
+
+    def _insert_sample(self, ts: int, battery: dict, power: dict) -> None:
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO samples (ts, state, charge, runtime, load, power_w)"
@@ -91,11 +104,14 @@ class HistoryStore:
         """`device` = id da instância do dispositivo protegido dona do evento;
         None para eventos do bridge (queda, restauração, comunicação)."""
         ts = int(ts if ts is not None else time.time())
-        with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO events (ts, type, detail, device) VALUES (?, ?, ?, ?)",
-                (ts, event_type, detail, device),
-            )
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO events (ts, type, detail, device) VALUES (?, ?, ?, ?)",
+                    (ts, event_type, detail, device),
+                )
+        except (sqlite3.Error, OSError) as exc:
+            self._falhou("record_event", exc)
 
     def query(self, metric: str, ts_from: int, ts_to: int,
               bucket_seconds: int = 60) -> list[dict]:
@@ -158,10 +174,19 @@ class HistoryStore:
             ).rowcount
 
     def prune(self, now: int | None = None) -> int:
-        """Delete data older than the retention window. Returns rows removed."""
+        """Apaga o que passou da retenção. Devolve quantas linhas saíram.
+
+        Roda dentro do laço de poll (uma vez por hora): uma base bloqueada aqui
+        derrubaria o vigia por causa de faxina. Vira aviso e devolve 0, como as
+        outras escritas.
+        """
         now = int(now if now is not None else time.time())
         cutoff = now - self.retention_days * 86400
-        with self._connect() as conn:
-            a = conn.execute("DELETE FROM samples WHERE ts < ?", (cutoff,)).rowcount
-            b = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+        try:
+            with self._connect() as conn:
+                a = conn.execute("DELETE FROM samples WHERE ts < ?", (cutoff,)).rowcount
+                b = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+        except (sqlite3.Error, OSError) as exc:
+            self._falhou("prune", exc)
+            return 0
         return a + b

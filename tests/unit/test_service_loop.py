@@ -179,9 +179,11 @@ def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):
     """run_loop constrói o REGISTRO, com a config e o diretório de estado certos.
 
     Mecanismo de término: `once=False` só sai por restart_requested, então o
-    plugin injetado levanta uma sentinela no primeiro observe.
+    plugin injetado levanta uma sentinela no primeiro observe. Ela é `BaseException`
+    porque a rede de proteção do laço apara `Exception` — o vigia não pode morrer
+    por um defeito de um dispositivo.
     """
-    class Sentinela(Exception):
+    class Sentinela(BaseException):
         pass
 
     class Explode:
@@ -210,3 +212,161 @@ def test_run_loop_builds_registered_plugins(tmp_path, monkeypatch):
     # A loja foi migrada do .env no boot: uma instância `udr7`, e o arquivo existe.
     assert [d.id for d in visto["devices"]] == ["udr7"]
     assert (tmp_path / "devices.json").exists()
+
+
+def test_loop_survives_plugin_exception(rig, capsys):
+    """Um dispositivo doente não mata o vigia nem cega os outros.
+
+    O erro é de SOFTWARE, não do UPS: vira `tick_failed` no log e `last_tick_error`
+    no health; a leitura do NUT continua boa (`nut` fica `ok`) e o snapshot é
+    publicado. Sem a rede, a exceção subia pelo laço e derrubava o serviço.
+    """
+    from fake_plugin import FakePlugin
+
+    class Doente(FakePlugin):
+        def observe(self, snap, tracker_events):
+            raise RuntimeError("cabo solto")
+
+    doente = Doente()
+    doente.id = "doente"
+    sadio = FakePlugin()
+    _process_snapshot(sim_snap(), rig["tracker"], [doente, sadio], rig["shared"], rig["history"])
+
+    assert len(sadio.observed) == 1                    # o segundo dispositivo rodou
+    health = rig["shared"].health()
+    assert "RuntimeError" in health["last_tick_error"]
+    assert "cabo solto" in health["last_tick_error"]
+    assert health["nut"] == "ok"                       # o UPS respondeu: não é falha dele
+    assert health["last_error"] is None
+    assert health["has_snapshot"] is True
+    assert [p["id"] for p in health["plugins"]] == ["doente", "fake"]
+    linhas = [json.loads(l) for l in capsys.readouterr().out.splitlines()
+              if '"tick_failed"' in l]
+    assert linhas and linhas[0]["plugin"] == "doente" and linhas[0]["tipo"] == "RuntimeError"
+
+
+def test_loop_survives_plugin_exception_on_the_failure_path(rig):
+    """A rede também cobre o caminho da falha de leitura."""
+    from fake_plugin import FakePlugin
+
+    class Doente(FakePlugin):
+        def observe_failure(self, tracker_events):
+            raise RuntimeError("cabo solto")
+
+    doente = Doente()
+    doente.id = "doente"
+    sadio = FakePlugin()
+    _handle_poll_failure(NutError("upsd fora"), rig["tracker"], [doente, sadio],
+                         rig["shared"], rig["history"])
+    assert len(sadio.observed) == 1
+    health = rig["shared"].health()
+    assert "cabo solto" in health["last_tick_error"]
+    assert health["nut"] == "falha"          # esse sim é erro do UPS, e continua sendo
+
+
+def test_history_write_failure_is_not_a_tick_error(rig, capsys):
+    """Base bloqueada: aviso e o ciclo segue; não é erro do vigia nem do UPS."""
+    import sqlite3
+
+    from river_unifi_bridge.history import HistoryStore
+
+    avisos = []
+    history = HistoryStore(str(rig["history"].path) + "2",
+                           on_error=lambda level, event, **p: avisos.append((event, p)))
+
+    def travada(*_a, **_k):
+        raise sqlite3.OperationalError("database is locked")
+
+    history._connect = travada
+    _process_snapshot(sim_snap(), rig["tracker"], rig["plugins"], rig["shared"], history)
+    history.prune()
+
+    health = rig["shared"].health()
+    assert health["last_tick_error"] is None      # gravar histórico não é vigiar
+    assert health["nut"] == "ok"
+    assert health["has_snapshot"] is True         # o ciclo terminou inteiro
+    assert {e for e, _ in avisos} == {"history_write_failed"}
+    assert {p["op"] for _, p in avisos} == {"record_sample", "record_event", "prune"}
+
+
+def test_loop_prunes_history_hourly(tmp_path, monkeypatch):
+    """A retenção configurada passa a ser verdade: limpa no boot e a cada hora."""
+    class Terminador(BaseException):
+        pass
+
+    relogio = {"agora": 0.0}
+    podas = []
+
+    class Servidor:
+        def __init__(self, cfg, shared, *a, **k):
+            pass
+
+        def start_in_thread(self):
+            return None
+
+    voltas = {"n": 0}
+
+    def anda(_cfg):
+        voltas["n"] += 1
+        if voltas["n"] == 1:
+            return sim_snap("OL CHRG", "80")      # 1.ª poda: o boot
+        if voltas["n"] == 2:
+            relogio["agora"] += 3601              # passou uma hora
+            return sim_snap("OL CHRG", "80")      # 2.ª poda
+        raise Terminador()
+
+    from river_unifi_bridge import api as api_mod
+    from river_unifi_bridge.history import HistoryStore
+
+    real_prune = HistoryStore.prune
+
+    def espia(self):
+        podas.append(self.retention_days)
+        return real_prune(self)
+
+    monkeypatch.setattr(HistoryStore, "prune", espia)
+    monkeypatch.setattr(api_mod, "ApiServer", Servidor)
+    monkeypatch.setattr(service, "poll_once", anda)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = True
+    cfg.history_retention_days = 3
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False, clock=lambda: relogio["agora"])
+    # Uma poda no boot e outra na volta seguinte à hora cheia, com a retenção viva.
+    assert podas == [3, 3]
+
+
+def test_prune_does_not_run_every_tick(tmp_path, monkeypatch):
+    """Sem uma hora entre as voltas, a limpeza não repete: é retenção, não varredura."""
+    class Terminador(BaseException):
+        pass
+
+    podas = []
+    voltas = {"n": 0}
+
+    class Servidor:
+        def __init__(self, cfg, shared, *a, **k):
+            pass
+
+        def start_in_thread(self):
+            return None
+
+    def anda(_cfg):
+        voltas["n"] += 1
+        if voltas["n"] >= 3:
+            raise Terminador()
+        return sim_snap("OL CHRG", "80")
+
+    from river_unifi_bridge import api as api_mod
+    from river_unifi_bridge.history import HistoryStore
+
+    monkeypatch.setattr(HistoryStore, "prune", lambda self: podas.append(1))
+    monkeypatch.setattr(api_mod, "ApiServer", Servidor)
+    monkeypatch.setattr(service, "poll_once", anda)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = True
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False, clock=lambda: 0.0)
+    assert podas == [1]

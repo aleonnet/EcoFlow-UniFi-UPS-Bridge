@@ -421,10 +421,23 @@ class ProtectionPolicy:
             self._sent_pending_restore = bool(data.get("sent_pending_restore", False))
 
     def _save_runtime(self) -> None:
-        _write_private_json(
-            self._runtime_path,
-            {"sent_pending_restore": bool(self._sent_pending_restore), "updated_at": self._now_iso()},
-        )
+        """Grava a lembrança de "já enviei nesta queda"; falhar aqui não trava a proteção.
+
+        Só existem dois chamadores, e os dois são pontos de COMMIT: a restauração
+        (que zera a queda) e o envio (que emite o evento). Com disco cheio, a
+        gravação levantava e derrubava o processo; com a rede do laço aparando,
+        derrubaria a instância num estado travado, em silêncio. O estado em
+        memória vale do mesmo jeito e o arquivo é reescrito no próximo commit.
+        """
+        try:
+            _write_private_json(
+                self._runtime_path,
+                {"sent_pending_restore": bool(self._sent_pending_restore),
+                 "updated_at": self._now_iso()},
+            )
+        except OSError as exc:
+            log_json("WARN", "runtime_write_failed",
+                     path=self._runtime_path, reason=str(exc)[:200])
 
     def _known_host(self, pc: ProtectionConfig) -> bool:
         path = self._known_hosts_path

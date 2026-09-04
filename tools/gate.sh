@@ -227,6 +227,22 @@ cena_mutacao S4ab src/river_unifi_bridge/config.py \
     'return ""' \
     tests/unit/test_config.py::test_put_empty_value_is_refused_on_non_string_keys
 
+# S4ac — um dispositivo doente não pode matar o vigia: sem a rede que apara
+# `Exception` em volta de cada plugin, uma exceção no tick derruba o serviço que
+# vigia a bateria (o launchd relança, mas o ciclo se perde).
+cena_mutacao S4ac src/river_unifi_bridge/service.py \
+    'except Exception as exc:  # tick_failed: o vigia continua' \
+    'except NutError as exc:  # tick_failed: o vigia continua' \
+    tests/unit/test_service_loop.py::test_loop_survives_plugin_exception \
+    tests/unit/test_service_loop.py::test_loop_survives_plugin_exception_on_the_failure_path
+
+# S4ad — "manter histórico: N dias" só é verdade se a limpeza rodar: a função
+# existia desde a 0.1.0 e nunca era chamada em produção (base crescia sem fim).
+cena_mutacao S4ad src/river_unifi_bridge/service.py \
+    'history.prune()  # retenção' \
+    'pass  # retenção' \
+    tests/unit/test_service_loop.py::test_loop_prunes_history_hourly
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

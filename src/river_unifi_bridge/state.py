@@ -31,6 +31,10 @@ class SharedState:
         self._comm_ok = False
         self._last_error: str | None = None
         self._plugins: list[dict] = []         # última leitura de plugin_statuses()
+        # Erro de SOFTWARE no ciclo (um plugin que levantou), separado do erro do
+        # UPS: confundir os dois faria a tela dizer "NUT com falha" quando o NUT
+        # está bem e quem quebrou fomos nós.
+        self._last_tick_error: str | None = None
 
     def set_plugins(self, statuses: list[dict]) -> None:
         """Copia sob a trava: o chamador pode reusar a lista depois."""
@@ -42,6 +46,11 @@ class SharedState:
             self._snapshot = snapshot
             self._comm_ok = True
             self._last_error = None
+            self._version += 1
+
+    def record_tick_error(self, reason: str) -> None:
+        with self._lock:
+            self._last_tick_error = reason
             self._version += 1
 
     def record_failure(self, reason: str) -> None:
@@ -79,6 +88,7 @@ class SharedState:
             snapshot = self._snapshot
             comm_ok = self._comm_ok
             last_error = self._last_error
+            last_tick_error = self._last_tick_error
             plugins = [dict(p) for p in self._plugins]
         # O alias udr7/udr7_detail continua sendo a entrada deste id. É PERMANENTE
         # enquanto o instalador o ler com sed (river-bridge-install.sh): a regex
@@ -100,6 +110,7 @@ class SharedState:
             "plugins": plugins,
             "ha": "nao_observavel",
             "last_error": last_error,
+            "last_tick_error": last_tick_error,
             "has_snapshot": snapshot is not None,
             "version": version,
         }

@@ -32,6 +32,9 @@ from .protect import _emit
 # novo: a condição só é considerada cessada acima do limiar mais esta margem.
 LOW_BATTERY_HYSTERESIS_PERCENT = 5
 
+# De quanto em quanto tempo o histórico é limpo pela retenção configurada.
+PRUNE_INTERVAL_SECONDS = 3600
+
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_VALIDATION = 3
@@ -183,11 +186,27 @@ def _audit_plugins(plugins) -> None:
                  plugin=plugin.id, de=transition[0], para=transition[1])
 
 
+def _observe_guarded(plugin, chamada, shared, history) -> None:
+    """Um dispositivo doente não pode cegar os outros nem matar o vigia.
+
+    A exceção vira registro (`tick_failed`) e um campo próprio no health, separado
+    do erro do UPS; o resto do ciclo — os demais dispositivos, a lista, o snapshot,
+    o histórico — continua. Só `Exception`: interrupção do usuário passa.
+    """
+    try:
+        _emit(chamada(), shared, history, log=_log)
+    except Exception as exc:  # tick_failed: o vigia continua
+        motivo = f"{plugin.id}: {type(exc).__name__}: {exc}"
+        _log("ERROR", "tick_failed", plugin=plugin.id, tipo=type(exc).__name__, reason=str(exc))
+        if shared is not None:
+            shared.record_tick_error(motivo)
+
+
 def _handle_poll_failure(exc: Exception, tracker, plugins, shared, history) -> None:
     events = tracker.observe_failure()
     _record_tracker_events(events, lambda _e: {"reason": str(exc)}, shared, history)
     for plugin in plugins:
-        _emit(plugin.observe_failure(events), shared, history, log=_log)
+        _observe_guarded(plugin, lambda p=plugin: p.observe_failure(events), shared, history)
     _audit_plugins(plugins)
     if shared is not None:
         shared.record_failure(str(exc))
@@ -204,7 +223,7 @@ def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> N
     _record_tracker_events(
         events, lambda _e: {"state": snap.state, "charge": snap.charge_percent}, shared, history)
     for plugin in plugins:
-        _emit(plugin.observe(snap, events), shared, history, log=_log)
+        _observe_guarded(plugin, lambda p=plugin: p.observe(snap, events), shared, history)
     if plugins and shared is not None:
         shared.set_plugins(plugin_statuses(plugins))
     _audit_plugins(plugins)
@@ -215,8 +234,10 @@ def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> N
     _log("INFO", "state", **snap_dict)
 
 
-def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> int:
+def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
+             clock=time.monotonic) -> int:
     tracker = TransitionTracker(cfg)
+    last_prune = float("-inf")
 
     # Cada instância traz o próprio holder e a própria política; `--once` é
     # diagnóstico e não constrói nenhuma (nem lê nem escreve a loja).
@@ -253,7 +274,8 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
 
         shared = SharedState()
         history = HistoryStore(
-            os.path.join(state_dir(), "history.sqlite"), cfg.history_retention_days
+            os.path.join(state_dir(), "history.sqlite"), cfg.history_retention_days,
+            on_error=_log,
         )
         api_server = ApiServer(
             cfg, shared, history, env_path, restart_cb=restart_requested.set,
@@ -291,6 +313,13 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "") -> in
             _process_snapshot(snap, tracker, plugins, shared, history)
             if once:
                 return EXIT_OK
+        # "Manter histórico: N dias" era só um número na tela: a limpeza existia e
+        # nunca era chamada. Roda no 1.º ciclo e a cada hora, e acompanha a
+        # configuração quando ela muda a quente.
+        if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:
+            last_prune = clock()
+            history.retention_days = cfg.history_retention_days
+            history.prune()  # retenção
         if restart_requested.wait(timeout=cfg.poll_interval_seconds):
             # §7A.3 contract: deliberate restart exits 75; launchd
             # (KeepAlive={SuccessfulExit: false}) relaunches us.
