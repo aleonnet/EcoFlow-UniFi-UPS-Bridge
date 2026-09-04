@@ -52,6 +52,28 @@ Instalado à mão nesta madrugada, **fora do instalador** (vira parte dele na fr
 desligado no mini. Enquanto a frente seguinte não move isso para serviço do sistema, um
 reinício sem login deixa o River sem leitura.
 
+## 4b. O que mudou depois deste handoff nascer (madrugada de 2026-09-04)
+
+| Fato | Detalhe |
+|---|---|
+| **0.4.0 e 0.4.1 publicadas** | a 0.4.1 conserta três defeitos que a 2.ª rodada da revisão fria achou; quem instalar deve ir direto nela |
+| Leitura de potência pela serial | no serviço, na tela e no contrato; provada no mini com o código novo (68,5 W, por tomada) |
+| Instalador cuida do NUT | fase nova: configuração escrita só se faltar, dois serviços do SISTEMA com nome próprio (`river-bridge-ups`/`river-bridge-upsd`), cena S9k no portão |
+| Revisão fria | duas rodadas, oito bloqueadores no total, todos corrigidos com cerca; o diário está nos commits |
+
+**O que só o dono pode fazer, e por quê:** instalar no Mac mini pede a senha de administrador,
+que eu não digito. O comando é o de sempre:
+
+```
+curl -fsSL https://raw.githubusercontent.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/main/river-bridge-install.sh | bash
+```
+
+**Estado do mini nesta madrugada:** o Mac reiniciou às 01h17 e ninguém logou, então os
+programas de leitura (registrados como do usuário) não subiram e o River ficou sem vigia por
+uma hora. Religuei-os desprendidos da sessão às 02h20 — funciona agora, **não sobrevive a um
+reinício**. É exatamente isso que a fase nova do instalador conserta, ao registrar a leitura
+como serviço do sistema.
+
 ## 5. Próximo passo
 
 A frente do River, com os doze itens no `../BACKLOG_20260901.md` (B30–B41): o botão de liberar
