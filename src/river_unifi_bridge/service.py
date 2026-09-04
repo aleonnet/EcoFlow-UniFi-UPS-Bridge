@@ -153,6 +153,27 @@ _porta_serial_lembrada: str | None = None
 # abriria todas as portas seriais a cada ciclo, para nada.
 _ultima_varredura: float = float("-inf")
 VARREDURA_INTERVALO_SEGUNDOS = 300
+# Última leitura boa da porta serial, e quando ela chegou. Uma leitura que falha
+# num ciclo não pode APAGAR o consumo da tela: sem isto, o bloco "consumo por
+# tomada" aparecia e sumia a cada ciclo em que a porta não respondia (visto pelo
+# dono no Mac mini, 2026-09-04). O valor mostrado continua sendo uma leitura de
+# verdade, no máximo alguns segundos mais velha — passado esse prazo, some.
+_ultima_leitura_serial: tuple[object, str, float] | None = None
+SERIAL_VALIDADE_SEGUNDOS = 10.0
+
+
+def _leitura_serial_recente(clock):
+    """A última leitura boa, enquanto ela ainda for recente — senão, nada.
+
+    Serve para o consumo por tomada não piscar na tela quando um ciclo falha.
+    Passado o prazo, devolve `None` e a tela mostra ausência, não número velho.
+    """
+    if _ultima_leitura_serial is None:
+        return None
+    leitura, porta, quando = _ultima_leitura_serial
+    if clock() - quando > SERIAL_VALIDADE_SEGUNDOS:
+        return None
+    return leitura, porta
 
 
 def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial.ler,
@@ -164,7 +185,7 @@ def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial
     as duas convivem. Falha aqui **não** é falha de leitura do UPS: o ciclo segue
     com o que o NUT deu, e os campos ficam nulos, que é a verdade.
     """
-    global _porta_serial_lembrada, _ultima_varredura
+    global _porta_serial_lembrada, _ultima_varredura, _ultima_leitura_serial
     if not cfg.river_serial_enabled:
         return
     escolhida = cfg.river_serial_port or "auto"
@@ -186,9 +207,13 @@ def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial
             resultado = ler("auto", serie_esperada=snap.serial or None)
     except Exception as exc:  # serial_read_failed: o vigia não depende disto
         _log("WARN", "serial_read_failed", reason=f"{type(exc).__name__}: {exc}")
-        return
+        resultado = None
     if resultado is None:
-        return
+        resultado = _leitura_serial_recente(clock)
+        if resultado is None:
+            return
+    else:
+        _ultima_leitura_serial = (resultado[0], resultado[1], clock())
     leitura, porta_usada = resultado
     _porta_serial_lembrada = porta_usada
     snap.outlets = leitura.to_dict()

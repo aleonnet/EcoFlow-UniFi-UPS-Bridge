@@ -8,6 +8,7 @@ poll thread and the API thread without shared connections.
 from __future__ import annotations
 
 import os
+import contextlib
 import sqlite3
 import time
 
@@ -59,18 +60,35 @@ class HistoryStore:
             if "device" not in columns:
                 conn.execute(_EVENTS_DEVICE_MIGRATION)
 
-    def _connect(self) -> sqlite3.Connection:
-        # One fresh connection per operation (thread-safe by construction:
-        # poll loop and API thread never share a handle). Each `with conn:`
-        # block is ONE atomic transaction (sqlite3 context manager commits or
-        # rolls back). WAL + synchronous=NORMAL is the documented combo for
-        # this environment: "The synchronous=NORMAL setting is a good choice
-        # for most applications running in WAL mode."
-        # (https://www.sqlite.org/pragma.html#pragma_synchronous)
+    @contextlib.contextmanager
+    def _connect(self):
+        """Uma conexão por operação — e ela FECHA no fim.
+
+        Uma por operação porque o laço de leitura e a thread da API nunca podem
+        partilhar um mesmo canal com a base. WAL + `synchronous=NORMAL` é a
+        combinação documentada para este caso: "The synchronous=NORMAL setting
+        is a good choice for most applications running in WAL mode."
+        (https://www.sqlite.org/pragma.html#pragma_synchronous)
+
+        O `close()` no fim não é zelo: `with sqlite3.connect(...)` **não fecha**
+        a conexão, só encerra a transação — está na documentação do Python:
+        "The context manager neither implicitly opens a new transaction nor
+        closes the connection."
+        (https://docs.python.org/3/library/sqlite3.html#sqlite3-connection-context-manager)
+        Sem ele, cada gravação deixava dois descritores abertos (a base e o
+        diário) e o serviço batia no teto de 256 do launchd em minutos: medido
+        no Mac mini em 2026-09-04 — 78 cópias abertas, subindo cerca de duas por
+        segundo, com a tela dizendo que o servidor do no-break falhou por
+        "arquivos demais abertos".
+        """
         conn = sqlite3.connect(self.path, timeout=5)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        return conn
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            with conn:                 # a transação: comita ou desfaz
+                yield conn
+        finally:
+            conn.close()               # o descritor: só sai daqui
 
     def _falhou(self, op: str, exc: Exception) -> None:
         self._on_error("WARN", "history_write_failed", op=op, reason=str(exc))

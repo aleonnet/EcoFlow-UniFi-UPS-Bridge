@@ -58,4 +58,5 @@ def _sem_porta_serial(monkeypatch):
     monkeypatch.setattr(service, "NutSupervisor", _SupervisorDeTeste)
     monkeypatch.setattr(service, "_porta_serial_lembrada", None, raising=False)
     monkeypatch.setattr(service, "_ultima_varredura", float("-inf"), raising=False)
+    monkeypatch.setattr(service, "_ultima_leitura_serial", None, raising=False)
     yield

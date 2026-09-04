@@ -10,6 +10,7 @@ from river_unifi_bridge import service
 from river_unifi_bridge.config import BridgeConfig
 from river_unifi_bridge.history import HistoryStore
 from river_unifi_bridge.model import snapshot_from_nut_vars
+from river_unifi_bridge import river_serial
 from river_unifi_bridge.nut import NutError
 from river_unifi_bridge.protect import (
     EV_BLIND, EV_DRYRUN, ConfigHolder, ProtectionConfig, ProtectionPolicy,
@@ -562,3 +563,33 @@ def test_the_reader_is_taken_along_when_the_api_cannot_start(tmp_path, monkeypat
 
     run_loop(cfg, once=False)
     assert criados and criados[0].acoes[-1] == "encerrar"
+
+
+def test_one_failed_serial_read_does_not_blank_the_outlets(rig):
+    """Um ciclo sem resposta na porta não pode apagar o consumo da tela.
+
+    O dono viu, no Mac mini: o bloco "consumo por tomada" aparecia e sumia. A
+    leitura boa vale por alguns segundos — o número continua sendo real, no
+    máximo alguns segundos mais velho.
+    """
+    relogio = {"agora": 0.0}
+    cfg = make_cfg()
+    cfg.river_serial_port = "/dev/cu.fake"
+    boa = river_serial.LeituraRiver(carga_total_w=86.0, carga_ac_w=86.0)
+    respostas = [(boa, "/dev/cu.fake"), None, None]
+
+    vistos = []
+    for _ in range(3):
+        snap = sim_snap()
+        service._completa_pela_serial(snap, cfg, ler=lambda *_a, **_k: respostas.pop(0),
+                                      clock=lambda: relogio["agora"])
+        vistos.append(snap.outlets)
+        relogio["agora"] += 2
+    assert all(v is not None for v in vistos), "o consumo sumiu num ciclo que falhou"
+
+    # Passado o prazo, a tela mostra ausência — nunca número velho.
+    relogio["agora"] += service.SERIAL_VALIDADE_SEGUNDOS + 1
+    snap = sim_snap()
+    service._completa_pela_serial(snap, cfg, ler=lambda *_a, **_k: None,
+                                  clock=lambda: relogio["agora"])
+    assert snap.outlets is None

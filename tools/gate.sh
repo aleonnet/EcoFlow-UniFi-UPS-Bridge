@@ -424,6 +424,22 @@ cena_mutacao S4av src/river_unifi_bridge/nut_supervisor.py \
     'self._prefixo = prefixo or PREFIXO_PADRAO' \
     tests/unit/test_nut_supervisor.py::test_the_nut_seam_is_respected_by_the_daemon_too
 
+# S4aw — gravar no histórico não pode deixar descritor aberto. `with
+# sqlite3.connect(...)` NÃO fecha a conexão (documentação do Python), e sem o
+# `close()` o serviço batia no teto de 256 arquivos do launchd em minutos:
+# medido no Mac mini, 78 cópias da base abertas e subindo duas por segundo.
+cena_mutacao S4aw src/river_unifi_bridge/history.py \
+    'conn.close()               # o descritor: só sai daqui' \
+    'pass                       # o descritor: só sai daqui' \
+    tests/unit/test_history.py::test_every_operation_closes_its_connection
+
+# S4ax — um ciclo sem resposta na porta serial não apaga o consumo da tela. O
+# dono viu o bloco "consumo por tomada" aparecer e sumir no Mac mini.
+cena_mutacao S4ax src/river_unifi_bridge/service.py \
+    'resultado = _leitura_serial_recente(clock)' \
+    'resultado = None' \
+    tests/unit/test_service_loop.py::test_one_failed_serial_read_does_not_blank_the_outlets
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

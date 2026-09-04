@@ -235,21 +235,31 @@ struct SettingsView: View {
                 SettingsRows.group(L10n.t("Alarmes", "Alarms")) {
                     SettingsRows.presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
                               value: $powerLossDelay, presets: [0, 3, 6, 10, 30, 60])
+                    .help(L10n.t("Quanto tempo o River precisa ficar na bateria antes de o serviço tratar isso como queda de energia. Serve para piscadas curtas não virarem alarme.",
+                                "How long the River must stay on battery before the service treats it as a power loss. Keeps brief flickers from becoming alarms."))
                     SettingsRows.divider
                     SettingsRows.presetRow("bolt.badge.checkmark.fill", L10n.t("Energia restaurada", "Power restored"),
                               value: $restoreDelay, presets: [0, 5, 10, 30, 60])
+                    .help(L10n.t("Quanto tempo a energia precisa estar de volta antes de o serviço declarar que voltou. Zero avisa na hora.",
+                                "How long power must be back before the service declares it restored. Zero announces it at once."))
                     SettingsRows.divider
                     SettingsRows.presetRow("antenna.radiowaves.left.and.right.slash", L10n.t("Comunicação perdida", "Comm lost"),
                               value: $commLossDelay, presets: [5, 15, 30, 60, 300])
+                    .help(L10n.t("Quanto tempo sem resposta do River até a tela dizer que perdemos contato com ele.",
+                                "How long without an answer from the River until the screen says we lost contact with it."))
                     SettingsRows.divider
                     SettingsRows.sliderRow("battery.25percent", L10n.t("Bateria baixa", "Low battery"),
                               value: $lowBattery, range: 5...50, unit: "%", accent: accent)
+                    .help(L10n.t("Em que nível de bateria o SERVIÇO registra o alerta de bateria baixa. É o alerta desta tela, não um ajuste do aparelho.",
+                                "At what battery level the SERVICE records its low-battery alert. This is this app's alert, not a device setting."))
                 }
                 .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("Coleta", "Sampling")) {
                     SettingsRows.presetRow("timer", L10n.t("Intervalo de leitura", "Poll interval"),
                               value: $pollInterval, presets: [1, 2, 5, 10, 30, 60])
+                    .help(L10n.t("De quanto em quanto tempo o serviço lê o River. Mais curto reage mais rápido a uma queda; mais longo pesa menos na máquina.",
+                                "How often the service reads the River. Shorter reacts faster to an outage; longer is lighter on the machine."))
                 }
                 .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
@@ -271,6 +281,8 @@ struct SettingsView: View {
                         .labelsHidden()
                         .fixedSize()
                     }
+                    .help(L10n.t("Por quanto tempo os números e os eventos ficam guardados neste Mac. O que passa disso é apagado sozinho, uma vez por hora.",
+                                 "How long readings and events are kept on this Mac. Anything older is deleted automatically, once an hour."))
                     SettingsRows.divider
                     HStack(spacing: 10) {
                         Image(systemName: "trash")
@@ -292,17 +304,23 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.borderless)
                     }
+                    .help(L10n.t("Apaga a linha do tempo guardada neste Mac. Os números dos gráficos continuam; só os eventos saem.",
+                                 "Clears the timeline stored on this Mac. The chart readings stay; only the events go."))
                 }
                 .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("River", "River")) {
                     SettingsRows.textRow("barcode", L10n.t("Número de série esperado do River", "Expected River serial number"),
                                          $expectedSerial, placeholder: "R3P…", estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
+                    .help(L10n.t("O número de série do SEU River. O serviço só arma a proteção se a leitura vier deste aparelho — é o que impede armar contra um simulador ou contra o no-break errado.",
+                                "Your River's serial number. The service only arms protection when the reading comes from this device — it is what prevents arming against a simulator or the wrong UPS."))
                     SettingsRows.divider
                     SettingsRows.sliderRow("battery.0percent", L10n.t("Corte físico da saída", "Physical output cutoff"),
                                            value: $cutoff, range: 0...48, unit: "%",
                                            zeroLabel: L10n.t("não configurado", "not set"), accent: accent,
                                            estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
+                    .help(L10n.t("O nível em que o River corta a saída sozinho, se você o configurou no aplicativo dele. O serviço usa esse número para calcular quanto tempo ainda resta e nunca prometer mais autonomia do que existe.",
+                                "The level at which the River cuts its output on its own, if you set that in its own app. The service uses this number to work out how much time is left and never promise more runtime than exists."))
                     if riverChanged {
                         HStack {
                             Text(L10n.t("Vale para todos os dispositivos protegidos.", "Applies to every protected device."))
@@ -322,6 +340,8 @@ struct SettingsView: View {
                             range: 0...50, unit: "%",
                             zeroLabel: L10n.t("desligado", "off"), accent: accent,
                             estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
+                        .help(L10n.t("O nível em que o PRÓPRIO River avisa que a bateria está baixa. É gravado dentro do aparelho, e é o mesmo ajuste que o aplicativo da EcoFlow mostra.",
+                                     "The level at which the River ITSELF warns that the battery is low. It is written into the device, and it is the same setting the EcoFlow app shows."))
                         // Só vai ao aparelho quando o dono manda: o mesmo molde
                         // da linha do corte, logo acima.
                         if let novo = avisoEditado, novo != aviso {
@@ -339,6 +359,8 @@ struct SettingsView: View {
                     if let cabo = estadoDoCabo, cabo.lendo != nil {
                         SettingsRows.divider
                         linhaDoCabo(cabo)
+                            .help(L10n.t("O River aceita um leitor por vez. Aqui você entrega o cabo ao aplicativo da EcoFlow — e o toma de volta quando quiser.",
+                                         "The River accepts one reader at a time. Here you hand the cable over to the EcoFlow app — and take it back whenever you want."))
                     }
                     SettingsRows.divider
                     HStack(spacing: 10) {
@@ -364,6 +386,8 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.borderless)
                     }
+                    .help(L10n.t("Desliga a saída do próprio River: tudo o que estiver ligado nele perde energia na hora. Só funciona com a trava aberta no arquivo do serviço e com nenhuma proteção armada.",
+                                 "Switches the River's own output off: everything plugged into it loses power at once. It only works with the lock open in the service file and no protection armed."))
                     if let riverFeedback {
                         Text(riverFeedback)
                             .font(.caption).foregroundStyle(.orange)

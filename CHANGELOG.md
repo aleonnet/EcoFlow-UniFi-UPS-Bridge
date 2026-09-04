@@ -9,6 +9,23 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-04
+
+Três defeitos que só a máquina do dono mostrou, no primeiro uso da 0.5.0.
+
+### Corrigido
+- **O serviço vazava um arquivo aberto a cada leitura gravada e morria em minutos.**
+  `with sqlite3.connect(...)` **não fecha** a conexão — só encerra a transação; está na
+  documentação do Python, e eu tinha escrito o contrário no comentário do código. Medido no
+  Mac mini: 78 cópias da base abertas, subindo cerca de duas por segundo, contra o teto de
+  256 do sistema — a tela acusava "arquivos demais abertos" no servidor do no-break.
+- **O consumo por tomada aparecia e sumia da tela.** Um ciclo em que a porta serial não
+  respondia apagava os quatro valores. Agora a última leitura boa vale por alguns segundos;
+  passado o prazo, a tela mostra ausência — nunca número velho.
+- **Ajustes ganhou dicas de contexto** (passe o ponteiro): cada linha explica, em uma frase, o
+  que aquele número faz — inclusive a diferença entre o alerta de bateria baixa DESTE app e o
+  aviso gravado dentro do River.
+
 ## [0.5.0] — 2026-09-04
 
 O serviço deixa de só **ler** o River e passa a **mandar** nele, com cerca dupla em cada ato

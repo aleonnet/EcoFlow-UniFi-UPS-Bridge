@@ -2,6 +2,7 @@
 
 import pytest
 
+from river_unifi_bridge import history
 from river_unifi_bridge.history import HistoryStore
 
 
@@ -109,3 +110,39 @@ def test_history_device_column(tmp_path):
     assert columns.count("device") == 1
     rows = store.query_events(0, 2**33)
     assert rows == [{"ts": 100, "type": "UDR7_ARMED", "detail": "armado", "device": None}]
+
+
+def test_every_operation_closes_its_connection(tmp_path, monkeypatch):
+    """Gravar no histórico não pode deixar descritor aberto para trás.
+
+    `with sqlite3.connect(...)` NÃO fecha a conexão — só encerra a transação
+    (documentação do Python). Sem o `close()`, cada leitura do no-break deixava
+    dois descritores abertos, e o serviço batia no teto de 256 do launchd em
+    minutos: medido no Mac mini em 2026-09-04, 78 cópias da base abertas e
+    subindo cerca de duas por segundo, com a tela acusando "arquivos demais
+    abertos".
+    """
+    abertas: list[object] = []
+    fechadas: list[object] = []
+    original = history.sqlite3.connect
+
+    class Contada(history.sqlite3.Connection):
+        def close(self):
+            fechadas.append(self)
+            super().close()
+
+    def espia(*a, **k):
+        k["factory"] = Contada
+        conn = original(*a, **k)
+        abertas.append(conn)
+        return conn
+
+    monkeypatch.setattr(history.sqlite3, "connect", espia)
+    loja = HistoryStore(str(tmp_path / "h.sqlite"), retention_days=7)
+    loja.record_sample({"battery": {"charge_percent": 50}, "power": {"state": "OL"}})
+    loja.record_event("POWER_LOST", "teste")
+    loja.recent_events()
+    loja.query("charge", 0, 10**10)
+    loja.prune()
+    assert len(abertas) >= 5
+    assert len(fechadas) == len(abertas), "sobrou conexão aberta"
