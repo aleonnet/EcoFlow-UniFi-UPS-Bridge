@@ -730,3 +730,41 @@ async def test_core_river_keys_refresh_every_instance(unlocked):
         assert plugin._holder.get().udr7_expected_serial == "R3P-9"
     body = await (await c.get(f"/v1/devices/{dev['id']}", headers=c.auth)).json()
     assert body["device"]["fields"].get("cutoff_percent") is None       # não é campo de instância
+
+
+async def test_sse_delivers_past_the_hundredth_event(client, server):
+    """A fila guarda 100 eventos; o cliente tem de continuar recebendo depois disso.
+
+    Em DUAS fases, que é como o defeito aparece: o cliente recebe um primeiro lote
+    (o cursor avança além de 100), a fila satura e descarta os mais antigos, e só
+    então chegam eventos novos. Orientado por índice, o cursor congela e nada mais
+    sai; orientado pela sequência, que só cresce, tudo continua chegando.
+    """
+    import asyncio
+    import json as _j
+
+    async with client.get("/v1/events", headers=client.auth) as resp:
+        assert resp.status == 200
+        recebidos: list[str] = []
+
+        async def ler_ate(alvo: str) -> bool:
+            for _ in range(2000):
+                linha = (await resp.content.readline()).decode()
+                if linha.startswith("data: ") and '"event"' in linha:
+                    recebidos.append(_j.loads(linha[6:])["event"])
+                    if recebidos[-1] == alvo:
+                        return True
+            return False
+
+        for i in range(120):                      # 1.ª fase: o cursor passa de 100
+            server.state.add_event(f"E{i}")
+        assert await asyncio.wait_for(ler_ate("E119"), timeout=10)
+
+        for i in range(120, 150):                 # 2.ª fase: fila já saturada
+            server.state.add_event(f"E{i}")
+        assert await asyncio.wait_for(ler_ate("E149"), timeout=10)
+
+    assert recebidos[-1] == "E149"
+    assert recebidos == sorted(recebidos, key=lambda e: int(e[1:]))
+    seqs = [e["seq"] for e in server.state.events()]
+    assert seqs == sorted(seqs) and len(seqs) == 100

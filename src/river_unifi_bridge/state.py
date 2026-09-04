@@ -23,6 +23,11 @@ class SharedState:
         self._version = 0
         self._snapshot: dict | None = None
         self._events: deque[dict] = deque(maxlen=events_maxlen)
+        # Sequência que só cresce. A fila é limitada e o cliente SSE não pode se
+        # orientar por índice: quando ela satura, o índice para de andar e os
+        # eventos novos deixam de sair. O número dá ao cliente um "já vi até aqui"
+        # que sobrevive ao descarte dos mais antigos.
+        self._seq = 0
         self._comm_ok = False
         self._last_error: str | None = None
         self._plugins: list[dict] = []         # última leitura de plugin_statuses()
@@ -47,10 +52,12 @@ class SharedState:
 
     def add_event(self, name: str, payload: dict | None = None) -> None:
         with self._lock:
+            self._seq += 1
             self._events.append(
                 {
                     "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                     "event": name,
+                    "seq": self._seq,
                     **(payload or {}),
                 }
             )
@@ -60,9 +67,10 @@ class SharedState:
         with self._lock:
             return self._version, self._snapshot, self._comm_ok, self._last_error
 
-    def events(self) -> list[dict]:
+    def events(self, after: int = -1) -> list[dict]:
+        """Os eventos posteriores a `after` (a sequência, não o índice)."""
         with self._lock:
-            return list(self._events)
+            return [e for e in self._events if e["seq"] > after]
 
     def health(self) -> dict:
         """Chain view (§7A.3): honest 'não observável' for links we can't see yet."""

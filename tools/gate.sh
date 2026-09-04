@@ -206,6 +206,13 @@ cena_mutacao S4y src/river_unifi_bridge/service.py \
     'pass  # desde o boot' \
     tests/unit/test_service_loop.py::test_health_lists_devices_before_first_poll
 
+# S4z — o envio por SSE tem de se orientar pela sequência, não por índice: com a
+# fila cheia (100) o índice congela e a linha do tempo para de receber eventos.
+cena_mutacao S4z src/river_unifi_bridge/api.py \
+    'for event in self.state.events(after=last_seq):' \
+    'for event in self.state.events()[last_seq + 1:]:' \
+    tests/unit/test_api.py::test_sse_delivers_past_the_hundredth_event
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

@@ -179,7 +179,9 @@ class ApiServer:
         )
         await resp.prepare(request)
         last_version = -1
-        sent_events = 0
+        # A sequência do último evento entregue, nunca um índice: com a fila cheia
+        # o índice congelava e o cliente parava de receber no 100.º evento.
+        last_seq = -1
         try:
             while True:
                 version, snapshot, comm_ok, last_error = self.state.get()
@@ -191,12 +193,11 @@ class ApiServer:
                     await resp.write(
                         f"event: state\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
                     )
-                    events = self.state.events()
-                    for event in events[sent_events:]:
+                    for event in self.state.events(after=last_seq):
                         await resp.write(
                             f"event: event\ndata: {json.dumps(event, ensure_ascii=False)}\n\n".encode()
                         )
-                    sent_events = len(events)
+                        last_seq = event["seq"]
                 await asyncio.sleep(0.25)
         except (ConnectionResetError, asyncio.CancelledError):
             return resp
