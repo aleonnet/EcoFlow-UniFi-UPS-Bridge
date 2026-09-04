@@ -9,7 +9,7 @@ e — em fase experimental, nascendo em modo ensaio — o daemon pode desligar o
 Tudo roda local: a API do daemon só escuta em `127.0.0.1`, nada sai para a Internet, nenhum
 segredo entra no repositório.
 
-## O que funciona hoje (2026-09-01)
+## O que funciona hoje (2026-09-04)
 
 | Peça | Estado |
 |---|---|
@@ -17,7 +17,7 @@ segredo entra no repositório.
 | App **River Bridge** (macOS 26, barra de menus + painel: energia, gráficos, eventos, saúde, ajustes) | pronto |
 | Simulador de UPS (`tools/fake-nut-ups`) para desenvolver sem o hardware | pronto |
 | Dispositivos protegidos (desligamento via SSH quando a bateria chega ao limiar), adicionados pela interface | **em ensaio** por dispositivo — nada é enviado até você armar; dois tipos: Console UniFi (UDR7) ([runbook](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md)) e Computador ou servidor via SSH ([runbook](docs/guides/2026-09-03-1720-runbook-host-ssh.md)); várias instâncias do mesmo tipo, cada uma com o nome que você dá |
-| Driver NUT do RIVER físico (`usbhid-ups`, NUT ≥ 2.8.4) | pendente do hardware na bancada — o instalador detecta o RIVER no USB e deixa o passo marcado como pendente |
+| Driver NUT do RIVER físico (`usbhid-ups`, subdriver EcoFlow) | **medido com o aparelho real** em 2026-09-04: o River 3 Plus publica carga, autonomia, tensão, situação e capacidade pelo cabo, e **não publica potência nem consumo** ([o que o cabo entrega](docs/decisions/2026-09-04-0110-river-3-plus-o-que-o-cabo-entrega.md)). O instalador ainda não configura o NUT: hoje isso é passo manual, e vira parte dele na frente seguinte |
 | UDR7 exibir o RIVER como "UniFi UPS" | **sem caminho nativo documentado** — consoles UniFi não consomem UPS de terceiros ([pesquisa](docs/2026-08-31-2345-pesquisa-udr7-ups-terceiros.md)) |
 
 ## Requisitos
@@ -46,11 +46,12 @@ O relatório diz de onde veio o código (`fonte=release vX.Y.Z` ou `fonte=main`)
 
 Flags úteis: `--dry-run` (só mostra o plano), `--no-app`, `--no-open`, `--install-deps`,
 `--yes`, `--release TAG`, `--from-main`, `--src DIR` (usar uma árvore local em vez de
-baixar), `--lang pt|en`, `--no-anim`.
+baixar), `--lang pt|en`, `--no-anim`, `--demo-frame` (abertura de demonstração).
 Detalhes em [docs/INSTALACAO_UMA_LINHA_20260901.md](docs/INSTALACAO_UMA_LINHA_20260901.md).
 
-Já tem o repositório clonado? `sudo scripts/install.sh --consent-homebrew` e
-`tools/build-app.sh` fazem o mesmo, por partes. Publicar uma release: `tools/release.sh vX.Y.Z`
+Já tem o repositório clonado? `sudo scripts/install.sh --consent-homebrew` instala o serviço
+e `tools/build-app.sh` monta o app (ele **não** instala o app: quem copia para `/Applications`
+é o instalador ou você). Publicar uma release: `tools/release.sh vX.Y.Z`
 (confere as seis declarações de versão, roda o gate, compila, tagueia e sobe os três assets).
 
 ## Configurar
@@ -63,7 +64,7 @@ do usuário do serviço). O jeito normal de editar é pelo app → **Ajustes**; 
 | Grupo | Chaves | Para quê |
 |---|---|---|
 | River / NUT | `RIVER_NAME`, `NUT_HOST`, `NUT_PORT`, `NUT_UPS` | onde o daemon lê o UPS (por padrão o NUT local, porta 3493) |
-| Bridge | `POLL_INTERVAL_SECONDS`, `EMULATE_MODEL`, `READ_ONLY` | ritmo de leitura |
+| Bridge | `POLL_INTERVAL_SECONDS` | de quanto em quanto tempo o serviço lê o no-break |
 | Alarmes | `POWER_LOSS_DELAY_SECONDS`, `RESTORE_DELAY_SECONDS`, `COMM_LOSS_DELAY_SECONDS`, `LOW_BATTERY_PERCENT` | quando os eventos disparam (defaults com fonte em [docs/PESQUISA_PARAMETROS_UPS_20260831.md](docs/PESQUISA_PARAMETROS_UPS_20260831.md)) |
 | API local | `UI_API_ENABLED`, `UI_API_PORT`, `HISTORY_RETENTION_DAYS` | porta da API (35493) e retenção do histórico |
 | River (núcleo da proteção) | `UDR7_EXPECTED_SERIAL`, `UDR7_CUTOFF_PERCENT` | número de série esperado do RIVER e corte físico da saída — valem para todos os dispositivos protegidos (Ajustes → River) |
@@ -86,8 +87,10 @@ O passo a passo, as medições que fazer antes e a recuperação estão nos runb
 - Estado do daemon (token da API, histórico, arquivos da proteção):
   `~/Library/Application Support/river-unifi-bridge/`.
 - API local (token em `ui-api.token`): `GET /v1/state`, `/v1/health`, `/v1/events` (SSE),
-  `/v1/events/log`, `/v1/history`, `GET|PUT /v1/config`, `POST /v1/service/restart`,
-  `/v1/version` — contrato em [docs/API_LOCAL_20260831.md](docs/API_LOCAL_20260831.md).
+  `/v1/events/log` (com `DELETE` para limpar), `/v1/history`, `GET|PUT /v1/config`,
+  `POST /v1/service/restart`, `/v1/version`, `GET /v1/device-types`, e as rotas de dispositivos
+  `GET|POST /v1/devices` e `GET|PUT|DELETE /v1/devices/{id}` — contrato vivo em
+  [docs/reference/api-local.md](docs/reference/api-local.md).
 - Diagnóstico de uma leitura só: `/usr/local/river-unifi-bridge/venv/bin/python -m river_unifi_bridge.service --env /usr/local/river-unifi-bridge/etc/bridge.env --once`.
 
 ## Desinstalar

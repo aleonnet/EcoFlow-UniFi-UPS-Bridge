@@ -9,6 +9,50 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-04
+
+Vinte defeitos que a leitura integral do código achou, mais a leitura real do River 3 Plus.
+
+### Corrigido
+- Os dispositivos protegidos aparecem **desde que o serviço sobe** e continuam aparecendo se o
+  no-break calar: a lista é configuração, não telemetria. Antes o instalador dizia "nenhum
+  dispositivo protegido" e o app nascia com o interruptor desligado.
+- Antes da primeira leitura, uma proteção ligada e sem ensaio aparece como "armada, alcance não
+  verificado" — nunca mais como "modo ensaio", que era mentira no estado mais sensível.
+- A linha do tempo volta a receber eventos **depois do centésimo**: a entrega passou a se
+  orientar pela sequência do evento, não pela posição na fila.
+- "Bateria baixa" só é avisado com o aparelho **na bateria**, e rearma por histerese, sem
+  repetir em rajada.
+- Um campo em branco na tela de ajustes é **recusado com explicação**; antes ele derrubava o
+  serviço no ciclo seguinte.
+- Um dispositivo com defeito **não mata mais o vigia** nem cega os outros: a falha vira registro
+  e um campo próprio na saúde, separado do erro do no-break.
+- "Manter histórico: N dias" passou a ser verdade: a limpeza roda no boot e a cada hora.
+- O número de tentativas de desligamento é **exatamente** o que a tela mostra (3 = 3 tentativas;
+  0 = nenhuma, e o modo ensaio continua avisando o que faria).
+- Com o serviço fora do ar, a tela mostra "—" em vez de repetir a última leitura como se fosse
+  de agora.
+- **Limpar eventos limpa mesmo**: banco, memória do serviço e lista da tela.
+- Ajustes deixa de mostrar valores de fábrica como se fossem do serviço: sem resposta, avisa e
+  desabilita os controles.
+- O gráfico distingue "não alcancei o serviço" de "ainda não coletei" e de "este aparelho não
+  informa esse dado".
+- Exceções previstas ganharam saída: reiniciar sem laço recusa com explicação, falha ao gravar
+  a configuração vira erro claro sem aplicar nada, e nenhum `except` fica mudo. Desarmar a
+  proteção nunca é recusado, nem por falha de disco.
+- A tela não fala mais em nome de chave, arquivo, código de resposta nem tipo cru de evento.
+
+### Removido
+- Quatro opções de configuração que não faziam nada (`UNIFI_HOST`, `UNIFI_VERIFY_TLS`,
+  `EMULATE_MODEL`, `READ_ONLY`) — a allowlist foi de 33 para 29 chaves; um `.env` com elas só
+  gera aviso.
+- Código sem consumidor no serviço e no app, com os testes que só existiam para ele.
+
+### Medido com o aparelho real
+- O River 3 Plus publica carga, autonomia, tensão, situação e capacidade pelo cabo, e **não
+  publica potência nem consumo**; a tela diz isso em vez de fingir histórico vazio
+  (`docs/decisions/2026-09-04-0110-river-3-plus-o-que-o-cabo-entrega.md`).
+
 ## [0.3.4] — 2026-09-03
 
 ### App

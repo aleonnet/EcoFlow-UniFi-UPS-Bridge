@@ -8,7 +8,7 @@
 # as únicas remoções recursivas, após validar caminho literal e não-symlink.
 set -Eeuo pipefail
 
-VERSAO="0.3.4"
+VERSAO="0.4.0"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
 MANIFESTO="$PREFIX/manifest.tsv"

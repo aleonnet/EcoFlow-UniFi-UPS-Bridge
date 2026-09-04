@@ -38,7 +38,7 @@
 # =============================================================================
 # shellcheck disable=SC2034  # paleta e glifos são globais da camada visual
 set -Eeuo pipefail
-RBI_VERSION="0.3.4"
+RBI_VERSION="0.4.0"
 E_USO=2; E_VALID=3; E_DEP=4; E_CONEXAO=10; E_FALHA=1; E_CANCEL=130
 _src="${BASH_SOURCE[0]:-$0}"
 REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
@@ -947,6 +947,7 @@ river-bridge-install.sh — River Bridge (EcoFlow RIVER 3 Plus → NUT → UniFi
   --from-main      baixa o tarball do branch main e compila o app aqui
   --src DIR        usa uma árvore local do repo em vez de baixar (bancada/gate)
   --no-anim        sem abertura animada · --demo  só a abertura
+  --demo-frame T   imprime um quadro com o texto T e sai (captura/validação)
   --lang pt|en     idioma (default: locale do Mac)
   Exit: 0 instalou/atualizou · 100 já estava tudo · 2 uso · 3 validação · 4 dependência · 10 rede · 130 cancelado · 1 falha
 EOF_USO
@@ -963,6 +964,7 @@ river-bridge-install.sh - River Bridge (EcoFlow RIVER 3 Plus -> NUT -> UniFi) in
   --from-main      download the main branch tarball and build the app here
   --src DIR        use a local repo tree instead of downloading (bench/gate)
   --no-anim        no animated opening - --demo  opening only
+  --demo-frame T   print one frame with text T and exit (capture/validation)
   --lang pt|en     language (default: the Mac's locale)
   Exit: 0 installed/updated - 100 nothing to do - 2 usage - 3 validation - 4 dependency - 10 network - 130 cancelled - 1 failure
 EOF_USO

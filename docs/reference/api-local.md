@@ -9,14 +9,15 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/v1/version` | `{"version": "0.3.0"}` |
+| GET | `/v1/version` | `{"version": "0.4.0"}` |
 | GET | `/v1/state` | snapshot corrente (nunca valores inventados; `null` honesto) |
-| GET | `/v1/events` | SSE: `event: state` e `event: event` (bridge + eventos de dispositivo; estes levam `device` e `device_name` no payload) |
+| GET | `/v1/events` | SSE: `event: state` e `event: event` (bridge + eventos de dispositivo; estes levam `device` e `device_name` no payload). Desde a 0.4.0 cada evento leva `seq`, um número que só cresce: o servidor entrega a partir do último `seq` enviado, então a fila cheia (100) deixou de congelar a entrega no centésimo evento, e o app usa o `seq` como identidade da linha |
 | GET | `/v1/events/log?from=&to=&types=&limit=&device=` | histórico persistido; `device` filtra pelo id da instância; cada linha traz `device` (`null` para eventos do bridge e para os gravados antes da 0.3.0) |
-| GET | `/v1/health` | elos da cadeia + `plugins[]` (`id`, `type`, `name`, `state`, `detail`); o alias `udr7`/`udr7_detail` espelha a instância `udr7` e é **permanente** (o instalador o lê) |
-| GET | `/v1/config` | as 33 chaves da allowlist, em minúsculas |
+| GET | `/v1/health` | elos da cadeia + `plugins[]` (`id`, `type`, `name`, `state`, `detail`); o alias `udr7`/`udr7_detail` espelha a instância `udr7` e é **permanente** (o instalador o lê). Desde a 0.4.0 a lista sai **desde o boot** e sobrevive à falha de leitura do UPS (ela é configuração, não telemetria), e há `last_tick_error`: erro de SOFTWARE no ciclo (um dispositivo que levantou exceção), separado de `last_error`, que é do NUT |
+| GET | `/v1/config` | as 29 chaves da allowlist, em minúsculas (0.4.0: saíram `UNIFI_HOST`, `UNIFI_VERIFY_TLS`, `EMULATE_MODE`, `READ_ONLY`, que não tinham consumidor; `.env` instalado com elas só gera aviso) |
 | PUT | `/v1/config` | validar → autorizar → gravar `.env` → aplicar a quente. Chaves `UDR7_*`/`PROTECT_*` (via legada, D10) são traduzidas para a instância `udr7` e gravadas nos dois; `UDR7_ARM_ALLOWED` → 400 `chave_somente_arquivo` |
-| POST | `/v1/service/restart` | recusa 409 `armado` com qualquer instância armada |
+| POST | `/v1/service/restart` | recusa 409 `armado` com qualquer instância armada; 503 `servidor_sem_laco` quando o servidor não tem laço para agendar a saída (antes era um `assert`, que virava 500 mudo) |
+| DELETE | `/v1/events/log?from=&to=` | limpa o histórico gravado E a fila de eventos da memória, que é o que o SSE entrega a quem conecta — sem isso os eventos apagados voltavam na reconexão. `to` é obrigatório |
 | GET | `/v1/device-types` | catálogo: `{"types": [{id, label_pt, label_en, default_name, event_prefix, fields: [{name, type, default, required, bounds?, pattern?, enum?}]}]}` |
 | GET | `/v1/devices` | `{"devices": [<instância>]}` |
 | POST | `/v1/devices` | `{type, name, enabled?, dry_run?, fields?}` → 201 `{"device": <instância>}` |
@@ -42,6 +43,16 @@ Tipos: `udr7_ssh` (campos do motor SSH + `wol_mac`; eventos `UDR7_*`) e `ssh_hos
 motor + `shutdown_command`, de lista fechada; eventos `SSH_HOST_*`). A série esperada e o corte do
 River **não** são campos de instância: `UDR7_EXPECTED_SERIAL` e `UDR7_CUTOFF_PERCENT` em `/v1/config`.
 
+## Estado (`/v1/state`) — o que é nulo de verdade
+
+Campo ausente na leitura sai `null`, nunca zero nem invenção. Antes da primeira leitura, o
+estado vazio publica `low_battery` e `overload` como `null` (0.4.0; antes vinham `false`, o que
+afirmava "não há alarme" sem ter lido nada).
+
+Nem todo no-break publica tudo. O River 3 Plus, por exemplo, manda carga, autonomia, tensão e
+situação, e **não manda potência nem uso** — esses campos ficam `null` e a tela mostra "—"
+(medido em 2026-09-04; ver `../decisions/2026-09-04-0110-river-3-plus-o-que-o-cabo-entrega.md`).
+
 ## Recusas das rotas de dispositivos
 
 | Status | `motivo` | Quando |
@@ -56,6 +67,8 @@ River **não** são campos de instância: `UDR7_EXPECTED_SERIAL` e `UDR7_CUTOFF_
 | 409 | `sem_snapshot` | armar sem leitura corrente do NUT |
 | 409 | `fonte_nao_real` | armar com fonte sintética ou serial ≠ esperado |
 | 501 | `sem_loja` | serviço rodando sem loja de instâncias (só em `--once`) |
+| 400 | `validacao` (em `/v1/config`) | valor **vazio** em chave numérica ou booleana: recusado com `"<CHAVE>: valor vazio"`. Antes o vazio era gravado a quente e o ciclo seguinte comparava texto com número, derrubando o serviço |
+| 500 | `arquivo_env` | não foi possível gravar o arquivo de configuração do serviço; **nada foi aplicado** |
 
 Regras de armamento (qualquer tipo): armar = `enabled: true` + `dry_run: false`; exige trava
 global aberta, snapshot com `comm_ok`, fonte não sintética e serial da leitura igual ao serial
