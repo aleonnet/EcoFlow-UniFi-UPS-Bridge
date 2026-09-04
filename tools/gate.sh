@@ -152,7 +152,7 @@ cena_mutacao S4m src/river_unifi_bridge/config.py "    - DEVICE_NAME_KEYS" "    
 cena_mutacao S4x src/river_unifi_bridge/plugins/ssh_motor.py \
     'touched = sorted(set(changes) - {"name"})' 'touched = sorted(set(changes))' \
     tests/unit/test_api.py::test_rename_allowed_while_armed
-cena_mutacao S4o src/river_unifi_bridge/protect.py '"read_only", "udr7_name")' '"read_only")' \
+cena_mutacao S4o src/river_unifi_bridge/protect.py '"udr7_arm_allowed", "udr7_name")' '"udr7_arm_allowed")' \
     tests/unit/test_protect.py::test_rename_while_armed_keeps_pins
 
 # Dispositivos por instância (2026-09-03).
@@ -219,6 +219,13 @@ cena_mutacao S4aa src/river_unifi_bridge/service.py \
     'low = snap.state == "ON_BATTERY" and (' \
     'low = True and (' \
     tests/unit/test_transitions.py::test_low_battery_needs_on_battery
+
+# S4ab — vazio em chave numérica/booleana tem de ser recusado no PUT: aceito, ele
+# era gravado a quente e o tick seguinte comparava texto com número (daemon morto).
+cena_mutacao S4ab src/river_unifi_bridge/config.py \
+    'raise ConfigError(f"{key}: valor vazio")' \
+    'return ""' \
+    tests/unit/test_config.py::test_put_empty_value_is_refused_on_non_string_keys
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1

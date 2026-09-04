@@ -28,11 +28,7 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "NUT_HOST": (str, True, None, None),
     "NUT_PORT": (int, True, None, (1, 65535)),
     "NUT_UPS": (str, True, None, None),
-    "UNIFI_HOST": (str, False, "", None),
-    "UNIFI_VERIFY_TLS": (bool, False, True, None),
     "POLL_INTERVAL_SECONDS": (int, False, 2, (1, 60)),
-    "READ_ONLY": (bool, False, True, None),
-    "EMULATE_MODEL": (bool, False, False, None),
     # Defaults ancorados em fonte (docs/PESQUISA_PARAMETROS_UPS_20260831.md):
     # 6 = apcupsd ONBATTERYDELAY; 0 = NUT/apcupsd notificam restauração na hora;
     # 15 = NUT upsmon DEADTIME; 30 = fallback lowbatt do usbhid-ups (o LB do
@@ -128,11 +124,7 @@ class BridgeConfig:
     nut_host: str
     nut_port: int
     nut_ups: str
-    unifi_host: str = ""
-    unifi_verify_tls: bool = True
     poll_interval_seconds: int = 2
-    read_only: bool = True
-    emulate_model: bool = False
     power_loss_delay_seconds: int = 6
     restore_delay_seconds: int = 0
     comm_loss_delay_seconds: int = 15
@@ -304,6 +296,12 @@ def validate_update(key: str, raw_value: str) -> object:
     if value == "":
         if required:
             raise ConfigError(f"{key}: valor obrigatório não pode ser vazio")
+        if typ is not str:
+            # Vazio só faz sentido em texto (um nome, um host que se limpa). Num
+            # número ou num booleano, a string vazia era aceita, gravada a quente
+            # no config e derrubava o serviço no tick seguinte, ao comparar texto
+            # com número.
+            raise ConfigError(f"{key}: valor vazio")
         return ""
     if typ is str:
         _validate_str(key, value)

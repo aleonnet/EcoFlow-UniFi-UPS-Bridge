@@ -125,7 +125,7 @@ INSTANCE_FIELD_DEFAULTS: dict[str, object] = {
     "shutdown_percent": 0, "discharge_seconds_per_pct": 0, "runtime_minutes": 0,
     "min_outage_seconds": 0, "confirm_seconds": 6, "retry_max": 3, "wol_mac": "",
 }
-_PIN_EXCLUDED = ("protect_udr7", "protect_dry_run", "udr7_arm_allowed", "read_only", "udr7_name")
+_PIN_EXCLUDED = ("protect_udr7", "protect_dry_run", "udr7_arm_allowed", "udr7_name")
 
 
 @dataclass(frozen=True)
@@ -150,7 +150,6 @@ class ProtectionConfig:
     nut_host: str
     nut_port: int
     nut_ups: str
-    read_only: bool
     ssh_binary: str
     # O comando que a política manda ao aparelho. Vazio = o `shutdown_command` do
     # construtor da política (o tipo UDR7 passa a sua tabela). Está no dataclass —
@@ -202,7 +201,6 @@ class ProtectionConfig:
             nut_host=cfg.nut_host,
             nut_port=cfg.nut_port,
             nut_ups=cfg.nut_ups,
-            read_only=cfg.read_only,
             ssh_binary=SSH_BINARY,
             shutdown_command=shutdown_command,
         )
@@ -528,8 +526,6 @@ class ProtectionPolicy:
                 out.append("margin_unknown")
             elif margin < pc.udr7_confirm_seconds + (pc.udr7_retry_max + 1) * SUBPROCESS_TIMEOUT_SECONDS + HALT_SECONDS:
                 out.append("margin_short")
-            if pc.read_only:
-                out.append("read_only_no_effect")
         return out
 
     def _state_for(self, pc: ProtectionConfig, first_fail: str | None) -> str:

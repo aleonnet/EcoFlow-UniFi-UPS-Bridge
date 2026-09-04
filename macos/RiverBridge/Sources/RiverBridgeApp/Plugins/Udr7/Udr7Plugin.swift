@@ -50,7 +50,6 @@ enum SshEngineText {
             case "margin_unknown": parts.append(L10n.t("margem desconhecida (taxa não medida)", "margin unknown (rate not measured)"))
             case "margin_short": parts.append(L10n.t("margem curta", "short margin"))
             case "cutoff_diverges": parts.append(L10n.t("charge.low do driver ≠ corte configurado", "driver charge.low ≠ configured cutoff"))
-            case "read_only_no_effect": parts.append(L10n.t("READ_ONLY sem efeito", "READ_ONLY has no effect"))
             default: parts.append(w)
             }
         }

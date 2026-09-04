@@ -26,7 +26,6 @@ def test_minimal_config_parses_with_defaults(tmp_path):
     assert cfg.river_name == "river-office"
     assert cfg.nut_port == 3493
     assert cfg.poll_interval_seconds == 2
-    assert cfg.read_only is True
     assert cfg.ui_api_port == 35493
     assert cfg.warnings == []
 
@@ -56,7 +55,7 @@ def test_out_of_range_int_fails_with_line(tmp_path):
 
 def test_bad_bool_fails(tmp_path):
     with pytest.raises(ConfigError, match="booleano"):
-        load_config(write(tmp_path, MINIMAL + "READ_ONLY=talvez\n"))
+        load_config(write(tmp_path, MINIMAL + "UI_API_ENABLED=talvez\n"))
 
 
 def test_inline_comment_is_rejected_not_silently_parsed(tmp_path):
@@ -77,14 +76,13 @@ def test_example_file_in_repo_parses(tmp_path):
     example = pathlib.Path(__file__).parents[2] / "config" / "river-unifi-bridge.env.example"
     cfg = load_config(str(example))
     assert cfg.warnings == []
-    assert cfg.unifi_host == ""
+    assert cfg.ui_api_port == 35493
 
 
 def test_allowlist_matches_spec_keys():
     expected = {
         "RIVER_NAME", "NUT_HOST", "NUT_PORT", "NUT_UPS",
-        "UNIFI_HOST", "UNIFI_VERIFY_TLS",
-        "POLL_INTERVAL_SECONDS", "READ_ONLY", "EMULATE_MODEL",
+        "POLL_INTERVAL_SECONDS",
         "POWER_LOSS_DELAY_SECONDS", "RESTORE_DELAY_SECONDS",
         "COMM_LOSS_DELAY_SECONDS", "LOW_BATTERY_PERCENT",
         "UI_API_ENABLED", "UI_API_PORT", "HISTORY_RETENTION_DAYS",
@@ -97,7 +95,7 @@ def test_allowlist_matches_spec_keys():
         "UDR7_WOL_MAC", "UDR7_NAME",
     }
     assert set(allowlist_keys()) == expected
-    assert len(expected) == 33
+    assert len(expected) == 29
 
 
 @pytest.mark.parametrize(
@@ -226,13 +224,36 @@ def test_empty_protection_string_is_absent_not_invalid(tmp_path):
     assert validate_update("UDR7_SSH_HOST", "") == ""
 
 
+def test_put_empty_value_is_refused_on_non_string_keys():
+    """Vazio em número ou booleano derrubava o serviço no tick seguinte.
+
+    `validate_update` devolvia a string vazia, o PUT gravava isso a quente na
+    configuração viva e a política comparava texto com número. Em texto o vazio
+    continua válido (limpar um nome, limpar um host).
+    """
+    from river_unifi_bridge.config import validate_update
+
+    for chave in ("UDR7_CUTOFF_PERCENT", "POLL_INTERVAL_SECONDS", "UI_API_ENABLED"):
+        with pytest.raises(ConfigError, match="valor vazio"):
+            validate_update(chave, "")
+    assert validate_update("UDR7_SSH_HOST", "") == ""
+    assert validate_update("UDR7_NAME", "") == ""
+
+
+def test_retired_keys_only_warn_in_an_installed_env(tmp_path):
+    """Um .env instalado com as chaves aposentadas sobe, com aviso — nunca erro."""
+    cfg = load_config(write(tmp_path, MINIMAL + "READ_ONLY=1\nUNIFI_HOST=192.168.1.1\n"))
+    assert len(cfg.warnings) == 2
+    assert all("chave desconhecida ignorada" in w for w in cfg.warnings)
+
+
 def test_protection_key_sets_are_consistent():
     from river_unifi_bridge.config import (
         FILE_ONLY_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS, RESTART_REQUIRED_KEYS,
     )
     assert FILE_ONLY_KEYS == {"UDR7_ARM_ALLOWED"}
     assert "UDR7_ARM_ALLOWED" in RESTART_REQUIRED_KEYS
-    assert "UNIFI_HOST" in RESTART_REQUIRED_KEYS and "UNIFI_HOST" not in PROTECTION_KEYS
+    assert "NUT_HOST" in RESTART_REQUIRED_KEYS
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS", "PROTECT_UDR7", "PROTECT_DRY_RUN"} <= PROTECTION_KEYS
     assert len(PROTECTION_KEYS) == 19
     assert (PROTECTION_KEYS - FILE_ONLY_KEYS - {"NUT_HOST", "NUT_PORT", "NUT_UPS"}) <= HOT_RELOAD_KEYS
