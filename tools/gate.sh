@@ -352,7 +352,12 @@ esac
 exit 0
 EOF
 chmod +x "$INST/bin/brew" "$INST/bin/launchctl"
-INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1"
+# RUB_NUT_PREFIX/RUB_NUT_ETC são cerca de método: sem elas, a fase da leitura do
+# River escreveria na configuração REAL do NUT da máquina que roda o gate.
+mkdir -p "$INST/nut/bin" "$INST/nut/sbin" "$INST/nutetc"
+printf '#!/bin/sh\nexit 0\n' > "$INST/nut/bin/usbhid-ups"; chmod +x "$INST/nut/bin/usbhid-ups"
+printf '#!/bin/sh\nexit 0\n' > "$INST/nut/sbin/upsd"; chmod +x "$INST/nut/sbin/upsd"
+INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1 RUB_NUT_PREFIX=$INST/nut RUB_NUT_ETC=$INST/nutetc"
 
 # S8 — dry-run não escreve nada
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_dry.log 2>&1
@@ -378,7 +383,27 @@ else
     tail -3 /tmp/gate_inst_1.log /tmp/gate_inst_2.log
 fi
 
-# S9b — guarda pré-atualização (D12, 2026-09-03): serviço carregado + uma
+# S9k — a leitura do River entra como serviço do SISTEMA, com nome próprio.
+# Medido em 2026-09-04: agente do usuário não sobe sem alguém logado (o mini
+# ficou uma hora sem vigia depois de um reinício), e o aplicativo da EcoFlow mata
+# processos chamados `usbhid-ups`/`upsd` com root. Os dois plists têm de existir,
+# apontar para o binário do NUT e nascer com o nome próprio no `exec -a`.
+# A configuração só é escrita quando falta: o segundo install NÃO a reescreve.
+echo "# marca do dono" >> "$INST/nutetc/ups.conf" 2>/dev/null || echo "# marca do dono" > "$INST/nutetc/ups.conf"
+env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9k.log 2>&1
+S9K_D="$INST/ld/com.river.nut-driver.plist"; S9K_S="$INST/ld/com.river.nut-upsd.plist"
+if [ -f "$S9K_D" ] && [ -f "$S9K_S" ] \
+   && grep -q "exec -a river-bridge-ups $INST/nut/bin/usbhid-ups" "$S9K_D" \
+   && grep -q "exec -a river-bridge-upsd $INST/nut/sbin/upsd" "$S9K_S" \
+   && grep -q "^# marca do dono$" "$INST/nutetc/ups.conf" \
+   && [ -f "$INST/nutetc/upsd.users" ]; then
+    ok "S9k leitura do River: dois serviços do sistema com nome próprio; config do dono intocada"
+else
+    erro "S9k leitura do River: plists ou configuração fora do esperado — cauda:"
+    tail -5 /tmp/gate_inst_9k.log; ls -1 "$INST/ld" 2>/dev/null | head -5
+fi
+
+# S9b — guarda pré-atualização (D12, 2026-09-03)# S9b — guarda pré-atualização (D12, 2026-09-03): serviço carregado + uma
 # instância ARMADA (<id>_armed.json no estado) → o instalador sai 3 ANTES da
 # primeira mutação: o código instalado (marcado aqui com uma linha a mais) fica
 # intocado e o plist também; sem o arquivo, a mesma atualização passa (rc 0),

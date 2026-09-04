@@ -366,6 +366,140 @@ detectar_river() {
 }
 detectar_river || true
 
+# ── fase: leitura do River pelo NUT, como serviço do SISTEMA ───────────────
+# Por que esta fase existe (medido no Mac mini em 2026-09-04): registrar o driver
+# do NUT como agente do USUÁRIO deixa a leitura parada até alguém logar — o mini
+# reiniciou às 01h17, ninguém logou, e o no-break ficou sem vigia por uma hora.
+# Serviço do sistema sobe no boot, sem sessão.
+#
+# Dois cuidados que vêm de medição, não de gosto:
+#  · O aplicativo da EcoFlow, ao abrir, roda `pkill -9 usbhid-ups` e `pkill -9 upsd`
+#    como root (lido dentro do pacote dele). Por isso os nossos processos nascem
+#    com NOME PRÓPRIO, via `exec -a`: o pkill dele casa por nome e não nos alcança.
+#  · A configuração do NUT só é ESCRITA se ainda não existir. Quem já configurou à
+#    mão continua com a dele; o instalador nunca sobrescreve essa escolha.
+NUT_PREFIX="${RUB_NUT_PREFIX:-/opt/homebrew/opt/nut}"
+NUT_ETC="${RUB_NUT_ETC:-/opt/homebrew/etc/nut}"
+LABEL_NUT_DRIVER="${RUB_LABEL_NUT_DRIVER:-com.river.nut-driver}"
+LABEL_NUT_SERVER="${RUB_LABEL_NUT_SERVER:-com.river.nut-upsd}"
+
+nut_ups_do_env() {   # o nome do aparelho é o que o serviço já espera
+  sed -n 's/^NUT_UPS=\(.*\)$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1
+}
+
+escreve_se_faltar() {   # 1=caminho 2=modo 3=conteúdo
+  [ -e "$1" ] && return 1
+  man_set "file:$1" pending
+  printf '%s' "$3" > "$1"
+  chmod "$2" "$1"
+  [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$1" || true
+  man_set "file:$1" created
+  return 0
+}
+
+plist_nut() {   # 1=rótulo 2=nome do processo 3=binário 4..=argumentos
+  local rotulo="$1" nome="$2" bin="$3"; shift 3
+  local args=""
+  for a in "$@"; do args="$args $(printf '%q' "$a")"; done
+  cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>$rotulo</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string><string>-c</string>
+        <string>exec -a $nome $bin$args</string>
+    </array>
+    <key>UserName</key><string>$SERVICE_USER</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>$USER_HOME/Library/Logs/river-nut.log</string>
+    <key>StandardErrorPath</key><string>$USER_HOME/Library/Logs/river-nut.log</string>
+</dict>
+</plist>
+EOF
+}
+
+instalar_leitura_river() {
+  jp nut checando
+  local ups; ups="$(nut_ups_do_env)"; ups="${ups:-river-office}"
+  if [ ! -x "$NUT_PREFIX/bin/usbhid-ups" ]; then
+    diga "leitura do River: o NUT ainda não está instalado nesta máquina"
+    nota "sem $NUT_PREFIX/bin/usbhid-ups; instale com 'brew install nut' e rode de novo"
+    [ "$DRYRUN" = "1" ] || man_set "svc:nut-driver" pending
+    jp nut ausente; passo nut 100; return 0
+  fi
+  if [ "$DRYRUN" = "1" ]; then
+    diga "leitura do River: seria registrada como serviço do sistema ($ups)"
+    nota "$LDIR/$LABEL_NUT_DRIVER.plist e $LDIR/$LABEL_NUT_SERVER.plist"
+    jp nut plano; passo nut plano; return 0
+  fi
+
+  mkdir -p "$NUT_ETC"
+  local mudou=0
+  escreve_se_faltar "$NUT_ETC/ups.conf" 0644 "maxretry = 3
+
+[$ups]
+    driver = usbhid-ups
+    port = auto
+    vendorid = 3746
+    productid = ffff
+    ignorelb
+    override.battery.runtime.low = -1
+    pollfreq = 1
+    pollinterval = 2
+    desc = \"EcoFlow RIVER 3 Plus\"
+" && mudou=1
+  escreve_se_faltar "$NUT_ETC/upsd.conf" 0640 "LISTEN 127.0.0.1 3493
+" && mudou=1
+  escreve_se_faltar "$NUT_ETC/nut.conf" 0644 "MODE=standalone
+" && mudou=1
+  escreve_se_faltar "$NUT_ETC/upsd.users" 0640 "# Conta de LEITURA para outros programas desta máquina (o Power Manager da
+# EcoFlow aceita apontar para um servidor NUT: Communication mode -> Remote).
+# 'secondary' de propósito: acompanha e NÃO pode mandar o River desligar.
+[powermanager]
+    password = river-local
+    upsmon secondary
+" && mudou=1
+
+  local tmpd tmps
+  tmpd=$(mktemp); tmps=$(mktemp)
+  plist_nut "$LABEL_NUT_DRIVER" "river-bridge-ups" "$NUT_PREFIX/bin/usbhid-ups" \
+    -a "$ups" -u "$SERVICE_USER" -F > "$tmpd"
+  plist_nut "$LABEL_NUT_SERVER" "river-bridge-upsd" "$NUT_PREFIX/sbin/upsd" \
+    -u "$SERVICE_USER" -F > "$tmps"
+
+  local rotulo alvo tmp
+  for rotulo in "$LABEL_NUT_DRIVER" "$LABEL_NUT_SERVER"; do
+    alvo="$LDIR/$rotulo.plist"
+    tmp="$tmpd"; [ "$rotulo" = "$LABEL_NUT_SERVER" ] && tmp="$tmps"
+    if [ ! -f "$alvo" ] || ! cmp -s "$tmp" "$alvo"; then
+      man_set "plist:$alvo" pending
+      install -m 0644 "$tmp" "$alvo" || { rm -f "$tmpd" "$tmps"; falha 1 "não consegui registrar a leitura do River. Veja o registro e rode de novo." "install → $alvo falhou"; }
+      [ "$(id -u)" = "0" ] && chown root:wheel "$alvo" || true
+      man_set "plist:$alvo" created
+      mudou=1
+    fi
+    # Os agentes de USUÁRIO da fase manual (2026-09-04) saem de cena: dois
+    # leitores no mesmo cabo brigam, e o do sistema é o que sobrevive ao boot.
+    launchctl bootout "gui/$(id -u "$SERVICE_USER" 2>/dev/null || echo 501)/$rotulo" 2>/dev/null || true
+    launchctl bootout "$DOMINIO/$rotulo" 2>/dev/null || true
+    launchctl bootstrap "$DOMINIO" "$alvo" 2>/dev/null || true
+  done
+  rm -f "$tmpd" "$tmps"
+
+  if [ "$mudou" = "1" ]; then
+    diga "leitura do River: registrada como serviço do sistema (aparelho $ups)"
+    jp nut instalado; passo nut 0
+  else
+    diga "leitura do River: já estava registrada"
+    jp nut ok; passo nut 100
+  fi
+}
+instalar_leitura_river || true
+
 # ── fase: LaunchDaemon do bridge (molde haos-install: cmp + print prova) ────
 # 0 quando o PID do job é quem escuta a porta AGORA (sem espera). Com
 # RUB_SKIP_HEALTH=1 responde 0 (gate com stubs, sem daemon real).

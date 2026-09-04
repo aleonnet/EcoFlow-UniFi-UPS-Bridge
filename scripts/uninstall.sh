@@ -56,6 +56,8 @@ avisar_estado_daemon || true
 [ -f "$MANIFESTO" ] || { echo "sem manifesto em $MANIFESTO — nada a desinstalar (ou nada foi criado por nós)"; exit 100; }
 
 # Caminho seguro por classe: recusa travessia e lugares fora do nosso domínio.
+NUT_ETC="${RUB_NUT_ETC:-/opt/homebrew/etc/nut}"
+
 caminho_seguro() {  # $1=classe $2=caminho
   case "$2" in
     *..*) return 1 ;;
@@ -63,7 +65,10 @@ caminho_seguro() {  # $1=classe $2=caminho
   [ -L "$2" ] && return 1
   case "$1" in
     plist) case "$2" in "$LDIR"/com.river.*.plist) return 0 ;; esac ;;
-    file|dir) case "$2" in "$PREFIX"/*) return 0 ;; esac ;;
+    # A configuração do NUT que o instalador escreve (só quando ela não existia)
+    # mora fora do prefixo, no diretório do Homebrew. Sem esta linha o desinstalador
+    # recusaria remover o que ele próprio criou, e sairia com falha.
+    file|dir) case "$2" in "$PREFIX"/*) return 0 ;; "$NUT_ETC"/*) return 0 ;; esac ;;
   esac
   return 1
 }
