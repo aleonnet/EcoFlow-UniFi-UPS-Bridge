@@ -49,7 +49,7 @@ def rig(tmp_path):
     holder = ConfigHolder(ProtectionConfig.from_cfg(cfg))
     policy = ProtectionPolicy(
         holder, clock=clock, runner=lambda *a, **k: None, keygen_runner=lambda *a, **k: None,
-        wol_sender=lambda m: None,
+        wol_sender=lambda m: None, shutdown_command="ubnt-systool poweroff",
         known_hosts_path=str(tmp_path / "kh"), armed_path=str(tmp_path / "armed.json"),
         runtime_path=str(tmp_path / "runtime.json"),
     )

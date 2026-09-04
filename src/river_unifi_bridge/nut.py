@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import socket
 
+from .protect import log_json   # linha de log em JSON (protect.py não importa nada nosso)
+
 
 class NutError(Exception):
     """Protocol or transport error talking to upsd (house exit code 10)."""
@@ -48,8 +50,10 @@ class NutClient:
             try:
                 if closer is not None:
                     closer.close()
-            except OSError:
-                pass
+            except OSError as exc:
+                # Fechar não pode falhar o ciclo, mas some sem registro ninguém
+                # descobre um descritor vazando.
+                log_json("WARN", "nut_close_failed", reason=str(exc)[:200])
         self._file = None
         self._sock = None
 

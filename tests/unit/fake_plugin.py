@@ -4,7 +4,7 @@ Without it the contract tests would be vacuous in one direction: with a single
 type, "no type freezes another type's key" is true because there is no other
 type. `legacy_keys` is deliberately NOT empty — an empty set would make the
 UDR7→Fake direction vacuous too — and the key it owns is a real one from the
-allowlist, so `legacy_keys ⊆ allowlist_keys()` holds.
+allowlist, so `legacy_keys ⊆ _ALLOWLIST` holds.
 """
 
 from __future__ import annotations

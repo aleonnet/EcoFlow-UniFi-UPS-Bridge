@@ -6,7 +6,7 @@ the required-key check is removed from config.py, they MUST fail.
 
 import pytest
 
-from river_unifi_bridge.config import ConfigError, allowlist_keys, load_config
+from river_unifi_bridge.config import _ALLOWLIST, ConfigError, load_config
 
 MINIMAL = """RIVER_NAME=river-office
 NUT_HOST=127.0.0.1
@@ -94,7 +94,7 @@ def test_allowlist_matches_spec_keys():
         "UDR7_MIN_OUTAGE_SECONDS", "UDR7_CONFIRM_SECONDS", "UDR7_RETRY_MAX",
         "UDR7_WOL_MAC", "UDR7_NAME",
     }
-    assert set(allowlist_keys()) == expected
+    assert set(_ALLOWLIST) == expected
     assert len(expected) == 29
 
 
@@ -249,11 +249,14 @@ def test_retired_keys_only_warn_in_an_installed_env(tmp_path):
 
 def test_protection_key_sets_are_consistent():
     from river_unifi_bridge.config import (
-        FILE_ONLY_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS, RESTART_REQUIRED_KEYS,
+        _ALLOWLIST, FILE_ONLY_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS,
     )
+    # O que NÃO aplica a quente exige reiniciar o serviço; a trava e o endereço do
+    # NUT estão desse lado, e é o que o app informa ao usuário depois de salvar.
+    exige_reinicio = set(_ALLOWLIST) - HOT_RELOAD_KEYS
     assert FILE_ONLY_KEYS == {"UDR7_ARM_ALLOWED"}
-    assert "UDR7_ARM_ALLOWED" in RESTART_REQUIRED_KEYS
-    assert "NUT_HOST" in RESTART_REQUIRED_KEYS
+    assert "UDR7_ARM_ALLOWED" in exige_reinicio
+    assert "NUT_HOST" in exige_reinicio
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS", "PROTECT_UDR7", "PROTECT_DRY_RUN"} <= PROTECTION_KEYS
     assert len(PROTECTION_KEYS) == 19
     assert (PROTECTION_KEYS - FILE_ONLY_KEYS - {"NUT_HOST", "NUT_PORT", "NUT_UPS"}) <= HOT_RELOAD_KEYS

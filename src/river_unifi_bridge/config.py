@@ -221,11 +221,6 @@ def load_config(path: str) -> BridgeConfig:
     return cfg
 
 
-def allowlist_keys() -> list[str]:
-    """Public view of the allowlist (reused by the UI API in UI-0)."""
-    return list(_ALLOWLIST)
-
-
 # §7A.5 — which changed keys apply live vs. require a service restart.
 HOT_RELOAD_KEYS = frozenset(
     {
@@ -254,7 +249,6 @@ HOT_RELOAD_KEYS = frozenset(
         "UDR7_NAME",
     }
 )
-RESTART_REQUIRED_KEYS = frozenset(_ALLOWLIST) - HOT_RELOAD_KEYS
 
 # Fase 3'-EXP — trava de armamento: só o arquivo .env (nunca o PUT) a abre/fecha.
 FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED"})

@@ -12,6 +12,8 @@ import os
 import shutil
 import tempfile
 
+from .protect import log_json   # linha de log em JSON (protect.py não importa nada nosso)
+
 
 class EnvFileError(Exception):
     pass
@@ -59,6 +61,8 @@ def update_env_file(path: str, changes: dict[str, str]) -> None:
     except Exception:
         try:
             os.unlink(tmp_path)
-        except OSError:
-            pass
+        except OSError as exc:
+            # O erro original é o que importa e será relançado; o temporário
+            # órfão fica registrado para quem for limpar o diretório.
+            log_json("WARN", "env_tmp_unlink_failed", path=tmp_path, reason=str(exc)[:200])
         raise

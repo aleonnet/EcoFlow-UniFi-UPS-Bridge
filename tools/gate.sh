@@ -243,6 +243,15 @@ cena_mutacao S4ad src/river_unifi_bridge/service.py \
     'pass  # retenção' \
     tests/unit/test_service_loop.py::test_loop_prunes_history_hourly
 
+# S4ae — `retry_max` é o NÚMERO de tentativas, contado num lugar só. Com `>`, o
+# zero ainda dispara uma vez e o três dispara quatro: a tela mentiria sobre o
+# que o serviço faz com o aparelho.
+cena_mutacao S4ae src/river_unifi_bridge/protect.py \
+    'elif self._attempts >= pc.udr7_retry_max:  # tentativas esgotadas' \
+    'elif self._attempts > pc.udr7_retry_max:  # tentativas esgotadas' \
+    tests/unit/test_protect.py::test_retry_max_zero_never_spawns \
+    tests/unit/test_protect.py::test_retry_max_is_the_number_of_attempts
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

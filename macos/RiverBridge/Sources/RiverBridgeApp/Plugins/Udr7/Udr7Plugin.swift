@@ -23,7 +23,8 @@ struct Udr7Plugin: DevicePluginUI {
 }
 
 /// O vocabulário de tela do motor SSH, partilhado pelos tipos que rodam sobre
-/// ele (protect.py UDR7_STATES): a linha do cartão e o badge de cada estado.
+/// ele (os estados que `protect.py` publica em `state`): a linha do cartão e o
+/// badge de cada estado. O contrato é fixado pelas fixtures de health.
 enum SshEngineText {
     static func healthDetail(detail d: DeviceDetail?, chainPresent: Bool) -> String? {
         guard let d else {

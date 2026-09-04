@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import threading
 
-from ..devices import DevicesError
+from ..devices import DevicesError, validate_fields
 from .base import DevicePlugin, FieldSpec
 from .ssh_host import SshHostPlugin
 from .udr7_ssh import Udr7SshPlugin
@@ -19,9 +19,7 @@ TYPES: dict[str, type[DevicePlugin]] = {
     Udr7SshPlugin.type_id: Udr7SshPlugin,
     SshHostPlugin.type_id: SshHostPlugin,
 }
-PLUGINS: tuple[type[DevicePlugin], ...] = tuple(TYPES.values())
-
-__all__ = ["DevicePlugin", "FieldSpec", "PLUGINS", "TYPES", "PluginSet", "SshHostPlugin",
+__all__ = ["DevicePlugin", "FieldSpec", "TYPES", "PluginSet", "SshHostPlugin",
            "Udr7SshPlugin", "build_plugins", "plugin_statuses", "type_catalog"]
 
 
@@ -33,6 +31,13 @@ def build_plugins(devices, cfg, state_dir: str) -> list[DevicePlugin]:
         cls = TYPES.get(instance.type)
         if cls is None:
             raise DevicesError(f"tipo de dispositivo desconhecido: {instance.type!r} (instância {instance.id})")
+        # Os campos também são conferidos AQUI, no boot: as rotas já validam o que
+        # entra pela interface, mas um arquivo editado à mão chegava direto ao
+        # motor (porta 0, comando fora da tabela) sem ninguém olhar.
+        try:
+            validate_fields(cls.fields, dict(instance.fields))
+        except DevicesError as exc:
+            raise DevicesError(f"instância {instance.id}: {exc}") from exc
         out.append(cls.build(instance, cfg, state_dir))
     return out
 

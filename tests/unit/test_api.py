@@ -238,7 +238,7 @@ def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     state = tmp_path / "state"
     policy = ProtectionPolicy(
         holder, runner=lambda *a, **k: None, keygen_runner=lambda *a, **k: None,
-        wol_sender=lambda mac: None,
+        wol_sender=lambda mac: None, shutdown_command=POWEROFF.argv,
         known_hosts_path=str(state / "kh"), armed_path=str(state / "udr7_armed.json"),
         runtime_path=str(state / "udr7_runtime.json"),
     )
@@ -768,3 +768,36 @@ async def test_sse_delivers_past_the_hundredth_event(client, server):
     assert recebidos == sorted(recebidos, key=lambda e: int(e[1:]))
     seqs = [e["seq"] for e in server.state.events()]
     assert seqs == sorted(seqs) and len(seqs) == 100
+
+
+async def test_restart_without_a_loop_refuses_instead_of_crashing(server, aiohttp_client):
+    """Servidor sem laço não tem como se reiniciar: recusa com texto humano.
+
+    Era um `assert`: virava 500 sem explicação, e com o Python otimizado (-O)
+    sumiria, deixando um `None.call_later` no lugar.
+    """
+    c = await aiohttp_client(server.build_app())
+    c.auth = {"Authorization": f"Bearer {TOKEN}"}
+    server._loop = None
+    resp = await c.post("/v1/service/restart", headers=c.auth)
+    assert resp.status == 503
+    body = await resp.json()
+    assert body["motivo"] == "servidor_sem_laco"
+    assert "reinicie pelo terminal" in body["erro"]
+    assert server.restarts == []
+
+
+async def test_config_put_reports_a_disk_failure_instead_of_a_silent_500(client, server, monkeypatch):
+    """Se o arquivo do serviço não pode ser gravado, o usuário ouve isso."""
+    from river_unifi_bridge import api as api_mod
+
+    def disco_cheio(*_a, **_k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(api_mod, "update_env_file", disco_cheio)
+    resp = await client.put("/v1/config", json={"LOW_BATTERY_PERCENT": 33}, headers=client.auth)
+    assert resp.status == 500
+    body = await resp.json()
+    assert body["motivo"] == "arquivo_env"
+    assert "nada foi alterado" in body["erro"]
+    assert server.cfg.low_battery_percent != 33      # nada aplicado a quente

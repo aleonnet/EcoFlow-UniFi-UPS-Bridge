@@ -20,14 +20,17 @@ import pytest
 from river_unifi_bridge import protect
 from river_unifi_bridge.config import BridgeConfig
 from river_unifi_bridge.model import snapshot_from_nut_vars
+from river_unifi_bridge.plugins.udr7_ssh import POWEROFF
 from river_unifi_bridge.protect import (
     EV_ARMED, EV_BLIND, EV_BLOCKED, EV_DISARMED, EV_DRYRUN, EV_FAILED, EV_REARMED,
-    EV_SENT, EV_WOL_DRYRUN, EV_WOL_SENT, POWEROFF_COMMAND, SUBPROCESS_TIMEOUT_SECONDS,
+    EV_SENT, EV_WOL_DRYRUN, EV_WOL_SENT, SUBPROCESS_TIMEOUT_SECONDS,
     ConfigHolder, ProtectionConfig, ProtectionPolicy, known_host_ok, source_verdict,
     ssh_argv,
 )
 
 REAL_SERIAL = "R3P-TEST-0001"
+# O comando é do aparelho: vem da tabela do plugin do UDR7, com fonte por linha.
+POWEROFF_COMMAND = POWEROFF.argv
 
 
 # --- helpers ------------------------------------------------------------------
@@ -140,7 +143,8 @@ class Rig:
         self.holder = ConfigHolder(make_pc(**cfg_over))
         self.policy = ProtectionPolicy(
             self.holder, clock=self.clock, runner=self.spy, keygen_runner=self.keygen,
-            wol_sender=wol if wol is not None else self.wol_calls.append, **paths,
+            wol_sender=wol if wol is not None else self.wol_calls.append,
+            shutdown_command=POWEROFF_COMMAND, **paths,
         )
         self.paths = paths
         # A dedicated known_hosts exists by default; the (fake) keygen decides.
@@ -468,8 +472,40 @@ def test_failed_retries_up_to_budget_then_latches(paths, key_file):
     for _ in range(6):
         seen += events_of(rig.tick(events=["POWER_LOSS"] if not seen else []))
         rig.clock.now += SUBPROCESS_TIMEOUT_SECONDS
-    assert seen == [EV_FAILED, EV_FAILED, EV_FAILED]   # retry_max + 1 attempts, then latch
+    # 2 tentativas = 2 envios; no tick seguinte a política bloqueia e trava.
+    assert seen == [EV_FAILED, EV_FAILED, EV_BLOCKED]
+    assert len(rig.spy.calls) == 2
+
+
+def test_retry_max_is_the_number_of_attempts(paths, key_file):
+    """O número que a tela mostra é o número de tentativas, nem uma a mais."""
+    rig = Rig(paths, armed_overrides(key_file, udr7_retry_max=3), spy=Spy(returncode=1))
+    rig.arm_file()
+    seen = []
+    for _ in range(8):
+        seen += events_of(rig.tick(events=["POWER_LOSS"] if not seen else []))
+        rig.clock.now += SUBPROCESS_TIMEOUT_SECONDS
+    assert seen == [EV_FAILED, EV_FAILED, EV_FAILED, EV_BLOCKED]
     assert len(rig.spy.calls) == 3
+    bloqueio = [a for a in rig.tick() if a.event == EV_BLOCKED]
+    assert bloqueio == []                       # travada: um bloqueio por queda
+
+
+def test_retry_max_zero_never_spawns(paths, key_file):
+    """Zero tentativas é uma escolha legítima: vigia, avisa e nunca desliga."""
+    rig = armed_rig(paths, key_file, udr7_retry_max=0)
+    acoes = rig.outage()
+    assert events_of(acoes) == [EV_BLOCKED]
+    assert acoes[0].payload["detail"] == "tentativas_esgotadas"
+    assert acoes[0].payload["attempt"] == 0     # nenhuma tentativa foi feita
+    assert rig.spy.calls == []
+
+
+def test_retry_max_zero_still_reports_in_dry_run(paths, key_file):
+    """Em ensaio, zero tentativas não pode calar o aviso do que aconteceria."""
+    rig = armed_rig(paths, key_file, udr7_retry_max=0, protect_dry_run=True)
+    assert events_of(rig.outage()) == [EV_DRYRUN]
+    assert rig.spy.calls == []
 
 
 def test_blocked_and_dryrun_latch_per_outage(paths, key_file):
@@ -758,7 +794,6 @@ def test_status_precedence_matches_gate_order(paths, key_file):
     rig.outage(); assert rig.policy.status()["state"] == "enviado"
     assert rig.policy.drain_transition() == ("armado_nao_verificado", "enviado")
     assert rig.policy.drain_transition() is None
-    assert set(protect.GATES) <= set(protect.UDR7_STATES) and len(protect.GATES) == 12
 
 
 def test_margin_estimate_warnings(paths, key_file):
@@ -775,6 +810,20 @@ def test_margin_estimate_warnings(paths, key_file):
     lock = armed_rig(paths, key_file, udr7_arm_allowed=True)
     lock.tick()
     assert "lock_open" in lock.policy.status()["warnings"]
+
+
+def test_margin_counts_the_attempts_that_really_happen(paths, key_file):
+    """A margem reserva tempo para as tentativas que existem, não para uma a mais.
+
+    Com 3 tentativas de 20 s e 30 s de desligamento, o mínimo é 90 s. A folga
+    medida aqui é 100 s: sobra pela conta certa e faltaria pela antiga (110 s).
+    """
+    rig = armed_rig(paths, key_file, udr7_retry_max=3, udr7_confirm_seconds=0,
+                    udr7_discharge_seconds_per_pct=10)
+    rig.tick()
+    st = rig.policy.status()
+    assert st["margin_estimate_s"] == 100
+    assert "margin_short" not in st["warnings"]
 
 
 def test_simulator_base_vars_are_synthetic():
@@ -909,7 +958,8 @@ def test_from_cfg_still_serves_the_legacy_instance(key_file):
 def test_status_name_falls_back_to_the_policy_default_name(paths, key_file):
     holder = ConfigHolder(make_pc(**armed_overrides(key_file, udr7_name="")))
     policy = ProtectionPolicy(holder, runner=Spy(), keygen_runner=FakeKeygen(0),
-                              default_name="Servidor SSH", **paths)
+                              default_name="Servidor SSH",
+                              shutdown_command=POWEROFF_COMMAND, **paths)
     assert policy.status()["name"] == "Servidor SSH"
 
 
@@ -947,3 +997,24 @@ def test_runtime_write_failure_still_resets_outage_and_records_sent(paths, key_f
     rig.clock.now += 100
     assert events_of(rig.outage()) == [EV_SENT]        # nova queda, novo envio
     assert len(rig.spy.calls) == 2
+
+
+def test_disarm_still_wins_when_the_armed_file_cannot_be_deleted(paths, key_file, monkeypatch, capsys):
+    """O botão de parada nunca falha, nem com o arquivo de armamento preso.
+
+    O arquivo órfão é inócuo: só é lido com a proteção ligada e é reescrito no
+    próximo armamento. O que não pode acontecer é o desarme ser recusado.
+    """
+    rig = armed_rig(paths, key_file)
+    assert os.path.exists(paths["armed_path"])
+
+    def preso(_path):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(os, "unlink", preso)
+    acoes = rig.apply(protect_dry_run=True)
+    assert events_of(acoes) == [EV_DISARMED]
+    assert rig.policy.status()["dry_run"] is True
+    avisos = [json.loads(l) for l in capsys.readouterr().out.splitlines()
+              if '"armed_file_unlink_failed"' in l]
+    assert len(avisos) == 1

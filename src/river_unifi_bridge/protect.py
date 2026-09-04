@@ -38,10 +38,6 @@ SUBPROCESS_TIMEOUT_SECONDS = 20    # 15 + FINALDELAY 5 (same analogy); also retr
 KEYGEN_TIMEOUT_SECONDS = 5         # PROVISÓRIO-SEM-FONTE
 RUNTIME_SANITY_SECONDS = 86400     # PROVISÓRIO-SEM-FONTE (24 h; 40 h quirk guard)
 HALT_SECONDS = 30                  # PROVISÓRIO-SEM-FONTE (console halt time in margin estimate)
-# Default histórico, mantido só para quem constrói ProtectionPolicy sem passar o
-# comando. A TABELA verificada, com fonte por linha, vive no plugin do aparelho
-# (plugins/udr7_ssh.py: COMMANDS) — é de lá que o daemon tira o que manda.
-POWEROFF_COMMAND = "ubnt-systool poweroff"
 WOL_PORT = 9                       # [S] Wikipedia WoL: "port 0, 7 or 9" — choice: 9
 WOL_BROADCAST = "255.255.255.255"  # limited broadcast (INFERIDO from the same source)
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})   # literal; `localhost` is refused
@@ -62,19 +58,20 @@ EV_ARMED = "UDR7_ARMED"
 EV_DISARMED = "UDR7_DISARMED"
 EV_WOL_SENT = "UDR7_WOL_SENT"
 EV_WOL_DRYRUN = "UDR7_WOL_DRYRUN"
-PROTECTION_EVENTS = (
-    EV_DRYRUN, EV_SENT, EV_FAILED, EV_BLOCKED, EV_REARMED, EV_BLIND,
-    EV_ARMED, EV_DISARMED, EV_WOL_SENT, EV_WOL_DRYRUN,
-)
+def _rotulo_da_fonte(first_fail: str | None, source_detail: str | None,
+                     ja_observou: bool) -> str | None:
+    """Como a leitura do UPS foi julgada — para o health e para o payload do evento.
 
-# Health states of the `udr7` link — closed enum (gates in precedence order + 4)
-GATES = (
-    "fonte_nao_real", "fonte_nao_local", "corte_nao_configurado",
-    "limiar_nao_configurado", "limiar_abaixo_do_corte", "config_incompleta",
-    "chave_insegura", "host_desconhecido", "calibrando", "armamento_ausente",
-    "config_trocada", "aguardando_restauracao",
-)
-UDR7_STATES = ("desabilitado",) + GATES + ("dry_run", "armado_nao_verificado", "enviado")
+    `sintetica` = veio do simulador; `nao_verificada` = a cerca de fonte reprovou;
+    `ok` = algum tick já rodou e a fonte não foi o motivo; `None` = nunca olhei.
+    Mesmo comportamento de antes, escrito de um jeito que se lê.
+    """
+    if source_detail == "telemetria_sintetica":
+        return "sintetica"
+    if first_fail == "fonte_nao_real":
+        return "nao_verificada"
+    return "ok" if ja_observou else None
+
 
 # --- seams (resolved at call time; conftest replaces them in unit tests) ------------
 _RUNNER = subprocess.run
@@ -333,8 +330,8 @@ def _write_private_json(path: str, data: dict) -> None:
     except Exception:
         try:
             os.unlink(tmp)
-        except OSError:
-            pass
+        except OSError as exc:
+            log_json("WARN", "state_tmp_unlink_failed", path=tmp, reason=str(exc)[:200])
         raise
 
 
@@ -366,7 +363,10 @@ class ProtectionPolicy:
         known_hosts_path: str,
         armed_path: str,
         runtime_path: str,
-        shutdown_command: str = POWEROFF_COMMAND,
+        # Sem default: o comando é do APARELHO, e a tabela verificada vive no
+        # plugin dele (plugins/udr7_ssh.py, plugins/ssh_host.py). Um default aqui
+        # era o motor escolhendo o que mandar para uma máquina que não conhece.
+        shutdown_command: str,
         default_name: str = "UDR7",
     ) -> None:
         # O QUE se manda ao aparelho vem do PLUGIN dele; esta classe é o
@@ -537,7 +537,7 @@ class ProtectionPolicy:
             margin = self._margin_estimate(pc)
             if margin is None:
                 out.append("margin_unknown")
-            elif margin < pc.udr7_confirm_seconds + (pc.udr7_retry_max + 1) * SUBPROCESS_TIMEOUT_SECONDS + HALT_SECONDS:
+            elif margin < pc.udr7_confirm_seconds + pc.udr7_retry_max * SUBPROCESS_TIMEOUT_SECONDS + HALT_SECONDS:
                 out.append("margin_short")
         return out
 
@@ -629,7 +629,6 @@ class ProtectionPolicy:
                 and self._outage_since is not None
                 and now - self._outage_since >= pc.udr7_min_outage_seconds
                 and not self._latched
-                and self._attempts <= pc.udr7_retry_max
                 and (self._last_attempt_at is None
                      or now - self._last_attempt_at >= SUBPROCESS_TIMEOUT_SECONDS)
             )
@@ -644,8 +643,7 @@ class ProtectionPolicy:
                 if confirmed:
                     base_payload = {
                         "host": pc.udr7_ssh_host,
-                        "source": "sintetica" if source_detail == "telemetria_sintetica" else (
-                            "nao_verificada" if first_fail == "fonte_nao_real" else "ok"),
+                        "source": _rotulo_da_fonte(first_fail, source_detail, True),
                         "source_detail": source_detail,
                         "attempt": self._attempts + 1,
                         "threshold": pc.udr7_shutdown_percent,
@@ -662,6 +660,16 @@ class ProtectionPolicy:
                         self._latched = True
                         actions.append(ProtectionAction(
                             EV_BLOCKED, {**base_payload, "detail": first_fail}))
+                        self._note(EV_BLOCKED)
+                    elif self._attempts >= pc.udr7_retry_max:  # tentativas esgotadas
+                        # `retry_max` é o NÚMERO de tentativas, e este é o único
+                        # lugar que o conta. Com 3, saem 3 envios e o 4.º tick
+                        # bloqueia; com 0, nenhum envio sai — e o ensaio, que é
+                        # julgado antes, continua avisando o que faria.
+                        self._latched = True
+                        actions.append(ProtectionAction(
+                            EV_BLOCKED, {**base_payload, "attempt": self._attempts,
+                                         "detail": "tentativas_esgotadas"}))
                         self._note(EV_BLOCKED)
                     else:
                         self._attempts += 1
@@ -710,8 +718,6 @@ class ProtectionPolicy:
                 detail = "host_key_mudou" if "HOST IDENTIFICATION HAS CHANGED" in error.upper() else (
                     "host_desconhecido" if "HOST KEY VERIFICATION FAILED" in error.upper() else
                     ("timeout" if error == "timeout" else f"rc={rc}"))
-                if self._attempts > pc.udr7_retry_max:
-                    self._latched = True
                 actions.append(ProtectionAction(
                     EV_FAILED, {**base_payload, "detail": detail, "error": error}))
                 self._note(EV_FAILED)
@@ -740,8 +746,14 @@ class ProtectionPolicy:
             elif old.armed and not new.armed:
                 try:
                     os.unlink(self._armed_path)
-                except OSError:
-                    pass
+                except FileNotFoundError:
+                    pass                      # já não estava lá: desarmado é desarmado
+                except OSError as exc:
+                    # DESARMAR NUNCA FALHA (cerca S4l): o botão de parada é do dono.
+                    # O arquivo órfão é inócuo — só é lido com a proteção ligada e
+                    # é sobrescrito no próximo armamento.
+                    log_json("WARN", "armed_file_unlink_failed",
+                             path=self._armed_path, reason=str(exc)[:200])
                 actions.append(ProtectionAction(EV_DISARMED, {"host": new.udr7_ssh_host,
                                                                "detail": "desarmado"}))
                 self._note(EV_DISARMED)
@@ -769,11 +781,9 @@ class ProtectionPolicy:
                 "name": pc.udr7_name or self._default_name,
                 "dry_run": pc.protect_dry_run,
                 "enabled": pc.protect_udr7,
-                "source": (
-                    "sintetica" if self._last_source_detail == "telemetria_sintetica" else
-                    "nao_verificada" if self._last_first_fail == "fonte_nao_real" else
-                    "ok" if self._last_first_fail is not None or self._last_state else None
-                ),
+                "source": _rotulo_da_fonte(
+                    self._last_first_fail, self._last_source_detail,
+                    self._last_first_fail is not None or bool(self._last_state)),
                 "source_detail": self._last_source_detail,
                 "missing_key": self._last_missing_key,
                 "cutoff": pc.udr7_cutoff_percent,

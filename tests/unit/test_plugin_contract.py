@@ -1,6 +1,6 @@
 """The device-plugin contract, exercised over EVERY registered plugin.
 
-Parametrised over `PLUGINS + (FakePlugin,)`: this is what proves the contract is
+Parametrised over `TYPES + (FakePlugin,)`: this is what proves the contract is
 general without a second real device. A test that only ever sees the UDR7 would
 pass for a contract shaped exactly like the UDR7.
 """
@@ -11,15 +11,15 @@ import pytest
 
 from fake_plugin import FakePlugin
 from river_unifi_bridge.config import (
-    DEVICE_NAME_KEYS, HOT_RELOAD_KEYS, LEGACY_CORE_KEYS, PROTECTION_KEYS, allowlist_keys, load_config,
+    _ALLOWLIST, DEVICE_NAME_KEYS, HOT_RELOAD_KEYS, LEGACY_CORE_KEYS, PROTECTION_KEYS, load_config,
 )
 from river_unifi_bridge.devices import DeviceInstance, DeviceStore
 from river_unifi_bridge.model import snapshot_from_nut_vars
-from river_unifi_bridge.plugins import PLUGINS, TYPES, build_plugins, plugin_statuses
+from river_unifi_bridge.plugins import TYPES, build_plugins, plugin_statuses
 from river_unifi_bridge.plugins.udr7_ssh import legacy_instance
 
 MINIMAL = "NUT_HOST=127.0.0.1\nNUT_PORT=3493\nNUT_UPS=river\nRIVER_NAME=River\n"
-ALL_CLASSES = list(PLUGINS) + [FakePlugin]
+ALL_CLASSES = list(TYPES.values()) + [FakePlugin]
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def sample(cls) -> DeviceInstance:
 def test_contract_attributes(cls):
     assert cls.type_id and cls.type_id == cls.type_id.lower()
     assert cls.label_pt and cls.label_en and cls.default_name and cls.event_prefix.endswith("_")
-    assert cls.legacy_keys <= set(allowlist_keys()), "legacy_keys fora da allowlist"
+    assert cls.legacy_keys <= set(_ALLOWLIST), "legacy_keys fora da allowlist"
     # Everything a type owns in the .env must be frozen while armed, EXCEPT the
     # name: the whole point of DEVICE_NAME_KEYS is that renaming stays possible.
     assert cls.frozen_keys >= (cls.legacy_keys - DEVICE_NAME_KEYS)
@@ -80,15 +80,14 @@ def test_contract_methods(cls, cfg, tmp_path):
 
 def test_udr7_frozen_keys_include_nut(cfg, tmp_path):
     """Só o UDR7: as chaves NUT_* condicionam a FONTE que alimenta a política."""
-    plugin = PLUGINS[0].build(legacy_instance(cfg), cfg, str(tmp_path))
+    plugin = TYPES["udr7_ssh"].build(legacy_instance(cfg), cfg, str(tmp_path))
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS"} <= plugin.frozen_keys
 
 
 def test_registry_is_static_and_ids_unique():
-    ids = [cls.type_id for cls in PLUGINS]
+    ids = list(TYPES)
     assert len(set(ids)) == len(ids)
-    assert PLUGINS == tuple(PLUGINS), "o registro é estático"
-    assert all(TYPES[cls.type_id] is cls for cls in PLUGINS)
+    assert all(TYPES[type_id].type_id == type_id for type_id in TYPES)
 
 
 def test_device_keys_are_partitioned_among_plugins():
@@ -99,16 +98,16 @@ def test_device_keys_are_partitioned_among_plugins():
     prefixo tornaria este teste uma tautologia. Cego a prefixo NOVO — quando o
     2º plugin chegar, a convenção PLUGIN_<ID>_* entra junto (BACKLOG).
     """
-    por_prefixo = {k for k in allowlist_keys() if k.startswith(("PROTECT_", "UDR7_"))}
+    por_prefixo = {k for k in _ALLOWLIST if k.startswith(("PROTECT_", "UDR7_"))}
     dos_plugins: set[str] = set()
-    for cls in PLUGINS:
+    for cls in TYPES.values():
         assert not (dos_plugins & cls.legacy_keys), "dois tipos reivindicam a mesma chave"
         dos_plugins |= cls.legacy_keys
     # As três do núcleo (trava, série esperada, corte) não são de instância nenhuma.
     assert dos_plugins == por_prefixo - LEGACY_CORE_KEYS
     assert LEGACY_CORE_KEYS <= por_prefixo
     # Tipos novos NUNCA ganham chave no .env: só o UDR7 migrado tem espelho.
-    assert [cls.type_id for cls in PLUGINS if cls.legacy_keys] == ["udr7_ssh"]
+    assert [t for t, cls in TYPES.items() if cls.legacy_keys] == ["udr7_ssh"]
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES)
@@ -127,7 +126,7 @@ def test_no_plugin_freezes_another_plugins_key(cls):
 
 
 def test_udr7_name_is_hot_owned_and_never_frozen():
-    udr7 = PLUGINS[0]
+    udr7 = TYPES["udr7_ssh"]
     assert "UDR7_NAME" in udr7.legacy_keys
     assert "UDR7_NAME" in HOT_RELOAD_KEYS
     assert "UDR7_NAME" not in udr7.frozen_keys
@@ -137,7 +136,7 @@ def test_udr7_name_is_hot_owned_and_never_frozen():
 def test_udr7_status_name_falls_back_when_empty(cfg, tmp_path):
     from dataclasses import replace
 
-    plugin = PLUGINS[0].build(legacy_instance(cfg), cfg, str(tmp_path))
+    plugin = TYPES["udr7_ssh"].build(legacy_instance(cfg), cfg, str(tmp_path))
     assert plugin.status()["name"] == "UDR7"
     plugin._holder.replace(replace(plugin._holder.get(), udr7_name="Meu UDR"))
     assert plugin.status()["name"] == "Meu UDR"
@@ -185,6 +184,23 @@ def test_build_plugins_refuses_unknown_type(cfg, tmp_path):
     from river_unifi_bridge.devices import DevicesError
     with pytest.raises(DevicesError, match="tipo de dispositivo desconhecido"):
         build_plugins([DeviceInstance(id="x_1", type="nao_existe", name="X")], cfg, str(tmp_path))
+
+
+def test_build_plugins_refuses_fields_edited_by_hand(cfg, tmp_path):
+    """O arquivo de dispositivos editado à mão passa pela mesma conferência da tela.
+
+    As rotas já validavam o que entra pela interface; o boot lia o arquivo cru e
+    entregava ao motor um comando fora da tabela ou uma porta impossível.
+    """
+    from river_unifi_bridge.devices import DevicesError
+
+    fora_da_tabela = DeviceInstance(
+        id="ssh_1", type="ssh_host", name="Servidor",
+        fields={"ssh_host": "192.0.2.9", "ssh_port": 22, "ssh_user": "root",
+                "ssh_key": "/tmp/k", "shutdown_command": "rm -rf /"},
+    )
+    with pytest.raises(DevicesError, match="instância ssh_1"):
+        build_plugins([fora_da_tabela], cfg, str(tmp_path))
 
 
 # --- a tabela de comandos do dispositivo -------------------------------------
@@ -356,7 +372,7 @@ def test_ssh_host_events_carry_type_prefix_and_owner(cfg, tmp_path):
 def test_udr7_events_keep_their_prefix(cfg, tmp_path):
     from river_unifi_bridge.protect import EV_ARMED, ProtectionAction
 
-    plugin = PLUGINS[0].build(legacy_instance(cfg), cfg, str(tmp_path))
+    plugin = TYPES["udr7_ssh"].build(legacy_instance(cfg), cfg, str(tmp_path))
     tagged = plugin._tag([ProtectionAction(EV_ARMED, {})])
     assert tagged[0].event == "UDR7_ARMED" and tagged[0].payload["device"] == "udr7"
 

@@ -1,7 +1,7 @@
 """The device-plugin contract on the daemon side.
 
 A "device plugin" is a piece of hardware the bridge protects. The UDR7 is the
-first one; a second one is a new module here plus one line in PLUGINS.
+first one; a second one is a new module here plus one line in TYPES.
 
 Design rules, all of them deliberate:
 

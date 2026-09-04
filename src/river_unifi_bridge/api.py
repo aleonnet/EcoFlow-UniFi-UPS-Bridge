@@ -29,8 +29,8 @@ from .config import (
     validate_update,
 )
 from .devices import DeviceInstance, DevicesError, new_id, now_iso, validate_fields
-from .envfile import update_env_file
-from .history import METRICS, HistoryStore
+from .envfile import EnvFileError, update_env_file
+from .history import HistoryStore
 from .localtoken import get_or_create_token
 from .plugins import TYPES, PluginSet, plugin_statuses, type_catalog
 from .plugins.base import FieldSpec
@@ -279,7 +279,15 @@ class ApiServer:
             status, motivo, mensagem = refusal
             return web.json_response({"erro": mensagem, "motivo": motivo}, status=status)
 
-        update_env_file(self.env_path, {k: str(v) if not isinstance(v, bool) else ("1" if v else "0") for k, v in parsed.items()})
+        try:
+            update_env_file(self.env_path, {k: str(v) if not isinstance(v, bool) else ("1" if v else "0") for k, v in parsed.items()})
+        except (EnvFileError, OSError) as exc:
+            # Nada foi aplicado ainda: o arquivo é o primeiro a ser escrito. Dizer
+            # 500 aqui é a verdade — a mudança não valeu, nem agora nem no reinício.
+            log_json("ERROR", "env_write_failed", path=self.env_path, reason=str(exc)[:200])
+            return self._refuse(500, "arquivo_env",
+                                "não consegui gravar a configuração do serviço no disco; "
+                                "nada foi alterado")
 
         applied_hot: list[str] = []
         restart_required = False
@@ -314,7 +322,13 @@ class ApiServer:
             )
         # 202 first; the callback fires outside the handler after the response
         # has been flushed (see module docstring for the race this avoids).
-        assert self._loop is not None
+        if self._loop is None:
+            # Servidor construído fora do `start_in_thread` (dublê de teste, uso
+            # embutido): não há laço para agendar a saída. Recusar é honesto;
+            # um `assert` viraria erro 500 sem explicação — ou sumiria com -O.
+            return self._refuse(503, "servidor_sem_laco",
+                                "o serviço não consegue se reiniciar sozinho agora; "
+                                "reinicie pelo terminal")
         self._loop.call_later(RESTART_EXIT_DELAY_SECONDS, self.restart_cb)
         return web.json_response({"status": "reinício agendado"}, status=202)
 
@@ -358,7 +372,14 @@ class ApiServer:
                 env_changes[key] = str(value)
                 setattr(self.cfg, key.lower(), value)
         if env_changes:
-            update_env_file(self.env_path, env_changes)
+            try:
+                update_env_file(self.env_path, env_changes)
+            except (EnvFileError, OSError) as exc:
+                # A verdade é a loja de dispositivos, já gravada: a mudança VALEU.
+                # O espelho no .env existe para quem voltar à 0.2.0, e a divergência
+                # é registrada em vez de derrubar o pedido do usuário.
+                log_json("WARN", "env_mirror_failed", path=self.env_path,
+                         keys=sorted(env_changes), reason=str(exc)[:200])
 
     async def _h_devices_list(self, _req: web.Request) -> web.Response:
         return web.json_response({"devices": [self._device_json(p) for p in self.plugins
@@ -476,10 +497,14 @@ class ApiServer:
         self.plugins.remove(plugin.id)
         if self.state_dir is not None:
             for suffix in ("_armed.json", "_runtime.json"):
+                caminho = os.path.join(self.state_dir, f"{plugin.id}{suffix}")
                 try:
-                    os.unlink(os.path.join(self.state_dir, f"{plugin.id}{suffix}"))
-                except OSError:
-                    pass
+                    os.unlink(caminho)
+                except FileNotFoundError:
+                    pass                      # não existir é o caso comum
+                except OSError as exc:
+                    log_json("WARN", "device_state_unlink_failed",
+                             device=plugin.id, path=caminho, reason=str(exc)[:200])
             if os.path.exists(os.path.join(self.state_dir, f"{plugin.id}_known_hosts")):
                 log_json("WARN", "known_hosts_kept", device=plugin.id,
                          reason="semeado à mão pelo dono; remoção é decisão dele")
