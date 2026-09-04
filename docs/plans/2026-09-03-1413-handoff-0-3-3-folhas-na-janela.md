@@ -1,5 +1,5 @@
 ---
-status: aceito
+status: superado por 2026-09-04-0140-handoff-0-4-0-e-frente-do-river.md
 ---
 
 # Handoff — 0.3.3: folhas de dispositivo dentro da janela — 2026-09-03 14:13
