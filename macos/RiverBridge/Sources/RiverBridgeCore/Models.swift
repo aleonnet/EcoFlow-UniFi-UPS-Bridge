@@ -45,6 +45,9 @@ public struct UpsState: Codable, Equatable, Sendable {
 
     public struct Battery: Codable, Equatable, Sendable {
         public var chargePercent: Double?
+        /// O aviso de bateria fraca DO APARELHO (o "Low battery reminder" do
+        /// aplicativo da EcoFlow). É gravável: a tela de Ajustes o edita.
+        public var chargeLowPercent: Double?
         public var runtimeSeconds: Double?
         public var voltageV: Double?
         public var temperatureC: Double?
@@ -345,6 +348,20 @@ public struct DeviceTypeInfo: Codable, Equatable, Sendable, Identifiable {
 
     public func defaultValue(for field: String) -> ConfigValue? {
         fields.first { $0.name == field }?.defaultValue
+    }
+}
+
+/// Quem está com o cabo do River, como o serviço publica em `/v1/river/cabo`.
+public struct EstadoDoCabo: Codable, Equatable, Sendable {
+    /// `nil` quando o serviço não cuida do leitor (instalação antiga).
+    public var lendo: Bool?
+    public var pausado: Bool?
+    public var motivo: String?
+
+    public init(lendo: Bool?, pausado: Bool?, motivo: String? = nil) {
+        self.lendo = lendo
+        self.pausado = pausado
+        self.motivo = motivo
     }
 }
 

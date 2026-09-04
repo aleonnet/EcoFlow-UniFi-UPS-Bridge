@@ -68,6 +68,13 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     # procura a porta e aceita a que responder com a série esperada.
     "RIVER_SERIAL_ENABLED": (bool, False, True, None),
     "RIVER_SERIAL_PORT": (str, False, "auto", None),
+    # Desligar o PRÓPRIO River corta a energia de tudo o que está nele. Trava de
+    # ARQUIVO, como a de armamento: a API nunca a abre, e a tela só age com ela
+    # aberta MAIS a confirmação do dono.
+    "RIVER_POWEROFF_ALLOWED": (bool, False, False, None),
+    # O serviço cuida do driver e do servidor do NUT como filhos (ver
+    # nut_supervisor.py). Desligado, quem cuida é você, por fora.
+    "RIVER_NUT_MANAGED": (bool, False, True, None),
 }
 
 
@@ -156,6 +163,8 @@ class BridgeConfig:
     history_retention_days: int = 7
     river_serial_enabled: bool = True
     river_serial_port: str = "auto"
+    river_poweroff_allowed: bool = False
+    river_nut_managed: bool = True
     # Diagnostics for the caller (never fatal): "<line>: <message>"
     warnings: list[str] = field(default_factory=list)
 
@@ -239,6 +248,7 @@ HOT_RELOAD_KEYS = frozenset(
         "HISTORY_RETENTION_DAYS",
         "RIVER_SERIAL_ENABLED",
         "RIVER_SERIAL_PORT",
+        "RIVER_NUT_MANAGED",
         # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
         "PROTECT_UDR7",
         "PROTECT_DRY_RUN",
@@ -260,7 +270,7 @@ HOT_RELOAD_KEYS = frozenset(
 )
 
 # Fase 3'-EXP — trava de armamento: só o arquivo .env (nunca o PUT) a abre/fecha.
-FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED"})
+FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED"})
 # Conjunto congelado enquanto o daemon está armado (PUT → 409 `armado`), com a única
 # exceção do desarme (PUT contendo só as chaves do predicado que o torna falso).
 # O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção: pode

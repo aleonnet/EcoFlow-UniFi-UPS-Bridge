@@ -142,6 +142,7 @@ class ApiServer:
         plugins=None,
         store=None,
         state_dir: str | None = None,
+        supervisor=None,
     ) -> None:
         ensure_loopback(BIND_HOST)
         self.cfg = cfg
@@ -152,6 +153,9 @@ class ApiServer:
         # Sempre um PluginSet: é o que POST/DELETE mutam. Uma lista (fixtures) é
         # embrulhada; uma fixture sem plugins itera vazio, sem guardas `is None`.
         self.plugins = plugins if isinstance(plugins, PluginSet) else PluginSet(plugins or [])
+        # Quem cuida dos processos do NUT (nut_supervisor.py). None em fixtures e
+        # quando o dono cuida deles por fora (RIVER_NUT_MANAGED=0).
+        self.supervisor = supervisor
         # A loja de instâncias (devices.json) e o diretório de estado: None nas
         # fixtures que não os exercitam — o espelho legado então não grava a loja.
         self.store = store
@@ -189,7 +193,117 @@ class ApiServer:
         app.router.add_get("/v1/devices/{id}", self._h_devices_get)
         app.router.add_put("/v1/devices/{id}", self._h_devices_put)
         app.router.add_delete("/v1/devices/{id}", self._h_devices_delete)
+        app.router.add_get("/v1/river/cabo", self._h_river_cabo_get)
+        app.router.add_post("/v1/river/cabo", self._h_river_cabo_post)
+        app.router.add_post("/v1/river/desligar", self._h_river_desligar)
+        app.router.add_put("/v1/river/aparelho", self._h_river_aparelho)
         return app
+
+    # -- o River como APARELHO: quem está com o cabo, e o que mandamos nele ---
+
+    def _alvo_river(self):
+        from .river_cmd import Alvo
+        return Alvo(ups=self.cfg.nut_ups, host=self.cfg.nut_host, porta=self.cfg.nut_port,
+                    usuario=os.environ.get("RUB_NUT_USER", "riverbridge"),
+                    senha=os.environ.get("RUB_NUT_PASSWORD", ""))
+
+    async def _h_river_cabo_get(self, _req: web.Request) -> web.Response:
+        if self.supervisor is None:
+            return web.json_response({"lendo": None, "pausado": False,
+                                      "motivo": "este serviço não cuida do leitor do River"})
+        return web.json_response(self.supervisor.estado().to_dict())
+
+    async def _h_river_cabo_post(self, request: web.Request) -> web.Response:
+        """Empresta o cabo ao aplicativo do fabricante, ou toma de volta.
+
+        A interface de no-break do River é exclusiva: um leitor por vez (medido
+        nos dois sentidos em 2026-09-04). Por isso isto existe como ATO explícito,
+        com a tela dizendo quem está com o cabo — esconder a exclusividade seria
+        mentir para o dono.
+        """
+        if self.supervisor is None:
+            return self._refuse(501, "sem_supervisor",
+                                "este serviço não cuida do leitor do River")
+        try:
+            corpo = await request.json()
+        except Exception:
+            return self._refuse(400, "validacao", "esperado {\"acao\": \"liberar\"|\"retomar\"}")
+        acao = str(corpo.get("acao", "")).strip()
+        if acao == "liberar":
+            # Com proteção armada, largar o cabo é ficar cego para a queda.
+            if any(plugin.armed for plugin in self.plugins):
+                return self._refuse(409, "armado",
+                                    "há proteção armada: desligue-a (modo ensaio) antes de "
+                                    "emprestar o cabo, senão o serviço fica sem ver a queda")
+            estado = self.supervisor.pausar("liberado pelo app")
+        elif acao == "retomar":
+            estado = self.supervisor.retomar()
+        else:
+            return self._refuse(400, "validacao", "ação desconhecida: use liberar ou retomar")
+        return web.json_response(estado.to_dict())
+
+    async def _h_river_desligar(self, _req: web.Request) -> web.Response:
+        """Desliga o PRÓPRIO River — o ato mais destrutivo do sistema.
+
+        Corta a energia de tudo o que estiver ligado nele. Três cercas, todas
+        obrigatórias: trava de arquivo aberta (a API nunca a abre), nenhuma
+        proteção armada (para não confundir com o desligamento do console), e a
+        confirmação que a tela pede antes de chamar esta rota.
+        """
+        from .river_cmd import RiverCmdError, mandar_comando
+
+        if not self.cfg.river_poweroff_allowed:
+            return self._refuse(409, "desligamento_bloqueado",
+                                "desligar o River está bloqueado no arquivo do serviço. "
+                                "Abra a trava e reinicie para poder usar este botão.")
+        if any(plugin.armed for plugin in self.plugins):
+            return self._refuse(409, "armado",
+                                "há proteção armada: desligue-a antes, para não haver duas "
+                                "ordens de desligamento ao mesmo tempo")
+        alvo = self._alvo_river()
+        try:
+            # A trava do próprio driver: sem ela o comando é recusado por desenho.
+            from .river_cmd import gravar_variavel
+            gravar_variavel(alvo, "driver.flag.allow_killpower", "1")
+            mandar_comando(alvo, "driver.killpower")
+        except RiverCmdError as exc:
+            return self._refuse(502, "aparelho_recusou", str(exc))
+        except OSError as exc:
+            return self._refuse(502, "sem_servidor",
+                                f"não alcancei o servidor do no-break: {exc}")
+        self.state.add_event("RIVER_POWEROFF_SENT", {"detail": "enviado pelo app"})
+        if self.history is not None:
+            self.history.record_event("RIVER_POWEROFF_SENT", "enviado pelo app")
+        log_json("WARN", "RIVER_POWEROFF_SENT", ups=self.cfg.nut_ups)
+        return web.json_response({"status": "desligamento enviado ao River"})
+
+    async def _h_river_aparelho(self, request: web.Request) -> web.Response:
+        """Muda um ajuste DO APARELHO (hoje: o aviso de bateria fraca dele)."""
+        from .river_cmd import RiverCmdError, gravar_variavel, ler_variavel
+
+        try:
+            corpo = await request.json()
+        except Exception:
+            return self._refuse(400, "validacao", "esperado um objeto com o ajuste")
+        if "battery_charge_low" not in corpo:
+            return self._refuse(400, "validacao",
+                                "único ajuste aceito por aqui: battery_charge_low")
+        try:
+            valor = int(corpo["battery_charge_low"])
+        except (TypeError, ValueError):
+            return self._refuse(400, "validacao", "o aviso de bateria fraca é um número")
+        if not 0 <= valor <= 50:
+            return self._refuse(400, "validacao", "o aviso de bateria fraca vai de 0 a 50")
+        alvo = self._alvo_river()
+        try:
+            gravar_variavel(alvo, "battery.charge.low", str(valor))
+            atual = ler_variavel(alvo, "battery.charge.low")
+        except RiverCmdError as exc:
+            return self._refuse(502, "aparelho_recusou", str(exc))
+        except OSError as exc:
+            return self._refuse(502, "sem_servidor",
+                                f"não alcancei o servidor do no-break: {exc}")
+        return web.json_response({"battery_charge_low": atual})
 
     # -- handlers ----------------------------------------------------------
 

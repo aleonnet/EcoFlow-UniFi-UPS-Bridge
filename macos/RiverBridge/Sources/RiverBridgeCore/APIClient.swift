@@ -169,4 +169,35 @@ public struct APIClient: Sendable {
     public func deleteDevice(id: String) async throws {
         _ = try await run(request("v1/devices/\(id)", method: "DELETE"), accept: [200, 204])
     }
+
+    // MARK: - O River como aparelho (2026-09-04)
+
+    /// Quem está com o cabo agora. A interface de no-break do River é exclusiva:
+    /// um leitor por vez, e a tela precisa dizer qual é.
+    public func riverCabo() async throws -> EstadoDoCabo {
+        try JSONCoding.decoder().decode(EstadoDoCabo.self, from: try await run(request("v1/river/cabo")))
+    }
+
+    /// Empresta o cabo ao aplicativo do fabricante, ou toma de volta.
+    public func riverCabo(acao: String) async throws -> EstadoDoCabo {
+        let body = try JSONSerialization.data(withJSONObject: ["acao": acao])
+        return try JSONCoding.decoder().decode(
+            EstadoDoCabo.self, from: try await run(request("v1/river/cabo", method: "POST", body: body)))
+    }
+
+    /// Desliga o PRÓPRIO River. Corta a energia de tudo o que está nele — a tela
+    /// só chama isto depois da confirmação, e o serviço ainda exige a trava de
+    /// arquivo aberta.
+    public func riverDesligar() async throws {
+        _ = try await run(request("v1/river/desligar", method: "POST"))
+    }
+
+    /// Muda o aviso de bateria fraca DO APARELHO (o "Low battery reminder" do
+    /// aplicativo da EcoFlow). Devolve o que o aparelho passou a informar.
+    public func riverAvisoBateriaBaixa(_ porcento: Int) async throws -> String? {
+        struct Resposta: Decodable { var batteryChargeLow: String? }
+        let body = try JSONSerialization.data(withJSONObject: ["battery_charge_low": porcento])
+        let dados = try await run(request("v1/river/aparelho", method: "PUT", body: body))
+        return try JSONCoding.decoder().decode(Resposta.self, from: dados).batteryChargeLow
+    }
 }

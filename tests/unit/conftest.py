@@ -42,6 +42,20 @@ def _sem_porta_serial(monkeypatch):
         raise AssertionError("porta serial proibida em teste (fixture de tests/unit)")
 
     monkeypatch.setattr(river_serial, "_conversa", _proibido)
+    # E ninguém sobe o driver do no-break de verdade. Esta máquina TEM o NUT
+    # instalado (medido: /opt/homebrew/opt/nut/bin/usbhid-ups existe), então sem
+    # esta linha a suíte disputava o aparelho de quem a rodasse — e cada volta do
+    # laço parava 2 s esperando um servidor que ela mesma tinha subido.
+    class _SupervisorDeTeste:
+        def __init__(self, *_a, **_k): self.acoes = []
+        def iniciar(self): self.acoes.append("iniciar")
+        def vigiar(self): self.acoes.append("vigiar")
+        def encerrar(self): self.acoes.append("encerrar")
+        def estado(self):
+            from river_unifi_bridge.nut_supervisor import EstadoDoCabo
+            return EstadoDoCabo(lendo=False, pausado_pelo_dono=False, motivo="teste")
+
+    monkeypatch.setattr(service, "NutSupervisor", _SupervisorDeTeste)
     monkeypatch.setattr(service, "_porta_serial_lembrada", None, raising=False)
     monkeypatch.setattr(service, "_ultima_varredura", float("-inf"), raising=False)
     yield

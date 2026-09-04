@@ -9,6 +9,12 @@ PY="${GATE_PYTHON:-$RAIZ/.venv/bin/python}"
 FALHAS=0
 
 ok()   { printf '[OK]   %s\n' "$1"; }
+# Impressão da configuração REAL do NUT desta máquina, antes de qualquer cena. O
+# gate escreve em prefixos de mentira; se algum ambiente esquecer o seam, ele
+# escreve AQUI — e a cena S22, no fim, acusa.
+NUT_REAL_ETC="${RUB_NUT_ETC_REAL:-/opt/homebrew/etc/nut}"
+impressao_nut_real() { ls -1 "$NUT_REAL_ETC" 2>/dev/null | sort | shasum -a 256 | cut -d" " -f1; }
+NUT_REAL_ANTES="$(impressao_nut_real)"
 erro() { printf '[ERRO] %s\n' "$1"; FALHAS=$((FALHAS + 1)); }
 
 # S0 — interpretador exigido pela spec (>= 3.13)
@@ -300,6 +306,43 @@ cena_mutacao S4ak src/river_unifi_bridge/api.py \
                     return self._refuse(500, "arquivo_dispositivos"' \
     tests/unit/test_api.py::test_disarming_is_never_refused_by_a_full_disk_with_the_real_wiring
 
+# S4al — desligar o próprio River corta a energia de TUDO o que está nele. A
+# trava mora no arquivo do serviço e a API nunca a abre; sem ela, o botão do app
+# desligaria o aparelho do dono com um toque.
+cena_mutacao S4al src/river_unifi_bridge/api.py \
+    'if not self.cfg.river_poweroff_allowed:' \
+    'if False:' \
+    tests/unit/test_api.py::test_turning_the_river_off_needs_the_file_lock_open
+
+# S4am — emprestar o cabo com proteção armada é ficar cego para a queda: o
+# serviço deixaria de ver a bateria acabar justamente com a proteção ligada.
+cena_mutacao S4am src/river_unifi_bridge/api.py \
+    'if any(plugin.armed for plugin in self.plugins):
+                return self._refuse(409, "armado",
+                                    "há proteção armada: desligue-a (modo ensaio) antes de "' \
+    'if False:
+                return self._refuse(409, "armado",
+                                    "há proteção armada: desligue-a (modo ensaio) antes de "' \
+    tests/unit/test_api.py::test_lending_the_cable_is_refused_while_a_protection_is_armed
+
+# S4an — gravação no aparelho que não volta na leitura seguinte NÃO aconteceu: o
+# River responde OK e ignora, e a tela mostraria um valor que o aparelho não tem.
+cena_mutacao S4an src/river_unifi_bridge/river_cmd.py \
+    'if de_volta is not None and de_volta.strip() != valor.strip():' \
+    'if False:' \
+    tests/unit/test_river_cmd.py::test_a_write_the_device_silently_ignores_is_reported
+
+# S4ao — pausado é pausado: o vigia não pode ressuscitar o leitor que o dono
+# liberou, senão o cabo é tomado de volta do aplicativo da EcoFlow sozinho.
+cena_mutacao S4ao src/river_unifi_bridge/nut_supervisor.py \
+    'if self._pausado:
+                return
+            for nome, proc' \
+    'if False:
+                return
+            for nome, proc' \
+    tests/unit/test_nut_supervisor.py::test_pausing_frees_the_cable_and_does_not_resurrect
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys
@@ -369,7 +412,7 @@ chmod +x "$INST/bin/brew" "$INST/bin/launchctl"
 mkdir -p "$INST/nut/bin" "$INST/nut/sbin" "$INST/nutetc"
 printf '#!/bin/sh\nexit 0\n' > "$INST/nut/bin/usbhid-ups"; chmod +x "$INST/nut/bin/usbhid-ups"
 printf '#!/bin/sh\nexit 0\n' > "$INST/nut/sbin/upsd"; chmod +x "$INST/nut/sbin/upsd"
-INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1 RUB_NUT_PREFIX=$INST/nut RUB_NUT_ETC=$INST/nutetc"
+INSTALL_ENV="PATH=$INST/bin:/usr/bin:/bin RUB_BREW=$INST/bin/brew RUB_PREFIX=$INST/prefix RUB_LAUNCHD_DIR=$INST/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_SKIP_HEALTH=1 RUB_NUT_PREFIX=$INST/nut RUB_NUT_ETC=$INST/nutetc RUB_API_PORT=35991"
 
 # S8 — dry-run não escreve nada
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --dry-run >/tmp/gate_inst_dry.log 2>&1
@@ -403,15 +446,17 @@ fi
 # A configuração só é escrita quando falta: o segundo install NÃO a reescreve.
 echo "# marca do dono" >> "$INST/nutetc/ups.conf" 2>/dev/null || echo "# marca do dono" > "$INST/nutetc/ups.conf"
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9k.log 2>&1
-S9K_D="$INST/ld/com.river.nut-driver.plist"; S9K_S="$INST/ld/com.river.nut-upsd.plist"
-if [ -f "$S9K_D" ] && [ -f "$S9K_S" ] \
-   && grep -q "exec -a river-bridge-ups $INST/nut/bin/usbhid-ups" "$S9K_D" \
-   && grep -q "exec -a river-bridge-upsd $INST/nut/sbin/upsd" "$S9K_S" \
+# Quem mantém o driver no ar é o SERVIÇO (nut_supervisor.py), não o launchd: o
+# instalador escreve a configuração, apaga registros antigos e não deixa nenhum
+# LaunchDaemon de NUT para trás — dois donos do mesmo cabo seria pior que nenhum.
+if [ ! -f "$INST/ld/com.river.nut-driver.plist" ] \
+   && [ ! -f "$INST/ld/com.river.nut-upsd.plist" ] \
    && grep -q "^# marca do dono$" "$INST/nutetc/ups.conf" \
-   && [ -f "$INST/nutetc/upsd.users" ]; then
-    ok "S9k leitura do River: dois serviços do sistema com nome próprio; config do dono intocada"
+   && [ -f "$INST/nutetc/upsd.users" ] \
+   && [ -f "$INST/ld/com.river.unifi-bridge.plist" ]; then
+    ok "S9k leitura do River: configuração escrita, nenhum LaunchDaemon de NUT, config do dono intocada"
 else
-    erro "S9k leitura do River: plists ou configuração fora do esperado — cauda:"
+    erro "S9k leitura do River: sobrou registro de NUT ou a configuração mudou — cauda:"
     tail -5 /tmp/gate_inst_9k.log; ls -1 "$INST/ld" 2>/dev/null | head -5
 fi
 
@@ -469,7 +514,7 @@ python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKE
 OUVINTE_PID=$!
 esperar_ouvinte 35997 || erro "S9e o ouvinte de mentira não abriu a porta 35997 em 10 s"
 echo "# marca S9e" >> "$MARCA"
-env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e.log 2>&1
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 RUB_API_PORT=35997 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e.log 2>&1
 RC9E=$?
 kill "$OUVINTE_PID" 2>/dev/null; wait "$OUVINTE_PID" 2>/dev/null
 if [ "$RC9E" = "3" ] && grep -q "^✖ a porta 35997 já está em uso por outro programa" /tmp/gate_inst_9e.log \
@@ -479,14 +524,14 @@ else
     erro "S9e programa alheio na porta: rc=$RC9E marca=$(grep -c '^# marca S9e$' "$MARCA") — cauda:"; tail -3 /tmp/gate_inst_9e.log
 fi
 # resincroniza o código (a marca some) para a S9f ver "código igual"
-env $INSTALL_ENV RUB_STATE_DIR="$INST/state" "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e2.log 2>&1 || true
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_API_PORT=35997 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9e2.log 2>&1 || true
 
 # S9f — nada mudou, job "carregado" (stub) mas NINGUÉM na porta: o instalador
 # relança (kickstart) e, sem daemon real, a prova falha em 15 s com a frase
 # humana — nunca "já instalado" com o serviço morto (revisão fria, 2026-09-03:
 # a parada deliberada sai 0 e o KeepAlive não relança).
 rm -f "$INST/ld/.kicks"
-env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9f.log 2>&1
+env $INSTALL_ENV RUB_STATE_DIR="$INST/state" RUB_SKIP_HEALTH=0 RUB_API_PORT=35997 "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9f.log 2>&1
 RC9F=$?
 if [ "$RC9F" = "1" ] && [ -f "$INST/ld/.kicks" ] && grep -q "^✖ o serviço foi instalado, mas não respondeu na porta 35997" /tmp/gate_inst_9f.log && ! grep -q "serviço: já instalado" /tmp/gate_inst_9f.log; then
     ok "S9f serviço fora da porta com código igual → kickstart e falha humana (nunca 'já instalado')"
@@ -503,7 +548,7 @@ fi
 # → recusa 3 antes de tocar em nada. O job é removido ao fim.
 G9="$(mktemp -d)"; mkdir -p "$G9/bin" "$G9/prefix/etc" "$G9/ld" "$G9/state"; cp "$INST/bin/brew" "$G9/bin/brew"
 sed 's/^UI_API_PORT=.*/UI_API_PORT=35998/' "$RAIZ/config/river-unifi-bridge.env.example" > "$G9/prefix/etc/bridge.env"; chmod 600 "$G9/prefix/etc/bridge.env"
-G9_ENV="PATH=$G9/bin:/usr/bin:/bin:/usr/sbin:/sbin RUB_BREW=$G9/bin/brew RUB_PREFIX=$G9/prefix RUB_LAUNCHD_DIR=$G9/ld RUB_LAUNCHD_DOMAIN=gui/$(id -u) RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_STATE_DIR=$G9/state RUB_LOG_FILE=$G9/daemon.log"
+G9_ENV="PATH=$G9/bin:/usr/bin:/bin:/usr/sbin:/sbin RUB_BREW=$G9/bin/brew RUB_PREFIX=$G9/prefix RUB_LAUNCHD_DIR=$G9/ld RUB_LAUNCHD_DOMAIN=gui/$(id -u) RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$RAIZ/.venv/bin/python RUB_STATE_DIR=$G9/state RUB_LOG_FILE=$G9/daemon.log RUB_NUT_PREFIX=$G9/nut RUB_NUT_ETC=$G9/nutetc"
 G9_ALVO="gui/$(id -u)/com.river.unifi-bridge"
 g9_pid_job() { launchctl print "$G9_ALVO" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1; }
 g9_ouvinte() { /usr/sbin/lsof -nP -iTCP:35998 -sTCP:LISTEN -t 2>/dev/null | head -1; }
@@ -578,7 +623,7 @@ kill "$MANUAL2_PID" 2>/dev/null; wait "$MANUAL2_PID" 2>/dev/null
 # Porta 35994 pré-gravada no bridge.env do prefixo; RUB_SUDO vazio (sem root).
 H9="$(mktemp -d)"; mkdir -p "$H9/bin" "$H9/prefix/etc" "$H9/ld" "$H9/state" "$H9/cache"; cp "$INST/bin/brew" "$H9/bin/brew"
 sed 's/^UI_API_PORT=.*/UI_API_PORT=35994/' "$RAIZ/config/river-unifi-bridge.env.example" > "$H9/prefix/etc/bridge.env"; chmod 600 "$H9/prefix/etc/bridge.env"
-H9_ENV="PATH=$H9/bin:/usr/bin:/bin:/usr/sbin:/sbin RUB_SUDO= RUB_BREW=$H9/bin/brew RUB_PREFIX=$H9/prefix RUB_LAUNCHD_DIR=$H9/ld RUB_LAUNCHD_DOMAIN=gui/$(id -u) RUB_STATE_DIR=$H9/state RUB_CACHE_DIR=$H9/cache RUB_LOG_FILE=$H9/daemon.log RUB_PYTHON=$RAIZ/.venv/bin/python NO_COLOR=1 LANG=pt_BR.UTF-8"
+H9_ENV="PATH=$H9/bin:/usr/bin:/bin:/usr/sbin:/sbin RUB_SUDO= RUB_BREW=$H9/bin/brew RUB_PREFIX=$H9/prefix RUB_LAUNCHD_DIR=$H9/ld RUB_LAUNCHD_DOMAIN=gui/$(id -u) RUB_STATE_DIR=$H9/state RUB_CACHE_DIR=$H9/cache RUB_LOG_FILE=$H9/daemon.log RUB_PYTHON=$RAIZ/.venv/bin/python NO_COLOR=1 LANG=pt_BR.UTF-8 RUB_NUT_PREFIX=$H9/nut RUB_NUT_ETC=$H9/nutetc"
 launchctl bootout "$G9_ALVO" 2>/dev/null || true
 env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r1.log" 2>&1; RH1=$?
 env $H9_ENV /bin/bash "$RAIZ/river-bridge-install.sh" --src "$RAIZ" --no-app --no-anim --yes >"$H9/r2.log" 2>&1; RH2=$?
@@ -638,7 +683,9 @@ fi
 
 # S12 — contrato 0 → 100 → kickstart com código novo → download por file:// (stubs, sem root, sem rede)
 OL="$(mktemp -d)"
-mkdir -p "$OL/bin" "$OL/ld" "$OL/prefix" "$OL/state" "$OL/cache" "$OL/apps"
+mkdir -p "$OL/bin" "$OL/ld" "$OL/prefix" "$OL/state" "$OL/cache" "$OL/apps" "$OL/nut/bin" "$OL/nut/sbin" "$OL/nutetc"
+printf '#!/bin/sh\nexit 0\n' > "$OL/nut/bin/usbhid-ups"; chmod +x "$OL/nut/bin/usbhid-ups"
+printf '#!/bin/sh\nexit 0\n' > "$OL/nut/sbin/upsd"; chmod +x "$OL/nut/sbin/upsd"
 cat > "$OL/bin/brew" <<EOF
 #!/bin/bash
 case "\$1" in list) exit 0 ;; --prefix) echo "$OL/brewprefix" ;; esac
@@ -655,7 +702,7 @@ esac
 exit 0
 EOF
 chmod +x "$OL/bin/brew" "$OL/bin/launchctl"
-OL_ENV="PATH=$OL/bin:/usr/bin:/bin RUB_BREW=$OL/bin/brew RUB_PREFIX=$OL/prefix RUB_LAUNCHD_DIR=$OL/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$PY RUB_SUDO= RUB_STATE_DIR=$OL/state RUB_CACHE_DIR=$OL/cache RUB_APP_DEST=$OL/apps/app RUB_SKIP_HEALTH=1 NO_COLOR=1"
+OL_ENV="PATH=$OL/bin:/usr/bin:/bin RUB_BREW=$OL/bin/brew RUB_PREFIX=$OL/prefix RUB_LAUNCHD_DIR=$OL/ld RUB_SERVICE_USER=$(id -un) RUB_PYTHON=$PY RUB_SUDO= RUB_STATE_DIR=$OL/state RUB_CACHE_DIR=$OL/cache RUB_APP_DEST=$OL/apps/app RUB_SKIP_HEALTH=1 RUB_API_PORT=35992 RUB_NUT_PREFIX=$OL/nut RUB_NUT_ETC=$OL/nutetc NO_COLOR=1"
 env $OL_ENV "$ONE" --yes --no-anim --no-app --src "$RAIZ" >"$OL/r1.log" 2>&1; OL_RC1=$?
 env $OL_ENV "$ONE" --yes --no-anim --no-app --src "$RAIZ" >"$OL/r2.log" 2>&1; OL_RC2=$?
 echo "# gate" >> "$OL/prefix/src/river_unifi_bridge/__init__.py"
@@ -787,6 +834,9 @@ rm -rf "$OL" "$OL2"
 #   r5 sha do tarball adulterado → rc 3 e nenhum cache/src-* extraído.
 # Refutado em 2026-09-02 com cinco mutações (uma por rodada), ver o doc da release.
 OL3="$(mktemp -d)"
+mkdir -p "$OL3/nut/bin" "$OL3/nut/sbin"
+printf '#!/bin/sh\nexit 0\n' > "$OL3/nut/bin/usbhid-ups"; chmod +x "$OL3/nut/bin/usbhid-ups"
+printf '#!/bin/sh\nexit 0\n' > "$OL3/nut/sbin/upsd"; chmod +x "$OL3/nut/sbin/upsd"
 mkdir -p "$OL3/bin" "$OL3/rel" "$OL3/rel-app-ruim" "$OL3/rel-src-ruim" "$OL3/vazio" "$OL3/fake/River Bridge.app/Contents/MacOS"
 cat > "$OL3/bin/brew" <<EOF
 #!/bin/bash
@@ -815,9 +865,9 @@ S18_ZERO="0000000000000000000000000000000000000000000000000000000000000000"
 sed -i '' "/River-Bridge.app.zip\$/s/^[0-9a-f]*/$S18_ZERO/" "$OL3/rel-app-ruim/SHA256SUMS"
 sed -i '' "/river-unifi-bridge-src.tar.gz\$/s/^[0-9a-f]*/$S18_ZERO/" "$OL3/rel-src-ruim/SHA256SUMS"
 s18_env() { # <rodada> — prefixo, launchd, estado, cache e apps novos por rodada
-    mkdir -p "$OL3/$1/ld" "$OL3/$1/prefix" "$OL3/$1/state" "$OL3/$1/cache" "$OL3/$1/apps"
-    printf 'PATH=%s/bin:/usr/bin:/bin RUB_BREW=%s/bin/brew RUB_PREFIX=%s/%s/prefix RUB_LAUNCHD_DIR=%s/%s/ld RUB_SERVICE_USER=%s RUB_PYTHON=%s RUB_SUDO= RUB_STATE_DIR=%s/%s/state RUB_CACHE_DIR=%s/%s/cache RUB_APP_DEST=%s/%s/apps/app RUB_SKIP_HEALTH=1 NO_COLOR=1' \
-        "$OL3" "$OL3" "$OL3" "$1" "$OL3" "$1" "$(id -un)" "$PY" "$OL3" "$1" "$OL3" "$1" "$OL3" "$1"
+    mkdir -p "$OL3/$1/ld" "$OL3/$1/prefix" "$OL3/$1/state" "$OL3/$1/cache" "$OL3/$1/apps" "$OL3/$1/nutetc"
+    printf 'PATH=%s/bin:/usr/bin:/bin RUB_BREW=%s/bin/brew RUB_PREFIX=%s/%s/prefix RUB_LAUNCHD_DIR=%s/%s/ld RUB_SERVICE_USER=%s RUB_PYTHON=%s RUB_SUDO= RUB_STATE_DIR=%s/%s/state RUB_CACHE_DIR=%s/%s/cache RUB_APP_DEST=%s/%s/apps/app RUB_SKIP_HEALTH=1 RUB_API_PORT=35993 RUB_NUT_PREFIX=%s/nut RUB_NUT_ETC=%s/%s/nutetc NO_COLOR=1' \
+        "$OL3" "$OL3" "$OL3" "$1" "$OL3" "$1" "$(id -un)" "$PY" "$OL3" "$1" "$OL3" "$1" "$OL3" "$1" "$OL3" "$OL3" "$1"
 }
 S18_E="$(s18_env a)"
 env $S18_E RUB_RELEASE_BASE="file://$OL3/rel" "$ONE" --yes --no-anim >"$OL3/r1.log" 2>&1; S18_RC1=$?
@@ -974,6 +1024,16 @@ else
     diff "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt" | head -6
 fi
 rm -f "$SNAP_OUT"
+
+# S22 — o gate não pode deixar rastro na configuração REAL do NUT desta máquina.
+# Sem esta cena, uma cena nova sem o seam do NUT escreve em /opt/homebrew/etc/nut
+# e ninguém percebe (foi o que aconteceu em 2026-09-04, no MacBook do dono).
+if [ "$(impressao_nut_real)" = "$NUT_REAL_ANTES" ]; then
+    ok "S22 configuração real do NUT desta máquina intocada pelo gate"
+else
+    erro "S22 o gate MEXEU em $NUT_REAL_ETC — alguma cena está sem RUB_NUT_ETC:"
+    ls -1 "$NUT_REAL_ETC" 2>/dev/null | grep -v sample | head -5
+fi
 
 # S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.
 # Sem isto, uma LG_MASK editada à mão passaria por todas as outras cenas (o quadro

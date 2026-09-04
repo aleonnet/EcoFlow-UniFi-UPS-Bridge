@@ -95,9 +95,11 @@ def test_allowlist_matches_spec_keys():
         "UDR7_WOL_MAC", "UDR7_NAME",
         # Leitura de potência pela porta serial do River (0.4.0)
         "RIVER_SERIAL_ENABLED", "RIVER_SERIAL_PORT",
+        # Ações sobre o próprio River (0.5.0)
+        "RIVER_POWEROFF_ALLOWED", "RIVER_NUT_MANAGED",
     }
     assert set(_ALLOWLIST) == expected
-    assert len(expected) == 31
+    assert len(expected) == 33
 
 
 @pytest.mark.parametrize(
@@ -256,7 +258,10 @@ def test_protection_key_sets_are_consistent():
     # O que NÃO aplica a quente exige reiniciar o serviço; a trava e o endereço do
     # NUT estão desse lado, e é o que o app informa ao usuário depois de salvar.
     exige_reinicio = set(_ALLOWLIST) - HOT_RELOAD_KEYS
-    assert FILE_ONLY_KEYS == {"UDR7_ARM_ALLOWED"}
+    # Duas travas de ARQUIVO, e o motivo é o mesmo: a API nunca as abre. Uma
+    # arma a proteção; a outra autoriza desligar o próprio River, que corta a
+    # energia de tudo o que estiver nele.
+    assert FILE_ONLY_KEYS == {"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED"}
     assert "UDR7_ARM_ALLOWED" in exige_reinicio
     assert "NUT_HOST" in exige_reinicio
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS", "PROTECT_UDR7", "PROTECT_DRY_RUN"} <= PROTECTION_KEYS

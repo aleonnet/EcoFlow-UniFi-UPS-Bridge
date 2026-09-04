@@ -922,3 +922,141 @@ async def test_clearing_a_window_leaves_the_memory_in_step_with_the_database(cli
                                headers=client.auth)
     assert resp.status == 200
     assert server.state.events() == []
+
+
+# --- O River como aparelho: cabo, desligamento e ajuste do próprio no-break ---
+
+class SupervisorFalso:
+    def __init__(self):
+        self.acoes = []
+        self._lendo = True
+        self._pausado = False
+
+    def estado(self):
+        from river_unifi_bridge.nut_supervisor import EstadoDoCabo
+        return EstadoDoCabo(lendo=self._lendo, pausado_pelo_dono=self._pausado)
+
+    def pausar(self, motivo="x"):
+        from river_unifi_bridge.nut_supervisor import EstadoDoCabo
+        self.acoes.append("pausar"); self._lendo = False; self._pausado = True
+        return EstadoDoCabo(lendo=False, pausado_pelo_dono=True, motivo=motivo)
+
+    def retomar(self):
+        from river_unifi_bridge.nut_supervisor import EstadoDoCabo
+        self.acoes.append("retomar"); self._lendo = True; self._pausado = False
+        return EstadoDoCabo(lendo=True, pausado_pelo_dono=False)
+
+
+async def test_the_cable_can_be_lent_and_taken_back(client, server):
+    """Emprestar o cabo é ATO explícito, e a tela sabe quem está com ele."""
+    server.supervisor = SupervisorFalso()
+
+    resp = await client.get("/v1/river/cabo", headers=client.auth)
+    assert (await resp.json())["lendo"] is True
+
+    resp = await client.post("/v1/river/cabo", json={"acao": "liberar"}, headers=client.auth)
+    assert resp.status == 200
+    corpo = await resp.json()
+    assert corpo["pausado"] is True and corpo["lendo"] is False
+
+    resp = await client.post("/v1/river/cabo", json={"acao": "retomar"}, headers=client.auth)
+    assert (await resp.json())["lendo"] is True
+    assert server.supervisor.acoes == ["pausar", "retomar"]
+
+    resp = await client.post("/v1/river/cabo", json={"acao": "voar"}, headers=client.auth)
+    assert resp.status == 400 and (await resp.json())["motivo"] == "validacao"
+
+
+async def test_lending_the_cable_is_refused_while_a_protection_is_armed(unlocked):
+    """Largar o cabo com proteção armada é ficar cego para a queda."""
+    srv, c = unlocked
+    srv.supervisor = SupervisorFalso()
+    srv.state.update_snapshot(REAL)
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200 and _os.path.exists(srv.armed_path)
+
+    resp = await c.post("/v1/river/cabo", json={"acao": "liberar"}, headers=c.auth)
+    assert resp.status == 409
+    assert (await resp.json())["motivo"] == "armado"
+    assert srv.supervisor.acoes == []          # nada foi tocado
+
+
+async def test_turning_the_river_off_needs_the_file_lock_open(client, server):
+    """A trava do desligamento mora no arquivo: a API nunca a abre."""
+    assert server.cfg.river_poweroff_allowed is False
+    resp = await client.post("/v1/river/desligar", headers=client.auth)
+    assert resp.status == 409
+    corpo = await resp.json()
+    assert corpo["motivo"] == "desligamento_bloqueado"
+    assert "arquivo do serviço" in corpo["erro"]
+
+
+async def test_turning_the_river_off_is_refused_while_a_protection_is_armed(unlocked):
+    srv, c = unlocked
+    srv.cfg.river_poweroff_allowed = True
+    srv.state.update_snapshot(REAL)
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200
+    resp = await c.post("/v1/river/desligar", headers=c.auth)
+    assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
+
+
+async def test_turning_the_river_off_sends_the_command_and_records_it(client, server, monkeypatch):
+    """Com a trava aberta e nada armado: manda, registra e diz que mandou."""
+    from river_unifi_bridge import river_cmd
+
+    enviados = []
+    server.cfg.river_poweroff_allowed = True
+    monkeypatch.setattr(river_cmd, "gravar_variavel",
+                        lambda alvo, nome, valor, **k: enviados.append((nome, valor)))
+    monkeypatch.setattr(river_cmd, "mandar_comando",
+                        lambda alvo, cmd, **k: enviados.append(("comando", cmd)))
+
+    resp = await client.post("/v1/river/desligar", headers=client.auth)
+    assert resp.status == 200
+    assert enviados == [("driver.flag.allow_killpower", "1"), ("comando", "driver.killpower")]
+    assert [e["event"] for e in server.state.events()] == ["RIVER_POWEROFF_SENT"]
+
+
+async def test_a_device_that_refuses_the_shutdown_is_reported_in_portuguese(client, server, monkeypatch):
+    from river_unifi_bridge import river_cmd
+
+    server.cfg.river_poweroff_allowed = True
+    monkeypatch.setattr(river_cmd, "gravar_variavel", lambda *a, **k: None)
+
+    def recusa(*_a, **_k):
+        raise river_cmd.RiverCmdError("este aparelho não aceita esse comando")
+
+    monkeypatch.setattr(river_cmd, "mandar_comando", recusa)
+    resp = await client.post("/v1/river/desligar", headers=client.auth)
+    assert resp.status == 502
+    corpo = await resp.json()
+    assert corpo["motivo"] == "aparelho_recusou"
+    assert "não aceita" in corpo["erro"]
+    assert server.state.events() == []          # nada registrado: nada aconteceu
+
+
+async def test_the_device_low_battery_reminder_is_written_and_read_back(client, monkeypatch):
+    from river_unifi_bridge import river_cmd
+
+    gravados = []
+    monkeypatch.setattr(river_cmd, "gravar_variavel",
+                        lambda alvo, nome, valor, **k: gravados.append((nome, valor)))
+    monkeypatch.setattr(river_cmd, "ler_variavel", lambda alvo, nome, **k: "15")
+
+    resp = await client.put("/v1/river/aparelho", json={"battery_charge_low": 15},
+                            headers=client.auth)
+    assert resp.status == 200
+    assert (await resp.json())["battery_charge_low"] == "15"
+    assert gravados == [("battery.charge.low", "15")]
+
+
+async def test_a_reminder_out_of_range_is_refused_before_touching_the_device(client, monkeypatch):
+    from river_unifi_bridge import river_cmd
+
+    monkeypatch.setattr(river_cmd, "gravar_variavel",
+                        lambda *a, **k: pytest.fail("não podia tocar no aparelho"))
+    for valor in (-1, 51, "abc"):
+        resp = await client.put("/v1/river/aparelho", json={"battery_charge_low": valor},
+                                headers=client.auth)
+        assert resp.status == 400

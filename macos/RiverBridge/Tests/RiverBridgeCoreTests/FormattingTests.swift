@@ -254,3 +254,42 @@ import Testing
     #expect(a.id != b.id)
     #expect(a.asBridgeEvent.id != b.asBridgeEvent.id)
 }
+
+@Test func theTwoActionsThatTouchPowerSayWhatTheyDo() {
+    // Os dois atos que mexem na energia dos equipamentos precisam dizer, na
+    // própria confirmação, o que acontece — e não podem falar em sigla, chave
+    // nem código. É a regra da casa aplicada ao lugar mais perigoso do app.
+    let entregar = RiverConfirmation(ato: .liberarCabo)
+    #expect(entregar.title.contains("EcoFlow"))
+    #expect(entregar.confirmLabel.contains("paramos de ler") || entregar.confirmLabel.contains("stop reading"))
+    #expect(entregar.message.contains("um leitor por vez") || entregar.message.contains("one reader at a time"))
+
+    let desligar = RiverConfirmation(ato: .desligarRiver)
+    #expect(desligar.title.contains("DESLIGAR") || desligar.title.contains("OFF"))
+    #expect(desligar.confirmLabel.contains("corta a energia") || desligar.confirmLabel.contains("cuts power"))
+    #expect(desligar.message.contains("perde energia") || desligar.message.contains("loses power"))
+
+    // Nenhuma das frases carrega jargão de máquina.
+    for texto in [entregar.title, entregar.confirmLabel, entregar.message,
+                  desligar.title, desligar.confirmLabel, desligar.message] {
+        #expect(texto.contains("killpower") == false)
+        #expect(texto.contains("_") == false)
+        #expect(texto.contains("409") == false)
+    }
+}
+
+@Test func theCableStateDecodesFromTheService() {
+    let decoder = JSONCoding.decoder()
+    let nosso = try! decoder.decode(EstadoDoCabo.self,
+                                    from: Data(#"{"lendo": true, "pausado": false, "motivo": null}"#.utf8))
+    #expect(nosso.lendo == true && nosso.pausado == false)
+
+    let deles = try! decoder.decode(EstadoDoCabo.self,
+                                    from: Data(#"{"lendo": false, "pausado": true, "motivo": "liberado"}"#.utf8))
+    #expect(deles.pausado == true && deles.motivo == "liberado")
+
+    // Serviço anterior a esta versão: não sabe do cabo, e a tela não inventa.
+    let antigo = try! decoder.decode(EstadoDoCabo.self,
+                                     from: Data(#"{"lendo": null, "pausado": false, "motivo": "não cuida"}"#.utf8))
+    #expect(antigo.lendo == nil)
+}

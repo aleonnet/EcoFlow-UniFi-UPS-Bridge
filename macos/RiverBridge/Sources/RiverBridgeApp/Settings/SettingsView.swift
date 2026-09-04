@@ -51,10 +51,99 @@ struct SettingsView: View {
     // salvas explicitamente (texto), nunca pelo auto-save dos presets.
     @State private var expectedSerial = ""
     @State private var cutoff = 0
+    // O River como APARELHO (0.5.0): quem está com o cabo, o aviso de bateria
+    // fraca dele, e os dois diálogos de confirmação.
+    @State private var estadoDoCabo: EstadoDoCabo?
+    @State private var avisoBateriaAparelho: Int?
+    @State private var confirmacaoRiver: RiverConfirmation.Ato?
+    @State private var riverFeedback: String?
     @State private var riverBaseline: [String: String] = [:]
     /// A versão do serviço que responde (GET /v1/version); nil enquanto não chegou.
     @State private var serviceVersion: String?
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
+
+    /// A linha que diz quem está com o cabo e oferece a troca. A exclusividade do
+    /// aparelho é física; escondê-la seria mentir para o dono.
+    @ViewBuilder
+    private func linhaDoCabo(_ cabo: EstadoDoCabo) -> some View {
+        let comEles = cabo.pausado == true
+        HStack(spacing: 10) {
+            Image(systemName: comEles ? "cable.connector.slash" : "cable.connector")
+                .frame(width: 26)
+                .foregroundStyle(comEles ? Color.orange : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(comEles
+                     ? L10n.t("O River está com o aplicativo da EcoFlow",
+                              "The EcoFlow app has the River")
+                     : L10n.t("O River está com este serviço", "This service has the River"))
+                    .font(.system(.body, design: .rounded))
+                if let motivo = cabo.motivo, comEles == false, cabo.lendo == false {
+                    Text(motivo).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button(comEles ? L10n.t("Retomar", "Take back")
+                           : L10n.t("Entregar…", "Hand over…")) {
+                if comEles {
+                    Task { await mudarCabo("retomar") }
+                } else {
+                    confirmacaoRiver = .liberarCabo
+                }
+            }
+            .buttonStyle(.glass)
+        }
+    }
+
+    private func mudarCabo(_ acao: String) async {
+        guard let endpoint = ApiEndpoint.discover() else {
+            riverFeedback = L10n.t("Serviço parado — nada mudou.", "Service down — nothing changed.")
+            return
+        }
+        do {
+            estadoDoCabo = try await APIClient(endpoint: endpoint).riverCabo(acao: acao)
+            riverFeedback = nil
+        } catch let APIError.badStatus(_, body) {
+            riverFeedback = ProtectionRefusal.text(body)
+        } catch {
+            riverFeedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
+
+    private func desligarRiver() async {
+        guard let endpoint = ApiEndpoint.discover() else {
+            riverFeedback = L10n.t("Serviço parado — nada foi enviado.", "Service down — nothing was sent.")
+            return
+        }
+        do {
+            try await APIClient(endpoint: endpoint).riverDesligar()
+            riverFeedback = L10n.t("Desligamento enviado ao River.", "Shutdown sent to the River.")
+        } catch let APIError.badStatus(_, body) {
+            riverFeedback = ProtectionRefusal.text(body)
+        } catch {
+            riverFeedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
+
+    private func salvarAvisoDoAparelho(_ porcento: Int) async {
+        guard let endpoint = ApiEndpoint.discover() else { return }
+        do {
+            let atual = try await APIClient(endpoint: endpoint).riverAvisoBateriaBaixa(porcento)
+            if let atual, let n = Int(atual) { avisoBateriaAparelho = n }
+            riverFeedback = nil
+        } catch let APIError.badStatus(_, body) {
+            riverFeedback = ProtectionRefusal.text(body)
+        } catch {
+            riverFeedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
+
+    private func carregarRiver() async {
+        guard let endpoint = ApiEndpoint.discover() else { return }
+        estadoDoCabo = try? await APIClient(endpoint: endpoint).riverCabo()
+        if let low = store.latest?.battery?.chargeLowPercent {
+            avisoBateriaAparelho = Int(low)
+        }
+    }
 
     /// O nome do aparelho no nosso servidor — é o que o aplicativo da EcoFlow
     /// precisa digitar no modo remoto. Vem do serviço, nunca escrito à mão aqui.
@@ -217,6 +306,53 @@ struct SettingsView: View {
                                 .buttonStyle(.glassProminent).tint(accent)
                         }
                     }
+                    if let aviso = avisoBateriaAparelho {
+                        SettingsRows.divider
+                        SettingsRows.sliderRow(
+                            "bell.badge", L10n.t("Aviso de bateria fraca do aparelho",
+                                                 "Device low-battery reminder"),
+                            value: Binding(get: { aviso },
+                                           set: { novo in
+                                               avisoBateriaAparelho = novo
+                                               Task { await salvarAvisoDoAparelho(novo) }
+                                           }),
+                            range: 0...50, unit: "%",
+                            zeroLabel: L10n.t("desligado", "off"), accent: accent,
+                            estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
+                    }
+                    if let cabo = estadoDoCabo, cabo.lendo != nil {
+                        SettingsRows.divider
+                        linhaDoCabo(cabo)
+                    }
+                    SettingsRows.divider
+                    HStack(spacing: 10) {
+                        Image(systemName: "power")
+                            .frame(width: 26)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("Desligar o River", "Turn the River off"))
+                                .font(.system(.body, design: .rounded))
+                            Text(L10n.t("Corta a energia de tudo o que estiver ligado nele.",
+                                        "Cuts power to everything plugged into it."))
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Button(role: .destructive) {
+                            confirmacaoRiver = .desligarRiver
+                        } label: {
+                            Text(L10n.t("Desligar…", "Turn off…"))
+                                .foregroundStyle(.red)
+                                .frame(minHeight: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    if let riverFeedback {
+                        Text(riverFeedback)
+                            .font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
@@ -314,7 +450,29 @@ struct SettingsView: View {
             applySeamSheet()
             await loadCurrent()
             await store.refreshDevices()
+            await carregarRiver()
             applySeamSheet()
+        }
+        // Os dois atos que mexem na energia dos equipamentos pedem confirmação,
+        // no mesmo molde do armamento da proteção.
+        .confirmationDialog(
+            confirmacaoRiver.map { RiverConfirmation(ato: $0).title } ?? "",
+            isPresented: Binding(get: { confirmacaoRiver != nil },
+                                 set: { if !$0 { confirmacaoRiver = nil } }),
+            titleVisibility: .visible, presenting: confirmacaoRiver
+        ) { ato in
+            let confirmacao = RiverConfirmation(ato: ato)
+            Button(confirmacao.confirmLabel, role: .destructive) {
+                Task {
+                    switch ato {
+                    case .liberarCabo: await mudarCabo("liberar")
+                    case .desligarRiver: await desligarRiver()
+                    }
+                }
+            }
+            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
+        } message: { ato in
+            Text(RiverConfirmation(ato: ato).message)
         }
         .onChange(of: store.devices) { applySeamSheet() }
         .sheet(item: $openSheet) { item in

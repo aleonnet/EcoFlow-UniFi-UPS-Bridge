@@ -74,6 +74,10 @@ enum DevicePluginUIRegistry {
 /// O diálogo de armar, compartilhado entre a LISTA (Ajustes) e a FOLHA. Existe
 /// como builder porque a folha é uma NSWindow própria: um confirmationDialog
 /// declarado na tela de Ajustes não aparece sobre ela.
+/// As confirmações dos atos sobre o PRÓPRIO River, no mesmo molde do armamento:
+/// título que diz o que vai acontecer, botão que repete a consequência, e uma
+/// mensagem que explica a cerca. Nada aqui é decoração — são os dois atos que
+/// mexem na energia dos equipamentos do dono.
 struct ArmConfirmation {
     enum Mode {
         /// Na folha: o botão desliga o ensaio do dispositivo já habilitado.

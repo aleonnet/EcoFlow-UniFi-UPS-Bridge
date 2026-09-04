@@ -22,6 +22,7 @@ from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from . import river_serial
+from .nut_supervisor import NutSupervisor
 from .nut import NutClient, NutError
 # Import no TOPO, não dentro da função: um monkeypatch de
 # `service.build_plugins` no teste só intercepta se o nome viver aqui.
@@ -325,6 +326,14 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     shared = None
     history = None
     restart_requested = threading.Event()
+    # O leitor do River passa a ser filho DESTE serviço: sobe no boot junto com
+    # ele (que é do sistema), para e volta sem senha, e nasce com nome próprio,
+    # fora da mira do `pkill -9 usbhid-ups` que o app do fabricante roda como
+    # root. Ver nut_supervisor.py para as três medições que levaram a isto.
+    supervisor = None
+    if not once and cfg.river_nut_managed:
+        supervisor = NutSupervisor(cfg.nut_ups, log=_log)
+        supervisor.iniciar()
     if not once and cfg.ui_api_enabled:
         # Lazy import: aiohttp only loads when the API is actually enabled.
         from .api import ApiServer
@@ -339,6 +348,7 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
         api_server = ApiServer(
             cfg, shared, history, env_path, restart_cb=restart_requested.set,
             plugins=plugins, store=store, state_dir=state_dir(),
+            supervisor=supervisor,
         )
         # Bind failures (e.g. EADDRINUSE) get 3 attempts with backoff; a
         # persistent failure is config-class → deliberate stop under launchd.
@@ -384,11 +394,17 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
         # "Manter histórico: N dias" era só um número na tela: a limpeza existia e
         # nunca era chamada. Roda no 1.º ciclo e a cada hora, e acompanha a
         # configuração quando ela muda a quente.
+        # Leitor que morre e não volta é pior que leitor que nunca subiu: a tela
+        # continuaria com a última leitura e ninguém avisaria.
+        if supervisor is not None:
+            supervisor.vigiar()
         if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:
             last_prune = clock()
             history.retention_days = cfg.history_retention_days
             history.prune()  # retenção
         if restart_requested.wait(timeout=cfg.poll_interval_seconds):
+            if supervisor is not None:
+                supervisor.encerrar()
             # §7A.3 contract: deliberate restart exits 75; launchd
             # (KeepAlive={SuccessfulExit: false}) relaunches us.
             _log("INFO", "restart_requested", exit_code=EXIT_RESTART_REQUESTED)

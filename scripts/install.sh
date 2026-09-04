@@ -156,7 +156,15 @@ brew_do_usuario() {
 # + `pipefail`, um `lsof` sem ouvinte (1) ou um `launchctl print` sem job (113)
 # numa atribuição derrubava o script — medido no extrato do gate, 2026-09-03.
 # A porta lida como o daemon a lê (config.py: strip da chave e do valor).
-porta_api() { { sed -n 's/^[[:space:]]*UI_API_PORT[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1 | grep . ; } || echo 35493; }
+# A porta do serviço. `RUB_API_PORT` é seam do gate e vem PRIMEIRO de propósito:
+# na primeira instalação o bridge.env ainda não existe, e sem isto a guarda de
+# porta caía no padrão 35493 — que é a porta do serviço REAL da máquina. O gate
+# então encerrava o serviço do dono achando que era uma cópia solta (medido em
+# 2026-09-04, no MacBook, com o serviço dele no ar).
+porta_api() {
+  [ -n "${RUB_API_PORT:-}" ] && { printf '%s' "$RUB_API_PORT"; return 0; }
+  { sed -n 's/^[[:space:]]*UI_API_PORT[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1 | grep . ; } || echo 35493
+}
 job_carregado() { launchctl print "$ALVO_LAUNCHD" >/dev/null 2>&1; }
 pid_do_job() { { launchctl print "$ALVO_LAUNCHD" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9]*\).*/\1/p' | head -1; } || true; }
 ouvinte_da_porta() { { /usr/sbin/lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1; } || true; }
@@ -344,6 +352,12 @@ gerar_env() {
   man_set "file:$alvo" pending
   cp "$RAIZ/config/river-unifi-bridge.env.example" "$alvo" \
     || falha 1 "não consegui criar a configuração do serviço em $PREFIX. Veja o registro e rode a instalação de novo." "cp env.example → $alvo falhou"
+  # Seam do gate (RUB_API_PORT): as cenas precisam de uma porta que não seja a do
+  # serviço REAL da máquina que roda o portão — senão elas veem o serviço do dono
+  # e reprovam por contaminação. Fora do gate a variável não existe e nada muda.
+  if [ -n "${RUB_API_PORT:-}" ]; then
+    sed -i '' "s/^UI_API_PORT=.*/UI_API_PORT=$RUB_API_PORT/" "$alvo"
+  fi
   chmod 600 "$alvo"; chown "$SERVICE_USER" "$alvo" 2>/dev/null || true
   man_set "file:$alvo" created
   diga "configuração: criada"; nota "em $alvo"; jp config ok; passo config 0; FEZ=1
@@ -397,31 +411,6 @@ escreve_se_faltar() {   # 1=caminho 2=modo 3=conteúdo
   return 0
 }
 
-plist_nut() {   # 1=rótulo 2=nome do processo 3=binário 4..=argumentos
-  local rotulo="$1" nome="$2" bin="$3"; shift 3
-  local args=""
-  for a in "$@"; do args="$args $(printf '%q' "$a")"; done
-  cat <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>$rotulo</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/sh</string><string>-c</string>
-        <string>exec -a $nome $bin$args</string>
-    </array>
-    <key>UserName</key><string>$SERVICE_USER</string>
-    <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key><true/>
-    <key>StandardOutPath</key><string>$USER_HOME/Library/Logs/river-nut.log</string>
-    <key>StandardErrorPath</key><string>$USER_HOME/Library/Logs/river-nut.log</string>
-</dict>
-</plist>
-EOF
-}
-
 instalar_leitura_river() {
   jp nut checando
   local ups; ups="$(nut_ups_do_env)"; ups="${ups:-river-office}"
@@ -433,7 +422,7 @@ instalar_leitura_river() {
   fi
   if [ "$DRYRUN" = "1" ]; then
     diga "leitura do River: seria registrada como serviço do sistema ($ups)"
-    nota "$LDIR/$LABEL_NUT_DRIVER.plist e $LDIR/$LABEL_NUT_SERVER.plist"
+    nota "configuração em $NUT_ETC; quem mantém os processos é o serviço"
     jp nut plano; passo nut plano; return 0
   fi
 
@@ -464,45 +453,36 @@ instalar_leitura_river() {
     upsmon secondary
 " && mudou=1
 
-  local tmpd tmps
-  tmpd=$(mktemp); tmps=$(mktemp)
-  plist_nut "$LABEL_NUT_DRIVER" "river-bridge-ups" "$NUT_PREFIX/bin/usbhid-ups" \
-    -a "$ups" -u "$SERVICE_USER" -F > "$tmpd"
-  plist_nut "$LABEL_NUT_SERVER" "river-bridge-upsd" "$NUT_PREFIX/sbin/upsd" \
-    -u "$SERVICE_USER" -F > "$tmps"
-
-  local rotulo alvo tmp
+  # Quem sobe, vigia e para o driver e o servidor do NUT é o NOSSO SERVIÇO
+  # (src/river_unifi_bridge/nut_supervisor.py), não o launchd. Três motivos
+  # medidos no Mac mini em 2026-09-04: programa de usuário não sobe sem alguém
+  # logado; serviço do sistema só o root pausa, e pausar é preciso para emprestar
+  # o cabo ao aplicativo da EcoFlow; e o nome próprio dos processos os tira da
+  # mira do `pkill -9 usbhid-ups` que aquele aplicativo roda como root.
+  #
+  # Os registros que a 0.4.1 chegou a criar são removidos aqui, para não existirem
+  # dois donos do mesmo cabo.
+  local rotulo alvo
   for rotulo in "$LABEL_NUT_DRIVER" "$LABEL_NUT_SERVER"; do
     alvo="$LDIR/$rotulo.plist"
-    tmp="$tmpd"; [ "$rotulo" = "$LABEL_NUT_SERVER" ] && tmp="$tmps"
-    if [ ! -f "$alvo" ] || ! cmp -s "$tmp" "$alvo"; then
-      man_set "plist:$alvo" pending
-      install -m 0644 "$tmp" "$alvo" || { rm -f "$tmpd" "$tmps"; falha 1 "não consegui registrar a leitura do River. Veja o registro e rode de novo." "install → $alvo falhou"; }
-      [ "$(id -u)" = "0" ] && chown root:wheel "$alvo" || true
-      man_set "plist:$alvo" created
-      mudou=1
-    fi
-    # Os agentes de USUÁRIO da fase manual (2026-09-04) saem de cena: dois
-    # leitores no mesmo cabo brigam, e o do sistema é o que sobrevive ao boot.
+    # Só descarrega o que EXISTE. Pedir ao launchd para descarregar um serviço
+    # que nunca foi registrado não é inócuo: além de ruído, o duplê do portão
+    # tratava a descarga como global e derrubava o registro do nosso serviço.
+    [ -f "$alvo" ] || continue
     launchctl bootout "gui/$(id -u "$SERVICE_USER" 2>/dev/null || echo 501)/$rotulo" 2>/dev/null || true
     launchctl bootout "$DOMINIO/$rotulo" 2>/dev/null || true
-    launchctl bootstrap "$DOMINIO" "$alvo" 2>/dev/null || true
+    rm -f "$alvo"; man_set "plist:$alvo" removido; mudou=1
   done
-  # Leitor NOSSO deixado por uma sessão manual continua com o cabo, e o serviço
-  # novo não conseguiria abrir o aparelho ("Access denied"). O filtro é o nome do
-  # NOSSO aparelho na linha de comando: o driver de outro programa não casa.
-  # Sem kickstart: os serviços têm KeepAlive, então o launchd os relança sozinho
-  # quando o cabo é liberado. Chamar kickstart aqui também poluiria a contagem da
-  # cena S12, que prova que o instalador reinicia o serviço UMA vez.
+  # Leitor solto de uma sessão manual continua com o cabo, e o serviço não
+  # conseguiria abrir o aparelho. O filtro é o nome do NOSSO aparelho.
   pkill -f "usbhid-ups -a $ups" 2>/dev/null || true
   pkill -f "upsd -u $SERVICE_USER -F" 2>/dev/null || true
-  rm -f "$tmpd" "$tmps"
 
   if [ "$mudou" = "1" ]; then
-    diga "leitura do River: registrada como serviço do sistema (aparelho $ups)"
+    diga "leitura do River: configurada; quem a mantém no ar é o próprio serviço (aparelho $ups)"
     jp nut instalado; passo nut 0
   else
-    diga "leitura do River: já estava registrada"
+    diga "leitura do River: já estava configurada"
     jp nut ok; passo nut 100
   fi
 }
