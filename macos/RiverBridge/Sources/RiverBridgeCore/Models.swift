@@ -20,6 +20,27 @@ public struct UpsState: Codable, Equatable, Sendable {
         public var outputVoltageV: Double?
         public var outputPowerW: Double?
         public var loadPercent: Double?
+        /// O que ENTRA da rede, quando o aparelho publica (River 3 Plus, pela
+        /// porta serial do mesmo cabo).
+        public var inputPowerW: Double?
+        public var lineFrequencyHz: Double?
+    }
+
+    /// Consumo por tomada. Só existe quando o aparelho tem uma segunda porta que
+    /// o publique; ausente vira "—", nunca zero.
+    public struct Outlets: Codable, Equatable, Sendable {
+        public var totalW: Double?
+        public var inputW: Double?
+        public var inputAcW: Double?
+        public var inputSolarDcW: Double?
+        public var acW: Double?
+        public var dcW: Double?
+        public var usbAW: Double?
+        public var usbCW: Double?
+        public var lineFrequencyHz: Double?
+        // Sem CodingKeys: o decodificador da casa já converte `usb_a_w` em
+        // `usbAW` (convertFromSnakeCase). Declará-las aqui em snake_case fazia o
+        // par nunca casar, e a tela mostrava traço com o dado na mão.
     }
 
     public struct Battery: Codable, Equatable, Sendable {
@@ -42,6 +63,7 @@ public struct UpsState: Codable, Equatable, Sendable {
     public var power: Power?
     public var battery: Battery?
     public var health: Health?
+    public var outlets: Outlets?
     public var timestamp: String?
 }
 

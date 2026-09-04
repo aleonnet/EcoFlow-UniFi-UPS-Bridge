@@ -94,6 +94,14 @@ class UpsSnapshot:
     driver_name: str | None = None
     driver_version: str | None = None
 
+    # Consumo por tomada, quando o aparelho tem uma segunda porta que o publique
+    # (River 3 Plus: porta serial do mesmo cabo). Vazio = ninguém respondeu, e a
+    # tela mostra "—" em vez de zero.
+    outlets: dict | None = None
+    input_power_w: float | None = None
+    line_frequency_hz: float | None = None
+    serial_port_read: bool = False
+
     timestamp: str = ""
 
     @property
@@ -133,7 +141,11 @@ class UpsSnapshot:
                 "output_voltage_v": self.output_voltage_v,
                 "output_power_w": self.output_power_w,
                 "load_percent": self.load_percent,
+                "input_power_w": self.input_power_w,
+                "line_frequency_hz": self.line_frequency_hz,
             },
+            # Por tomada: só existe quando a porta serial respondeu.
+            "outlets": self.outlets,
             "battery": {
                 "charge_percent": self.charge_percent,
                 "charge_low_percent": self.battery_charge_low_percent,
@@ -149,7 +161,7 @@ class UpsSnapshot:
                 "unknown_status_tokens": self.unknown_tokens,
             },
             "source": {
-                "nut": True, "usb_hid": True, "usb_cdc": False,
+                "nut": True, "usb_hid": True, "usb_cdc": self.serial_port_read,
                 "driver_name": self.driver_name,
                 "driver_version": self.driver_version,
             },

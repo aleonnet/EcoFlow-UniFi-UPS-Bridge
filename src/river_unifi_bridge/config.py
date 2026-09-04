@@ -63,6 +63,11 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "UI_API_ENABLED": (bool, False, True, None),
     "UI_API_PORT": (int, False, 35493, (1024, 65535)),
     "HISTORY_RETENTION_DAYS": (int, False, 7, (1, 365)),
+    # Leitura de potência pela porta serial do River (2026-09-04). O perfil de
+    # no-break não publica consumo; a segunda porta do mesmo cabo publica. "auto"
+    # procura a porta e aceita a que responder com a série esperada.
+    "RIVER_SERIAL_ENABLED": (bool, False, True, None),
+    "RIVER_SERIAL_PORT": (str, False, "auto", None),
 }
 
 
@@ -149,6 +154,8 @@ class BridgeConfig:
     ui_api_enabled: bool = True
     ui_api_port: int = 35493
     history_retention_days: int = 7
+    river_serial_enabled: bool = True
+    river_serial_port: str = "auto"
     # Diagnostics for the caller (never fatal): "<line>: <message>"
     warnings: list[str] = field(default_factory=list)
 
@@ -230,6 +237,8 @@ HOT_RELOAD_KEYS = frozenset(
         "COMM_LOSS_DELAY_SECONDS",
         "LOW_BATTERY_PERCENT",
         "HISTORY_RETENTION_DAYS",
+        "RIVER_SERIAL_ENABLED",
+        "RIVER_SERIAL_PORT",
         # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
         "PROTECT_UDR7",
         "PROTECT_DRY_RUN",

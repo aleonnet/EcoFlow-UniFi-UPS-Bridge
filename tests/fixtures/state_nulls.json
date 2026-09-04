@@ -12,8 +12,11 @@
     "input_voltage_v": null,
     "output_voltage_v": null,
     "output_power_w": null,
-    "load_percent": null
+    "load_percent": null,
+    "input_power_w": null,
+    "line_frequency_hz": null
   },
+  "outlets": null,
   "battery": {
     "charge_percent": null,
     "charge_low_percent": null,

@@ -125,7 +125,10 @@ struct ChartsView: View {
     /// do que dois traços fixos.
     @ViewBuilder
     private var chipsDeLeitura: some View {
-        if store.temUsoESaida {
+        if store.temTomadas {
+            chip(L10n.t("Entrada", "Input"), store.inputPowerText)
+            chip(L10n.t("Consumo", "Draw"), store.powerText)
+        } else if store.temUsoESaida {
             chip(L10n.t("Uso", "Load"), store.loadText)
             chip(L10n.t("Saída", "Output"), store.outputVoltageText)
         } else if store.temTensaoDaBateria {
@@ -142,6 +145,7 @@ struct ChartsView: View {
     /// autonomia pelo cabo, e nunca potência (medido no Mac mini, 2026-09-04).
     private var aparelhoNaoInformaPotencia: Bool {
         metric == .powerW && store.latest != nil && store.latest?.power?.outputPowerW == nil
+            && store.latest?.outlets == nil
     }
 
     var body: some View {

@@ -15,8 +15,11 @@
     "input_voltage_v": 230.0,
     "output_voltage_v": 230.0,
     "output_power_w": 45.0,
-    "load_percent": 12.0
+    "load_percent": 12.0,
+    "input_power_w": null,
+    "line_frequency_hz": null
   },
+  "outlets": null,
   "battery": {
     "charge_percent": 87.0,
     "charge_low_percent": 10.0,

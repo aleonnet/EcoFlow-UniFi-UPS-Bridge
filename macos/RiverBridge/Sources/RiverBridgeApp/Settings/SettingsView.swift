@@ -56,6 +56,12 @@ struct SettingsView: View {
     @State private var serviceVersion: String?
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
 
+    /// O nome do aparelho no nosso servidor — é o que o aplicativo da EcoFlow
+    /// precisa digitar no modo remoto. Vem do serviço, nunca escrito à mão aqui.
+    private var riverNutName: String {
+        store.latest?.identity?.name ?? "river-office"
+    }
+
     private var accent: Color {
         Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
     }
@@ -213,6 +219,33 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
+
+                // O aparelho fala por dois caminhos ao mesmo tempo: o padrão de
+                // no-break, que dá bateria e situação, e a porta serial, que dá
+                // consumo por tomada. Esta seção mostra o que chega por ela, e
+                // como emprestar o aparelho para o aplicativo do fabricante.
+                if store.temTomadas {
+                    SettingsRows.group(L10n.t("Consumo por tomada", "Draw per outlet")) {
+                        ForEach(Array(store.tomadas.enumerated()), id: \.offset) { indice, item in
+                            if indice > 0 { SettingsRows.divider }
+                            HStack(spacing: 10) {
+                                Image(systemName: "powerplug")
+                                    .frame(width: 26)
+                                    .foregroundStyle(.secondary)
+                                Text(item.rotulo)
+                                    .font(.system(.body, design: .rounded))
+                                Spacer()
+                                Text(item.valor)
+                                    .font(.system(.body, design: .rounded).monospacedDigit())
+                            }
+                        }
+                        SettingsRows.divider
+                        Text(L10n.t("Lido direto do River pela porta do próprio cabo. O aplicativo da EcoFlow pode acompanhar ao mesmo tempo: em \"Communication mode\", escolha Remote e aponte para este Mac, aparelho \(riverNutName), endereço 127.0.0.1, porta 3493.",
+                                    "Read straight from the River over its own cable port. The EcoFlow app can watch at the same time: in \"Communication mode\" pick Remote and point it at this Mac, device \(riverNutName), address 127.0.0.1, port 3493."))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
 
                 SettingsRows.group(L10n.t("Dispositivos protegidos", "Protected devices")) {
                     if case .unsupported(let why) = store.deviceSupport {

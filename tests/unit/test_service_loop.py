@@ -370,3 +370,60 @@ def test_prune_does_not_run_every_tick(tmp_path, monkeypatch):
     with pytest.raises(Terminador):
         run_loop(cfg, once=False, clock=lambda: 0.0)
     assert podas == [1]
+
+
+def test_serial_reading_fills_power_and_outlets(rig):
+    """A porta serial completa o que o perfil de no-break não publica."""
+    from river_unifi_bridge.river_serial import LeituraRiver
+
+    leitura = LeituraRiver(carga_total_w=110.6, entrada_total_w=110.6, entrada_ac_w=110.6,
+                           entrada_solar_dc_w=0.0, carga_ac_w=110.6, carga_dc_w=0.0,
+                           carga_usb_a_w=0.0, carga_usb_c_w=0.0,
+                           frequencia_hz=60.0, temperatura_c=34.0,
+                           serie="SIM0001")
+    snap = sim_snap()
+    assert snap.output_power_w is None            # o cabo do no-break não deu potência
+    cfg = make_cfg()
+    service._completa_pela_serial(snap, cfg, ler=lambda *a, **k: (leitura, "/dev/cu.river"))
+
+    assert snap.output_power_w == 110.6
+    assert snap.input_power_w == 110.6
+    assert snap.line_frequency_hz == 60.0
+    assert snap.temperature_c == 34.0
+    assert snap.outlets["ac_w"] == 110.6 and snap.outlets["usb_c_w"] == 0.0
+    d = snap.to_dict()
+    assert d["power"]["output_power_w"] == 110.6
+    assert d["outlets"]["total_w"] == 110.6
+    assert d["source"]["usb_cdc"] is True         # a tela sabe de onde o número veio
+
+
+def test_without_the_serial_port_the_fields_stay_null(rig):
+    """Sem porta serial, nada é inventado: nulo é a verdade."""
+    snap = sim_snap()
+    service._completa_pela_serial(snap, make_cfg(), ler=lambda *a, **k: None)
+    d = snap.to_dict()
+    assert d["power"]["output_power_w"] is None
+    assert d["outlets"] is None
+    assert d["source"]["usb_cdc"] is False
+
+
+def test_a_broken_serial_port_never_breaks_the_tick(rig, capsys):
+    """Porta com defeito vira aviso; a leitura do no-break continua valendo."""
+    def explode(*_a, **_k):
+        raise OSError(6, "Device not configured")
+
+    snap = sim_snap()
+    service._completa_pela_serial(snap, make_cfg(), ler=explode)
+    assert snap.outlets is None
+    assert snap.charge_percent == 12.0            # o que veio do NUT continua lá
+    avisos = [l for l in capsys.readouterr().out.splitlines() if '"serial_read_failed"' in l]
+    assert len(avisos) == 1
+
+
+def test_the_serial_reading_can_be_turned_off(rig):
+    chamou = []
+    snap = sim_snap()
+    cfg = make_cfg()
+    cfg.river_serial_enabled = False
+    service._completa_pela_serial(snap, cfg, ler=lambda *a, **k: chamou.append(1))
+    assert chamou == [] and snap.outlets is None

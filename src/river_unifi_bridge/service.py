@@ -21,6 +21,7 @@ from .config import BridgeConfig, ConfigError, load_config
 from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
+from . import river_serial
 from .nut import NutClient, NutError
 # Import no TOPO, não dentro da função: um monkeypatch de
 # `service.build_plugins` no teste só intercepta se o nome viver aqui.
@@ -141,6 +142,48 @@ def poll_once(cfg: BridgeConfig) -> UpsSnapshot:
     with NutClient(cfg.nut_host, cfg.nut_port) as client:
         nut_vars = client.list_vars(cfg.nut_ups)
     return snapshot_from_nut_vars(cfg.river_name, nut_vars)
+
+
+# A porta serial que respondeu na última vez. Procurar de novo a cada leitura
+# custaria abrir todas as portas do Mac por ciclo.
+_porta_serial_lembrada: str | None = None
+
+
+def _completa_pela_serial(snap: UpsSnapshot, cfg: BridgeConfig, ler=river_serial.ler) -> None:
+    """Preenche consumo e tomadas pela porta serial do aparelho, quando ela existe.
+
+    O perfil de no-break do River 3 Plus não publica potência (medido; ver
+    `docs/decisions/2026-09-04-0110-…`). A segunda porta do mesmo cabo publica, e
+    as duas convivem. Falha aqui **não** é falha de leitura do UPS: o ciclo segue
+    com o que o NUT deu, e os campos ficam nulos, que é a verdade.
+    """
+    global _porta_serial_lembrada
+    if not cfg.river_serial_enabled:
+        return
+    porta = cfg.river_serial_port or "auto"
+    if porta == "auto" and _porta_serial_lembrada:
+        porta = _porta_serial_lembrada
+    try:
+        resultado = ler(porta, serie_esperada=snap.serial or None)
+        if resultado is None and porta != "auto":
+            # A porta lembrada calou (cabo trocado de lugar): procura de novo.
+            resultado = ler("auto", serie_esperada=snap.serial or None)
+    except Exception as exc:  # serial_read_failed: o vigia não depende disto
+        _log("WARN", "serial_read_failed", reason=f"{type(exc).__name__}: {exc}")
+        return
+    if resultado is None:
+        return
+    leitura, porta_usada = resultado
+    _porta_serial_lembrada = porta_usada
+    snap.outlets = leitura.to_dict()
+    snap.input_power_w = leitura.entrada_total_w
+    snap.line_frequency_hz = leitura.frequencia_hz
+    snap.serial_port_read = True
+    # O que o resto do sistema já entende: consumo total e temperatura.
+    if leitura.carga_total_w is not None:
+        snap.output_power_w = leitura.carga_total_w
+    if snap.temperature_c is None and leitura.temperatura_c is not None:
+        snap.temperature_c = leitura.temperatura_c
 
 
 EXIT_RESTART_REQUESTED = 75
@@ -304,6 +347,7 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     while True:
         try:
             snap = poll_once(cfg)
+            _completa_pela_serial(snap, cfg)
         except NutError as exc:
             _handle_poll_failure(exc, tracker, plugins, shared, history)
             if once:

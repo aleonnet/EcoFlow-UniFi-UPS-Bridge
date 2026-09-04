@@ -188,3 +188,36 @@ import Testing
     #expect(store.events.map(\.event) == ["COMM_LOST"])   // o de depois fica
     #expect(store.eventsGeneration == geracao + 1)        // as telas recarregam
 }
+
+@MainActor
+@Test func outletsFromTheSerialPortReachTheScreen() {
+    // O River publica consumo por tomada pela porta serial do próprio cabo; o
+    // serviço junta isso ao estado. A tela mostra o que chegou, e "—" no que não.
+    let store = TelemetryStore()
+    store.apply(SSEMessage(event: "state", data: #"""
+    {"power": {"state": "ONLINE", "output_power_w": 110.6, "input_power_w": 110.6},
+     "battery": {"charge_percent": 100},
+     "outlets": {"total_w": 110.6, "input_w": 110.6, "ac_w": 110.6, "dc_w": 0,
+                 "usb_a_w": 0, "usb_c_w": null, "line_frequency_hz": 60}}
+    """#))
+    #expect(store.temTomadas)
+    #expect(store.powerText == "111 W")
+    #expect(store.inputPowerText == "111 W")
+    let rotulos = store.tomadas.map(\.valor)
+    #expect(rotulos == ["111 W", "0 W", "0 W", "—"])   // o ausente vira traço, não zero
+
+    // Serviço fora do ar: nada de número congelado.
+    store.markServiceDownForTesting("sem comunicação")
+    #expect(store.temTomadas == false)
+    #expect(store.inputPowerText == "—")
+    #expect(store.tomadas.isEmpty)
+}
+
+@MainActor
+@Test func aDeviceWithoutOutletsShowsNoOutletSection() {
+    let store = TelemetryStore()
+    store.apply(SSEMessage(event: "state",
+                           data: #"{"power": {"state": "ONLINE"}, "battery": {"charge_percent": 90}}"#))
+    #expect(store.temTomadas == false)
+    #expect(store.tomadas.isEmpty)
+}

@@ -263,6 +263,26 @@ public final class TelemetryStore {
         lendoAgora && (latest?.power?.loadPercent != nil || latest?.power?.outputVoltageV != nil)
     }
 
+    /// Consumo por tomada, quando o aparelho publica (River 3 Plus: pela porta
+    /// serial do mesmo cabo, lida pelo serviço).
+    public var temTomadas: Bool { lendoAgora && latest?.outlets != nil }
+
+    public var inputPowerText: String {
+        guard lendoAgora else { return "—" }
+        return Self.wattsText(latest?.power?.inputPowerW)
+    }
+
+    /// As tomadas em ordem de tela, já formatadas. Vazio quando não há leitura.
+    public var tomadas: [(rotulo: String, valor: String)] {
+        guard lendoAgora, let o = latest?.outlets else { return [] }
+        return [
+            (L10n.t("Tomada 120 V", "120 V outlet"), Self.wattsText(o.acW)),
+            (L10n.t("Saída 12 V", "12 V output"), Self.wattsText(o.dcW)),
+            ("USB-A", Self.wattsText(o.usbAW)),
+            ("USB-C", Self.wattsText(o.usbCW)),
+        ]
+    }
+
     public var temTensaoDaBateria: Bool {
         lendoAgora && latest?.battery?.voltageV != nil
     }

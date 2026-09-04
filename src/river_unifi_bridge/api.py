@@ -63,7 +63,9 @@ def _empty_state(name: str, comm_ok: bool, last_error: str | None) -> dict:
             "state": "UNKNOWN", "states": [], "input_present": None,
             "input_voltage_v": None, "output_voltage_v": None,
             "output_power_w": None, "load_percent": None,
+            "input_power_w": None, "line_frequency_hz": None,
         },
+        "outlets": None,
         "battery": {
             "charge_percent": None, "charge_low_percent": None,
             "runtime_seconds": None, "voltage_v": None, "temperature_c": None,

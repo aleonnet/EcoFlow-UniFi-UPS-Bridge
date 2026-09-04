@@ -93,9 +93,11 @@ def test_allowlist_matches_spec_keys():
         "UDR7_DISCHARGE_SECONDS_PER_PCT", "UDR7_RUNTIME_MINUTES",
         "UDR7_MIN_OUTAGE_SECONDS", "UDR7_CONFIRM_SECONDS", "UDR7_RETRY_MAX",
         "UDR7_WOL_MAC", "UDR7_NAME",
+        # Leitura de potência pela porta serial do River (0.4.0)
+        "RIVER_SERIAL_ENABLED", "RIVER_SERIAL_PORT",
     }
     assert set(_ALLOWLIST) == expected
-    assert len(expected) == 29
+    assert len(expected) == 31
 
 
 @pytest.mark.parametrize(

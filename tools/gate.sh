@@ -260,6 +260,20 @@ cena_mutacao S4af src/river_unifi_bridge/api.py \
     'pass  # clear_events' \
     tests/unit/test_api.py::test_clearing_events_also_forgets_them_in_memory
 
+# S4ag — a leitura da porta serial do River tem de CONFERIR o quadro. Sem a
+# verificação de integridade, ruído na porta vira watt na tela do dono.
+cena_mutacao S4ag src/river_unifi_bridge/river_serial.py \
+    'if crc16(quadro) != 0:' \
+    'if False:' \
+    tests/unit/test_river_serial.py::test_a_corrupted_frame_is_refused_not_guessed
+
+# S4ah — a potência lida pela serial tem de chegar ao estado publicado; sem a
+# fusão, o app continuaria mostrando "—" com o dado na mão.
+cena_mutacao S4ah src/river_unifi_bridge/service.py \
+    'snap.outlets = leitura.to_dict()' \
+    'snap.outlets = None' \
+    tests/unit/test_service_loop.py::test_serial_reading_fills_power_and_outlets
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys
