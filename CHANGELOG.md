@@ -41,6 +41,20 @@ Vinte defeitos que a leitura integral do código achou, mais a leitura real do R
   a configuração vira erro claro sem aplicar nada, e nenhum `except` fica mudo. Desarmar a
   proteção nunca é recusado, nem por falha de disco.
 - A tela não fala mais em nome de chave, arquivo, código de resposta nem tipo cru de evento.
+- **Desarmar nunca é recusado**, nem com o disco cheio: um pedido que só desarma é aplicado de
+  todo jeito, com aviso. Qualquer outra mudança continua sendo recusada sem aplicar nada.
+- Duas linhas de evento do mesmo tipo, no mesmo segundo, de dispositivos diferentes, deixam de
+  colidir e sumir da lista.
+- Com o serviço vivo e o no-break mudo, os números somem da tela em vez de parecerem atuais.
+
+### Novo
+- **Consumo por tomada, lido direto do River.** O perfil de no-break não publica potência; a
+  porta serial do mesmo cabo publica, e as duas convivem. O serviço passa a mostrar quanto entra
+  da rede e quanto sai por cada tomada (120 V, 12 V, USB-A, USB-C), com a porta descoberta
+  sozinha e aceita só quando a série do aparelho bate. Protocolo reimplementado a partir do
+  projeto público `greyltc/r3pcomms` (MIT), creditado no cabeçalho do módulo.
+- O catálogo de tipos passa a publicar o vocabulário fechado de estados da proteção, e o app
+  confere que sabe desenhar todos.
 
 ### Removido
 - Quatro opções de configuração que não faziam nada (`UNIFI_HOST`, `UNIFI_VERIFY_TLS`,

@@ -18,7 +18,7 @@ levou à descoberta da porta serial. Registrado porque a lição vale mais que o
 | Número de série | `R631ZBBAWH270046` |
 | Identificadores USB | vendor `0x3746`, product `0xffff` |
 | Capacidade (tela da EcoFlow) | 286 Wh / 89600 mAh |
-| Limite de descarga (tela da EcoFlow) | 5% |
+| Limite de carga e descarga (app de celular, 2026-09-04 01h22) | **0% – 100%** |
 
 ```
 $ ioreg -p IOUSB -w0 -l | grep -iE '"USB Product Name"|idVendor'
@@ -201,6 +201,16 @@ potência (W) = 286 Wh × (carga% ÷ 100) ÷ (autonomia_s ÷ 3600)
 `[M]` Com 80 W ligados, medi 99% e 11220 s → 90,8 W; e 97% e 11040 s → 90,5 W. Cerca de 13%
 acima dos 80 W da tomada, diferença compatível com a perda do inversor. Só vale **na
 bateria**: na tomada a autonomia publicada é projeção ociosa (42 h).
+
+## 9b. Correção de um número meu
+
+Na primeira versão deste documento eu registrei o limite de descarga do River como **5%**,
+lendo da tela do Power Manager no Mac. Errado: ali os 5% eram o **lembrete** de bateria baixa,
+e "Discharge limit" era o rótulo da ponta esquerda da régua. A tela de configurações do
+aplicativo de celular mostra o valor real, medido em 2026-09-04 01h22: **0% a 100%**.
+
+Consequência para a proteção: a bateria vai até o fim, e quem escolhe a hora de desligar os
+equipamentos somos nós. Não existe piso de 5% para respeitar.
 
 ## 10. Em aberto
 

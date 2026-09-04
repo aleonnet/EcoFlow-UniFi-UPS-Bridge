@@ -14,11 +14,11 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 | GET | `/v1/events` | SSE: `event: state` e `event: event` (bridge + eventos de dispositivo; estes levam `device` e `device_name` no payload). Desde a 0.4.0 cada evento leva `seq`, um número que só cresce: o servidor entrega a partir do último `seq` enviado, então a fila cheia (100) deixou de congelar a entrega no centésimo evento, e o app usa o `seq` como identidade da linha |
 | GET | `/v1/events/log?from=&to=&types=&limit=&device=` | histórico persistido; `device` filtra pelo id da instância; cada linha traz `device` (`null` para eventos do bridge e para os gravados antes da 0.3.0) |
 | GET | `/v1/health` | elos da cadeia + `plugins[]` (`id`, `type`, `name`, `state`, `detail`); o alias `udr7`/`udr7_detail` espelha a instância `udr7` e é **permanente** (o instalador o lê). Desde a 0.4.0 a lista sai **desde o boot** e sobrevive à falha de leitura do UPS (ela é configuração, não telemetria), e há `last_tick_error`: erro de SOFTWARE no ciclo (um dispositivo que levantou exceção), separado de `last_error`, que é do NUT |
-| GET | `/v1/config` | as 29 chaves da allowlist, em minúsculas (0.4.0: saíram `UNIFI_HOST`, `UNIFI_VERIFY_TLS`, `EMULATE_MODE`, `READ_ONLY`, que não tinham consumidor; `.env` instalado com elas só gera aviso) |
+| GET | `/v1/config` | as 31 chaves da allowlist, em minúsculas (0.4.0: saíram `UNIFI_HOST`, `UNIFI_VERIFY_TLS`, `EMULATE_MODEL`, `READ_ONLY`, que não tinham consumidor — 33 → 29; entraram `RIVER_SERIAL_ENABLED` e `RIVER_SERIAL_PORT`, da leitura pela porta serial — 29 → 31; `.env` instalado com chave aposentada só gera aviso) |
 | PUT | `/v1/config` | validar → autorizar → gravar `.env` → aplicar a quente. Chaves `UDR7_*`/`PROTECT_*` (via legada, D10) são traduzidas para a instância `udr7` e gravadas nos dois; `UDR7_ARM_ALLOWED` → 400 `chave_somente_arquivo` |
 | POST | `/v1/service/restart` | recusa 409 `armado` com qualquer instância armada; 503 `servidor_sem_laco` quando o servidor não tem laço para agendar a saída (antes era um `assert`, que virava 500 mudo) |
 | DELETE | `/v1/events/log?from=&to=` | limpa o histórico gravado E a fila de eventos da memória, que é o que o SSE entrega a quem conecta — sem isso os eventos apagados voltavam na reconexão. `to` é obrigatório |
-| GET | `/v1/device-types` | catálogo: `{"types": [{id, label_pt, label_en, default_name, event_prefix, fields: [{name, type, default, required, bounds?, pattern?, enum?}]}]}` |
+| GET | `/v1/device-types` | catálogo: `{"types": [{id, label_pt, label_en, default_name, event_prefix, fields: […], states: […]}]}`. `states` é o vocabulário FECHADO que a proteção publica em `state` (0.4.0): o app confere que sabe desenhar todos, porque estado sem selo apareceria como dispositivo bloqueado e sem explicação |
 | GET | `/v1/devices` | `{"devices": [<instância>]}` |
 | POST | `/v1/devices` | `{type, name, enabled?, dry_run?, fields?}` → 201 `{"device": <instância>}` |
 | GET | `/v1/devices/{id}` | `{"device": <instância>}` |
@@ -49,9 +49,27 @@ Campo ausente na leitura sai `null`, nunca zero nem invenção. Antes da primeir
 estado vazio publica `low_battery` e `overload` como `null` (0.4.0; antes vinham `false`, o que
 afirmava "não há alarme" sem ter lido nada).
 
-Nem todo no-break publica tudo. O River 3 Plus, por exemplo, manda carga, autonomia, tensão e
-situação, e **não manda potência nem uso** — esses campos ficam `null` e a tela mostra "—"
-(medido em 2026-09-04; ver `../decisions/2026-09-04-0110-river-3-plus-o-que-o-cabo-entrega.md`).
+Nem todo no-break publica tudo pelo perfil de no-break. O River 3 Plus manda carga, autonomia,
+tensão e situação, e **não manda potência nem uso** por esse caminho (medido em 2026-09-04; ver
+`../decisions/2026-09-04-0110-river-3-plus-o-que-o-cabo-entrega.md`).
+
+### `outlets` — consumo por tomada (0.4.0)
+
+Quando o aparelho tem uma segunda porta que publique consumo (o River 3 Plus tem: a porta
+serial do mesmo cabo), o serviço a lê a cada ciclo e publica:
+
+```json
+"outlets": {"total_w": 110.6, "input_w": 110.6, "input_ac_w": 110.6,
+            "input_solar_dc_w": 0.0, "ac_w": 110.6, "dc_w": 0.0,
+            "usb_a_w": 0.0, "usb_c_w": 0.0, "line_frequency_hz": 60.0}
+```
+
+`outlets` é `null` quando ninguém respondeu — e aí `power.output_power_w` também é `null`, e a
+tela mostra "—". `source.usb_cdc` diz se a leitura desta volta veio da porta serial. As duas
+leituras convivem: o NUT segue na interface de no-break enquanto esta acontece.
+
+Controlam isso `RIVER_SERIAL_ENABLED` (ligada por padrão) e `RIVER_SERIAL_PORT` (`auto`
+procura a porta e só aceita o aparelho cuja série bate com a que o no-break informou).
 
 ## Recusas das rotas de dispositivos
 
