@@ -43,21 +43,6 @@ extension HealthChain {
     /// LEGACY_INSTANCE_ID): the only one the `udr7`/`udr7_detail` alias mirrors.
     public static let legacyInstanceID = "udr7"
 
-    /// The user's name for a plugin, or nil when the daemon doesn't publish one.
-    /// Reads the `plugins` list first and falls back to the `udr7_detail` alias,
-    /// so a daemon from before P6 still yields a name. Blank (or spaces only)
-    /// counts as absent — the caller decides the default.
-    public func pluginName(id: String) -> String? {
-        let fromList = plugins?.first(where: { $0.id == id })?.name
-        let fromAlias = id == HealthChain.legacyInstanceID ? udr7Detail?.name : nil
-        for candidate in [fromList, fromAlias] {
-            if let value = candidate?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
-                return value
-            }
-        }
-        return nil
-    }
-
     /// The plugin's detail object. The state is `pluginDetail(id:)?.state` — a
     /// separate `pluginState` would have no consumer.
     public func pluginDetail(id: String) -> Udr7Detail? {

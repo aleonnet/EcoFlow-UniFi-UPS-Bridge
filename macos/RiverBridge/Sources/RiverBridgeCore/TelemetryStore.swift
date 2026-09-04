@@ -155,14 +155,11 @@ public final class TelemetryStore {
         }
     }
 
-    public func stop() {
-        task?.cancel()
-        task = nil
-        healthTask?.cancel()
-        healthTask = nil
-    }
-
     public func apply(_ message: SSEMessage) {
+        // Um quadro recebido é vida: quem chegou aqui leu do serviço agora. Sem
+        // isto, os textos guardados por `phase` ficariam em "—" para quem recebe
+        // eventos sem passar pelo laço do stream (seams, testes, reconexão).
+        phase = .live
         let decoder = JSONCoding.decoder()
         let data = Data(message.data.utf8)
         switch message.event {
@@ -181,10 +178,16 @@ public final class TelemetryStore {
         }
     }
 
+    /// Só para teste: encena a queda do serviço sem abrir socket nenhum. A fase
+    /// é `private(set)` de propósito — quem a muda de verdade é o laço do stream.
+    public func markServiceDownForTesting(_ reason: String) {
+        phase = .serviceDown(reason)
+    }
+
     // MARK: - Derived, honest display values (pt-BR; "—" = not observed)
 
     public var stateLabel: String {
-        guard phase == .live, let state = latest?.power?.state else { return "—" }
+        guard lendoAgora, let state = latest?.power?.state else { return "—" }
         switch state {
         case "ONLINE": return L10n.t("Na tomada", "On grid")
         case "ON_BATTERY": return L10n.t("Na bateria", "On battery")
@@ -197,29 +200,39 @@ public final class TelemetryStore {
     public var isCharging: Bool { latest?.power?.states?.contains("CHARGING") == true }
     public var isLowBattery: Bool { latest?.health?.lowBattery == true }
 
+    /// Com o serviço fora do ar, a última leitura NÃO é o presente: ela some da
+    /// tela em vez de continuar sendo mostrada como se fosse de agora. A guarda
+    /// mora aqui, num lugar só — cada tela que copiasse a regra esqueceria uma.
+    private var lendoAgora: Bool { phase == .live }
+
     public var chargeFraction: Double? {
-        guard let charge = latest?.battery?.chargePercent else { return nil }
+        guard lendoAgora, let charge = latest?.battery?.chargePercent else { return nil }
         return min(max(charge / 100.0, 0), 1)
     }
 
     public var chargeText: String {
-        Self.percentText(latest?.battery?.chargePercent)
+        guard lendoAgora else { return "—" }
+        return Self.percentText(latest?.battery?.chargePercent)
     }
 
     public var runtimeText: String {
-        Self.runtimeText(latest?.battery?.runtimeSeconds)
+        guard lendoAgora else { return "—" }
+        return Self.runtimeText(latest?.battery?.runtimeSeconds)
     }
 
     public var loadText: String {
-        Self.percentText(latest?.power?.loadPercent)
+        guard lendoAgora else { return "—" }
+        return Self.percentText(latest?.power?.loadPercent)
     }
 
     public var powerText: String {
-        Self.wattsText(latest?.power?.outputPowerW)
+        guard lendoAgora else { return "—" }
+        return Self.wattsText(latest?.power?.outputPowerW)
     }
 
     public var outputVoltageText: String {
-        Self.voltageText(latest?.power?.outputVoltageV)
+        guard lendoAgora else { return "—" }
+        return Self.voltageText(latest?.power?.outputVoltageV)
     }
 
     // MARK: - Pure formatters (unit-tested)

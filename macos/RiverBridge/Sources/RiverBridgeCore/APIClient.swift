@@ -38,12 +38,6 @@ public struct APIClient: Sendable {
         return data
     }
 
-    public func state() async throws -> UpsState {
-        try JSONCoding.decoder().decode(
-            UpsState.self, from: try await run(request("v1/state"))
-        )
-    }
-
     public func health() async throws -> HealthChain {
         try JSONCoding.decoder().decode(
             HealthChain.self, from: try await run(request("v1/health"))
@@ -147,12 +141,6 @@ public struct APIClient: Sendable {
         try JSONCoding.decoder().decode(
             DevicesResponse.self, from: try await run(request("v1/devices"))
         ).devices
-    }
-
-    public func device(id: String) async throws -> DeviceInstance {
-        try JSONCoding.decoder().decode(
-            DeviceResponse.self, from: try await run(request("v1/devices/\(id)"))
-        ).device
     }
 
     /// POST /v1/devices — a new instance is born disabled and in rehearsal

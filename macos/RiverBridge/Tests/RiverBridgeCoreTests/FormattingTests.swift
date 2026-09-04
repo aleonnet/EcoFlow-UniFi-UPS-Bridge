@@ -24,10 +24,8 @@ import Testing
 @Test func eventTimeTextParsesDaemonTimestamp() {
     // Daemon emits time.strftime("%Y-%m-%dT%H:%M:%S%z") — no colon in tz.
     let event = BridgeEvent(ts: "2026-08-31T15:11:30-0300", event: "POWER_LOSS", state: nil, charge: nil, reason: nil)
-    #expect(event.timeText == "15:11:30")
     // Unknown format: raw value, never a fabricated time.
     let odd = BridgeEvent(ts: "ontem", event: "X", state: nil, charge: nil, reason: nil)
-    #expect(odd.timeText == "ontem")
     #expect(event.dayTimeText == "31/08 · 15:11:30")
     #expect(odd.dayTimeText == "ontem")
 }
@@ -56,9 +54,9 @@ import Testing
     #expect(resp.rows.first?.type == "POWER_LOSS")
     let event = resp.rows.first!.asBridgeEvent
     #expect(event.event == "POWER_LOSS")
-    // Mapped ts must PARSE (timeText falls back to the raw string only on
+    // Mapped ts must PARSE (dayTimeText falls back to the raw string only on
     // unknown formats — equality here would mean the mapping is broken).
-    #expect(event.timeText != event.ts)
+    #expect(event.dayTimeText != event.ts)
     #expect(event.reason == nil)
 }
 
@@ -84,4 +82,61 @@ import Testing
     #expect(AppPrefs.resolveTheme(persisted: "dark", seam: "light") == .light)
     #expect(AppPrefs.resolveTheme(persisted: nil, seam: nil) == .auto)
     #expect(AppPrefs.resolveTheme(persisted: "lixo", seam: "lixo") == .auto)
+}
+
+@MainActor
+@Test func derivedTextsAreDashUnlessLive() {
+    // Com o serviço fora do ar, a última leitura NÃO é o presente: números
+    // congelados na tela já fizeram o dono acreditar que o River estava vivo.
+    let store = TelemetryStore()
+    store.apply(SSEMessage(
+        event: "state",
+        data: #"""
+        {"power": {"state": "ON_BATTERY", "load_percent": 12, "output_power_w": 80, "output_voltage_v": 120},
+         "battery": {"charge_percent": 42, "runtime_seconds": 600}}
+        """#
+    ))
+    #expect(store.chargeText == "42%")
+    #expect(store.runtimeText == "10 min")
+    #expect(store.loadText == "12%")
+    #expect(store.powerText == "80 W")
+    #expect(store.outputVoltageText == "120 V")
+    #expect(store.chargeFraction != nil)
+
+    store.markServiceDownForTesting("Sem comunicação com o serviço")
+    #expect(store.chargeText == "—")
+    #expect(store.runtimeText == "—")
+    #expect(store.loadText == "—")
+    #expect(store.powerText == "—")
+    #expect(store.outputVoltageText == "—")
+    #expect(store.stateLabel == "—")
+    #expect(store.chargeFraction == nil)
+}
+
+@MainActor
+@Test func applyMarksTheStoreLive() {
+    // Um quadro recebido é vida: sem isto os textos nasceriam mudos para quem
+    // recebe eventos fora do laço do stream.
+    let store = TelemetryStore()
+    #expect(store.phase == .connecting)
+    store.apply(SSEMessage(event: "state", data: #"{"battery": {"charge_percent": 7}}"#))
+    #expect(store.phase == .live)
+    #expect(store.chargeText == "7%")
+}
+
+@Test func eventSequenceDecodesAndIdentifiesTheRow() throws {
+    // Dois eventos do mesmo tipo no mesmo segundo: sem a sequência, um sumia da
+    // lista porque os dois disputavam a mesma identidade.
+    let decoder = JSONCoding.decoder()
+    let a = try decoder.decode(BridgeEvent.self, from: Data(
+        #"{"ts": "2026-09-03T10:00:00-0300", "event": "COMM_LOST", "seq": 101}"#.utf8))
+    let b = try decoder.decode(BridgeEvent.self, from: Data(
+        #"{"ts": "2026-09-03T10:00:00-0300", "event": "COMM_LOST", "seq": 102}"#.utf8))
+    #expect(a.seq == 101)
+    #expect(a.id != b.id)
+    // Serviço antigo (sem sequência): a identidade antiga continua servindo.
+    let velho = try decoder.decode(BridgeEvent.self, from: Data(
+        #"{"ts": "2026-09-03T10:00:00-0300", "event": "COMM_LOST"}"#.utf8))
+    #expect(velho.seq == nil)
+    #expect(velho.id == "2026-09-03T10:00:00-0300COMM_LOST")
 }

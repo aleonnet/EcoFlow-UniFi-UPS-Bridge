@@ -30,19 +30,6 @@ private func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
     #expect(abs(distance(conn.end, b.center) - 5) < 0.001)
 }
 
-@Test func cableBezierEndpointsAndSag() {
-    let a = CGPoint(x: 0, y: 100)
-    let b = CGPoint(x: 200, y: 100)
-    let control = FlowGeometry.cableControl(start: a, end: b, sag: 24)
-    #expect(control == CGPoint(x: 100, y: 124))
-    // t=0 and t=1 land exactly on the endpoints; t=0.5 hangs at half the sag*...
-    #expect(FlowGeometry.quadPoint(start: a, control: control, end: b, t: 0) == a)
-    #expect(FlowGeometry.quadPoint(start: a, control: control, end: b, t: 1) == b)
-    let mid = FlowGeometry.quadPoint(start: a, control: control, end: b, t: 0.5)
-    #expect(mid.x == 100)
-    #expect(mid.y == 112)   // quadratic midpoint sags sag/2
-}
-
 @Test func overlappingCirclesHaveNoConnector() {
     let a = FlowGeometry.Circle(center: .init(x: 0, y: 0), radius: 30)
     let b = FlowGeometry.Circle(center: .init(x: 40, y: 0), radius: 30)

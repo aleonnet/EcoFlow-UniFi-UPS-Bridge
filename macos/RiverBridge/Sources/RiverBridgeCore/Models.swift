@@ -95,22 +95,12 @@ public struct DeviceDetail: Codable, Equatable, Sendable {
 public struct HistoryRow: Codable, Equatable, Sendable {
     public var ts: Int
     public var avg: Double?
-    public var min: Double?
-    public var max: Double?
-    public var n: Int
 }
 
 public struct HistoryResponse: Codable, Equatable, Sendable {
-    public struct Event: Codable, Equatable, Sendable {
-        public var ts: Int
-        public var type: String
-        public var detail: String?
-    }
-
     public var metric: String
     public var bucketSeconds: Int
     public var rows: [HistoryRow]
-    public var events: [Event]
 }
 
 public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
@@ -122,23 +112,20 @@ public struct BridgeEvent: Codable, Equatable, Sendable, Identifiable {
     /// The owning device INSTANCE (2026-09-03); nil for bridge events and for
     /// rows written before the daemon carried it.
     public var device: String?
+    /// Sequência do serviço (2026-09-03): só cresce, e é o que distingue dois
+    /// eventos do mesmo tipo no mesmo segundo. Ausente nas linhas do histórico
+    /// e em serviços anteriores.
+    public var seq: Int?
 
-    public var id: String { ts + event }
+    /// A identidade da linha na tela. Com a sequência, dois eventos iguais no
+    /// mesmo segundo deixam de disputar o mesmo id (a lista descartava um).
+    public var id: String { seq.map(String.init) ?? (ts + event) }
 
     private var parsedDate: Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.date(from: ts)
-    }
-
-    /// "2026-08-31T15:11:30-0300" -> "15:11:30". Unknown format -> raw tail,
-    /// never a fabricated time.
-    public var timeText: String {
-        guard let date = parsedDate else { return ts }
-        let out = DateFormatter()
-        out.dateFormat = "HH:mm:ss"
-        return out.string(from: date)
     }
 
     /// "31/08 · 15:11:30" for list rows (owner: date+time on the event).
@@ -242,8 +229,8 @@ public struct EventsLogResponse: Codable, Sendable {
 
 /// One protected-device INSTANCE as `GET /v1/devices` publishes it. `fields` is
 /// the type's own dictionary (the app knows each type's fields by hand — no
-/// schema→UI); `armed`/`state` come along on every read so the list never
-/// needs a second request.
+/// schema→UI). O estado de cada dispositivo vem do health, que é o que a tela
+/// já acompanha; ler o mesmo estado por duas rotas dava duas verdades.
 public struct DeviceInstance: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var type: String
@@ -253,12 +240,9 @@ public struct DeviceInstance: Codable, Equatable, Sendable, Identifiable {
     public var fields: [String: ConfigValue]
     public var createdAt: String?
     public var updatedAt: String?
-    public var armed: Bool?
-    public var state: String?
 
     public init(id: String, type: String, name: String, enabled: Bool? = nil, dryRun: Bool? = nil,
-                fields: [String: ConfigValue] = [:], createdAt: String? = nil, updatedAt: String? = nil,
-                armed: Bool? = nil, state: String? = nil) {
+                fields: [String: ConfigValue] = [:], createdAt: String? = nil, updatedAt: String? = nil) {
         self.id = id
         self.type = type
         self.name = name
@@ -267,8 +251,6 @@ public struct DeviceInstance: Codable, Equatable, Sendable, Identifiable {
         self.fields = fields
         self.createdAt = createdAt
         self.updatedAt = updatedAt
-        self.armed = armed
-        self.state = state
     }
 }
 
@@ -287,14 +269,10 @@ public struct DeviceTypeField: Codable, Equatable, Sendable {
     public var name: String
     public var type: String
     public var defaultValue: ConfigValue?
-    public var required: Bool?
-    public var min: Int?
-    public var max: Int?
-    public var pattern: String?
     public var enumValues: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case name, type, required, min, max, pattern
+        case name, type
         case defaultValue = "default"
         case enumValues = "enum"
     }
@@ -303,9 +281,6 @@ public struct DeviceTypeField: Codable, Equatable, Sendable {
 public struct DeviceTypeInfo: Codable, Equatable, Sendable, Identifiable {
     public var id: String
     public var labelPt: String
-    public var labelEn: String
-    public var defaultName: String
-    public var eventPrefix: String
     public var fields: [DeviceTypeField]
 
     public func defaultValue(for field: String) -> ConfigValue? {

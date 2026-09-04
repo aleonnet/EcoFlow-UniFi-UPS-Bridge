@@ -35,31 +35,29 @@ private func decode(_ json: String) throws -> HealthChain {
 @Test func decodeLegacyHealthYieldsNoNameAndNoState() throws {
     let chain = try decode(#"{"nut": "ok"}"#)
     #expect(chain.plugins == nil)
-    #expect(chain.pluginName(id: "udr7") == nil)
     #expect(chain.pluginDetail(id: "udr7") == nil)
+    #expect(DeviceNames.resolve(devices: [], health: chain).name(forDevice: "udr7", type: .udr7) == "UDR7")
 }
 
 // MARK: - Name resolution
 
-@Test func nameResolvesFromPluginsListBeforeAliasDetail() throws {
+@Test func nameResolvesFromPluginsList() throws {
     let chain = try decode("""
     {"plugins": [{"id": "udr7", "name": "Da lista"}],
      "udr7_detail": {"name": "Do alias"}}
     """)
-    #expect(chain.pluginName(id: "udr7") == "Da lista")
+    #expect(DeviceNames.resolve(devices: [], health: chain).name(forDevice: "udr7", type: .udr7) == "Da lista")
 }
 
-@Test func nameResolvesFromAliasDetailWhenPluginsAbsent() throws {
-    let chain = try decode(#"{"udr7_detail": {"name": "Do alias"}}"#)
-    #expect(chain.pluginName(id: "udr7") == "Do alias")
+@Test func detailComesFromTheAliasWhenTheListIsAbsent() throws {
+    let chain = try decode(#"{"udr7_detail": {"name": "Do alias", "state": "dry_run"}}"#)
+    #expect(chain.pluginDetail(id: "udr7")?.state == "dry_run")
     // The alias only ever mirrors the migrated instance.
-    #expect(chain.pluginName(id: "sshhost_3fa9c1d2") == nil)
     #expect(chain.pluginDetail(id: "sshhost_3fa9c1d2") == nil)
 }
 
 @Test func blankNameFallsBackToTheTypeDefault() throws {
     let chain = try decode(#"{"plugins": [{"id": "udr7", "name": "   "}]}"#)
-    #expect(chain.pluginName(id: "udr7") == nil)
     let names = DeviceNames.resolve(devices: [], health: chain)
     #expect(names.name(forDevice: "udr7", type: .udr7) == "UDR7")
 }

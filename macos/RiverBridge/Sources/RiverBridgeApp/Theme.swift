@@ -83,37 +83,6 @@ struct AuroraBackground: View {
     }
 }
 
-// MARK: - Glass panel
-
-struct GlassCard: ViewModifier {
-    var cornerRadius: CGFloat = 18
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        content
-            .padding(16)
-            .glassEffect(.regular, in: shape)
-            // Specular top edge + lift shadow: the contrast that makes glass
-            // read as a pane instead of a tinted card.
-            .overlay {
-                shape.strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.35), .white.opacity(0.05), .clear],
-                        startPoint: .top, endPoint: .bottom
-                    ),
-                    lineWidth: 1
-                )
-            }
-            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
-    }
-}
-
-extension View {
-    func glassCard(cornerRadius: CGFloat = 18) -> some View {
-        modifier(GlassCard(cornerRadius: cornerRadius))
-    }
-}
-
 // MARK: - Hover
 
 /// The house hover: a gentle lift with a colored halo. Reduce Motion keeps
