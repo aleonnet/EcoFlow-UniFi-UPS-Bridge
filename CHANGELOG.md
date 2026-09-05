@@ -38,6 +38,37 @@ oferece.
 ### Corrigido
 - O que a leitura da porta serial já garantia na tela passa a valer na
   publicação: watt vencido **sai** do NUT em vez de congelar.
+- **O gráfico parou de apagar e voltar a cada dois segundos.** O serviço
+  publicava DUAS leituras por ciclo — a proteção decidia e publicava sem os
+  watts, e a porta serial completava e publicava de novo. Entre as duas, a tela
+  via um aparelho "sem potência". Agora é uma publicação por volta, e ela é a
+  leitura inteira; o histórico também deixa de levar duas amostras por ciclo.
+- **A janela abre junto com o programa.** Antes só aparecia o ícone no Dock, e a
+  tela exigia um clique que ninguém adivinha.
+- **A tela do serviço volta a perguntar o estado.** Ela perguntava uma vez, na
+  abertura: quem ligasse a chave nos Ajustes do Sistema voltava e continuava
+  lendo "falta aprovar".
+- **O aviso do topo pergunta ao sistema**, não à presença de um arquivo. Uma
+  ficha órfã de instalação removida o fazia dizer "sem comunicação com o
+  serviço" quando a verdade era "o serviço não está instalado".
+- **Erro que não impediu o registro deixa de virar queixa** — a tela mostrava
+  "falta aprovar" e "operação não permitida" ao mesmo tempo.
+- **O empréstimo automático do cabo nasce desligado, e a detecção foi
+  corrigida.** Ela procurava o caminho do pacote do fabricante na linha de
+  comando de qualquer processo — o que não distingue "o dono abriu o aplicativo"
+  de "um ajudante de fundo dele está rodando". E o benefício não está
+  demonstrado: com o aplicativo deles aberto, o serviço continuou lendo o River
+  normalmente.
+- **O aviso não anuncia mais a marca do fabricante no título**, e deixou de
+  misturar duas línguas. O detalhe passa a ser o motivo REAL de quem pausou.
+
+### Avisos que faltavam
+- Na tela Serviço: **arrastar o programa para o Lixo NÃO remove o serviço** —
+  ele continua registrado e rodando, e a chave do console e as senhas ficam no
+  disco. Medido na bancada: foi exatamente o que aconteceu.
+- Um **LEIA-ME dentro do disco**, ao lado do programa, com as cinco coisas que
+  não se adivinham: arrastar, a primeira abertura pelos Ajustes do Sistema, o
+  `brew install nut`, instalar o serviço e como remover de verdade.
 
 ### Segurança
 - O soquete do driver é **0600**, mais estrito que o 0660 dos drivers do NUT — a

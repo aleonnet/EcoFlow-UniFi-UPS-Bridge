@@ -1,6 +1,6 @@
 # Handoff — 0.5.0: o serviço manda no River
 
-status: aceito
+status: superado por 2026-09-05-1727-handoff-0-7-0-driver-do-nut-e-o-disco.md
 data: 2026-09-04
 supera: 2026-09-04-0140-handoff-0-4-0-e-frente-do-river.md
 
