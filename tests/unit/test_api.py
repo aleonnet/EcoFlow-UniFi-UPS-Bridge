@@ -1428,3 +1428,23 @@ async def test_turning_publishing_off_is_not_announced_as_taking_effect_now(clie
     corpo = await r.json()
     assert corpo["aplicadas_a_quente"] == []
     assert corpo["restart_required"] is True
+
+
+async def test_erasing_the_state_pauses_the_reader_first_and_takes_everything(
+        client, server, tmp_path, monkeypatch):
+    """"Remover completamente" pela tela: o leitor e o servidor do no-break são
+    pausados ANTES de apagar (no pacote, a configuração e os soquetes deles moram
+    no diretório que sai), e o diretório de estado vai embora inteiro."""
+    estado = tmp_path / "estado"; (estado / "nut").mkdir(parents=True)
+    (estado / "nut" / "upsd.users").write_text("[x]\n")
+    (estado / "udr7_key").write_text("chave")
+    server.state_dir = str(estado)
+    monkeypatch.setenv("RUB_NUT_ETC", str(estado / "nut"))
+    server.supervisor = SupervisorFalso()
+
+    resp = await client.post("/v1/service/apagar-estado", headers=client.auth)
+    assert resp.status == 200
+    corpo = await resp.json()
+    assert set(corpo["apagados"]) == {"nut", "udr7_key"}
+    assert server.supervisor.acoes == ["pausar"]
+    assert not estado.exists()
