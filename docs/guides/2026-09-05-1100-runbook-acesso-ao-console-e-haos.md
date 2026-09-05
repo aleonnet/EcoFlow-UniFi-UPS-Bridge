@@ -1,8 +1,11 @@
 # Runbook — conectar o console pelo App, e pôr o Home Assistant para ler
 
-status: aceito
+status: superado por 2026-09-05-1327-runbook-o-home-assistant-com-tudo.md
 data: 2026-09-05
 supera: 2026-09-03-1710-runbook-protecao-udr7-por-instancia.md
+nota: a seção 1 (conectar o console pela tela) continua valendo; o que mudou é a
+parte do Home Assistant, reescrita no runbook novo depois de a ponte virar driver
+do NUT.
 
 ## 1. Conectar o console pelo App (0.6.0)
 

@@ -9,6 +9,8 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-05
+
 A ponte passa a ser **também um driver do NUT**. É o que faz o Home Assistant
 receber o mesmo que o aplicativo mostra — inclusive os watts por tomada, que o
 perfil de no-break do River não publica, e as ordens, que o leitor de fábrica não

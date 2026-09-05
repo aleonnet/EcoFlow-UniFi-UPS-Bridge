@@ -30,6 +30,14 @@ mesmo tempo — a automática e a do dono.
 
 O modo ensaio **não** entra aqui de propósito: ele governa o que a proteção faz
 sozinha numa queda de energia. Uma ordem que o dono dá agora é uma ordem.
+
+Uma pergunta que valia a pena responder antes da bancada: desligar o River abre
+uma conversa NOVA com o servidor do no-break, enquanto esse mesmo servidor espera
+a nossa resposta do comando. Isso travaria? Não: lido no código do NUT
+(`server/upsd.c`, o laço principal), o servidor faz `poll()` sobre todos os
+descritores de uma vez — clientes, portas de escuta e soquetes de driver — e a
+resposta de rastreio é guardada para depois (a própria limpeza dela tem uma hora
+de prazo). Ele não fica parado esperando driver nenhum.
 """
 
 from __future__ import annotations
