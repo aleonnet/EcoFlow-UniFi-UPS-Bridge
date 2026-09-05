@@ -105,8 +105,14 @@ AQUI="$(cd "$(dirname "$0")" && pwd)"
 ESTADO="${RUB_STATE_DIR:-/Library/Application Support/river-unifi-bridge}"
 mkdir -p "$ESTADO"; chmod 700 "$ESTADO"
 CONFIG="$ESTADO/bridge.env"
-[ -f "$CONFIG" ] || { cp "$AQUI/bridge.env.exemplo" "$CONFIG"; chmod 600 "$CONFIG"; }
 export PYTHONPATH="$AQUI/src:$AQUI/libs"
+# ANTES de criar a configuração de exemplo: se houver uma instalação anterior na
+# pasta de um usuário desta máquina, o estado dela (chave do console, histórico,
+# dispositivos e a configuração ajustada) vem para cá, uma vez. Depois do exemplo
+# no lugar, não daria mais: a configuração do dono perderia para ele.
+PYTHONDONTWRITEBYTECODE=1 "$AQUI/python/bin/python3" -m river_unifi_bridge.localtoken \
+  "$ESTADO" 2>/dev/null || true
+[ -f "$CONFIG" ] || { cp "$AQUI/bridge.env.exemplo" "$CONFIG"; chmod 600 "$CONFIG"; }
 export RUB_STATE_DIR="$ESTADO"
 export RUB_LAUNCHD=1
 # NADA é escrito dentro do pacote em tempo de execução: o Python grava `.pyc`

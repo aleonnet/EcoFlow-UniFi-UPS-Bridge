@@ -171,3 +171,16 @@ def test_what_comes_after_our_block_survives_a_rewrite(tmp_path):
     assert "[river-office]" in texto, "sumiu o que vinha ANTES do nosso trecho"
     assert "[outro-nobreak]" in texto, "sumiu o que vinha DEPOIS do nosso trecho"
     assert "[udr7]" in texto and 'desc = "antigo"' not in texto
+
+
+def test_removing_takes_the_marks_with_it(tmp_path):
+    """Um trecho vazio, só com as duas marcas, continuaria dizendo ao servidor do
+    no-break que este arquivo é nosso. A remoção completa tira tudo."""
+    caminho = arquivo(tmp_path)
+    nut_conf.atualizar(caminho, APARELHOS)
+    assert nut_conf.remover(caminho) is True
+    texto = open(caminho, encoding="utf-8").read()
+    assert nut_conf.MARCA_INICIO not in texto and nut_conf.MARCA_FIM not in texto
+    assert "[river-office]" in texto and texto.startswith("maxretry = 3")
+    # E remover de novo não muda nada: não há o que tirar.
+    assert nut_conf.remover(caminho) is False

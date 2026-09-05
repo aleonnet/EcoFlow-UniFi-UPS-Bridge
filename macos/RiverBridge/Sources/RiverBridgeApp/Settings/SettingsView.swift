@@ -198,6 +198,10 @@ struct SettingsView: View {
                 // HIG: steppers are for SMALL ranges; for a large range with a
                 // handful of sensible values, a picker fits mouse AND finger
                 // (developer.apple.com/design/human-interface-guidelines/steppers).
+                // O serviço vem PRIMEIRO: enquanto ele não estiver no ar,
+                // ninguém está vigiando a energia, e nenhum outro ajuste desta
+                // tela tem efeito nenhum.
+                ServicoGroup()
                 SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
                     HStack(spacing: 10) {
                         Image(systemName: "circle.lefthalf.filled")

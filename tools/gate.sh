@@ -710,16 +710,28 @@ cena_mutacao S47 src/river_unifi_bridge/nut_conf.py \
 # atômica passa pela permissão da PASTA, então sem esta conferência o "não mexa"
 # dele era ignorado em silêncio.
 cena_mutacao S47b src/river_unifi_bridge/nut_conf.py \
-    "    if not os.access(caminho, os.W_OK):" \
-    "    if False:" \
+    '    if not os.access(caminho, os.W_OK):
+        raise ConfMalformada(
+            f"{caminho} está sem permissão de escrita; respeito isso e não mexo nele")
+    depois = _troca_o_bloco(antes, bloco(aparelhos))' \
+    "    depois = _troca_o_bloco(antes, bloco(aparelhos))" \
     tests/unit/test_nut_conf.py::test_a_file_the_owner_locked_stays_locked
 
 # S48 — link simbólico é seguido, não destruído. Sem isto, quem guarda a
 # configuração do NUT num repositório pessoal passava a editar um arquivo que o
 # NUT não lê mais, e a edição dele sumia sem uma linha de registro.
 cena_mutacao S48 src/river_unifi_bridge/nut_conf.py \
-    "    caminho = os.path.realpath(caminho)" \
-    "    caminho = caminho" \
+    '    caminho = os.path.realpath(caminho)
+    try:
+        with open(caminho, encoding="utf-8") as arquivo:
+            antes = arquivo.read()
+    except OSError:
+        return False                      # não existe, ou não é nosso: não criamos' \
+    '    try:
+        with open(caminho, encoding="utf-8") as arquivo:
+            antes = arquivo.read()
+    except OSError:
+        return False                      # não existe, ou não é nosso: não criamos' \
     tests/unit/test_nut_conf.py::test_a_symlink_is_followed_not_destroyed
 
 # S49 — o corte de um valor comprido não pode cair no MEIO de um par de escape:

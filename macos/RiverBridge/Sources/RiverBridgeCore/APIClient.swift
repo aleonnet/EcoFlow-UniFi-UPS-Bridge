@@ -127,6 +127,20 @@ public struct APIClient: Sendable {
         _ = try await run(request("v1/service/restart", method: "POST"), accept: [202])
     }
 
+    /// Apaga o que o serviço criou nesta máquina — chave do console, senhas,
+    /// histórico, dispositivos e o trecho dele na configuração do no-break.
+    ///
+    /// Quem apaga é o SERVIÇO, não o programa: instalado arrastando, ele roda
+    /// como serviço de sistema e é dono dos arquivos; o programa roda como o
+    /// dono e não conseguiria tocá-los. E é por isso que esta chamada vem ANTES
+    /// de desregistrar — desregistrar mata o serviço e deixaria tudo no disco.
+    @discardableResult
+    public func apagarEstadoDoServico() async throws -> [String] {
+        struct Resposta: Decodable { let apagados: [String] }
+        let dados = try await run(request("v1/service/apagar-estado", method: "POST"))
+        return (try? JSONCoding.decoder().decode(Resposta.self, from: dados).apagados) ?? []
+    }
+
     // MARK: - Dispositivos por instância (2026-09-03)
 
     /// GET /v1/device-types — the daemon's catalog of types (404 on a 0.2.0 daemon).

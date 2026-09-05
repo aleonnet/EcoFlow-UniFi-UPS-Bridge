@@ -128,6 +128,11 @@ def atualizar(caminho: str, aparelhos: list[tuple[str, str]]) -> bool:
     depois = _troca_o_bloco(antes, bloco(aparelhos))
     if depois == antes:
         return False
+    return _gravar(caminho, depois)
+
+
+def _gravar(caminho: str, depois: str) -> bool:
+    """A troca atômica, com o conteúdo no disco ANTES da troca de nome."""
     pasta = os.path.dirname(caminho) or "."
     modo = os.stat(caminho).st_mode & 0o777
     descritor, temporario = tempfile.mkstemp(dir=pasta, prefix=".ups.conf.")
@@ -159,3 +164,26 @@ def atualizar(caminho: str, aparelhos: list[tuple[str, str]]) -> bool:
             pass
         raise
     return True
+
+
+def remover(caminho: str) -> bool:
+    """Tira o trecho inteiro — marcas incluídas — e deixa o resto intacto.
+
+    É o que a remoção completa pede: um trecho vazio, só com as duas marcas,
+    continuaria dizendo ao servidor do no-break que este arquivo é nosso.
+    """
+    caminho = os.path.realpath(caminho)
+    try:
+        with open(caminho, encoding="utf-8") as arquivo:
+            antes = arquivo.read()
+    except OSError:
+        return False
+    if MARCA_INICIO not in antes:
+        return False
+    if not os.access(caminho, os.W_OK):
+        raise ConfMalformada(
+            f"{caminho} está sem permissão de escrita; respeito isso e não mexo nele")
+    depois = _troca_o_bloco(antes, "")
+    if depois == antes:
+        return False
+    return _gravar(caminho, depois)
