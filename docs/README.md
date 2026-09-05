@@ -60,6 +60,8 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | `plans/2026-09-04-0140-handoff-0-4-0-e-frente-do-river.md` | superado por `plans/2026-09-04-1140-…` | **Handoff vivo**: 0.4.0 com os vinte consertos, o River 3 Plus medido no Mac mini, o que está instalado à mão lá, e a frente do River (B30–B41) |
 | `guides/2026-09-05-1100-runbook-acesso-ao-console-e-haos.md` | aceito | **Como conectar o console pelo App** (sem terminal, sem criar chave) e o que falta para o Home Assistant ler do nosso servidor NUT |
 | `plans/2026-09-05-0930-acesso-ao-console-pela-tela.md` | aceito | O plano da 0.6.0: acesso pela tela e o portão que exige alcance provado |
+| `plans/2026-09-05-1730-instalar-arrastando-o-app.md` | proposto | O App instalado arrastando: serviço dentro do pacote, DMG e remoção completa pela tela |
+| `plans/2026-09-05-1139-o-river-bridge-vira-driver-do-nut.md` | aceito | **O plano da 0.7.0**: a ponte vira driver do NUT (watts por tomada e comandos para o Home Assistant), o cabo emprestado sozinho ao aplicativo da EcoFlow, e o DMG. Traz as duas correções de rumo: o driver de mentira não carrega comando, e o Home Assistant só entende nome de comando da lista fechada dele |
 | `plans/2026-09-04-1140-handoff-0-5-0-o-servico-manda-no-river.md` | aceito | **Handoff vivo**: a 0.5.0 entregue, os seis bloqueadores da revisão fria já corrigidos, o que ficou fora com o motivo, e a bancada que falta no Mac mini |
 | `API_LOCAL_20260831.md` | superado por `reference/api-local.md` | Contrato da API local até a 0.2.0 (sem as rotas de dispositivos) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |

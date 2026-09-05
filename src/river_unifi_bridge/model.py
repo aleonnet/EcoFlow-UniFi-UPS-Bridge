@@ -73,6 +73,11 @@ class UpsSnapshot:
 
     states: list[str] = field(default_factory=list)
     unknown_tokens: list[str] = field(default_factory=list)
+    # O `ups.status` como o NUT o escreveu ("OL CHRG"). Guardado porque é o que
+    # todo cliente do protocolo espera ler — e nós voltamos a ser um driver do
+    # NUT: reconstruir a partir dos nomes normalizados perderia a ordem e os
+    # tokens que não conhecemos, que são exatamente os que não podem sumir.
+    status_raw: str = ""
     input_voltage_v: float | None = None
     output_voltage_v: float | None = None
     output_power_w: float | None = None
@@ -181,6 +186,7 @@ def snapshot_from_nut_vars(name: str, nut_vars: dict[str, str]) -> UpsSnapshot:
         driver_version=nut_vars.get("driver.version") or None,
         states=states,
         unknown_tokens=unknown,
+        status_raw=(nut_vars.get("ups.status") or ""),
         alarm=[a for a in (nut_vars.get("ups.alarm"),) if a],
         timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
