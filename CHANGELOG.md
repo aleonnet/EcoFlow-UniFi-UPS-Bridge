@@ -9,6 +9,54 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-09-05
+
+A UX que o dono determinou, inteira: **nada pede terminal**. A 0.7.0 tinha entregado o
+desenho técnico e não a experiência; esta versão entrega a experiência — e o que ela
+descobriu de errado no caminho.
+
+### Adicionado
+- **Arrastar o programa para o Lixo remove tudo.** O serviço vigia onde o pacote está
+  (pelo caminho atual do próprio `Info.plist`, que acompanha o `mv` do Finder); no Lixo,
+  ele para o leitor, apaga a chave do console, as senhas, o histórico, os dispositivos e a
+  configuração do NUT, se desregistra e sai. Mover para outra pasta ou atualizar (o pacote
+  novo no lugar do antigo) não dispara nada; relançado de dentro do Lixo, remove na
+  primeira volta. O diário em `/Library/Logs` fica de propósito.
+- **O NUT vai dentro do pacote.** O leitor (`usbhid-ups`), o servidor (`upsd`) e as três
+  bibliotecas que eles carregam vêm do Homebrew 2.8.5 com as referências reescritas para
+  dentro do pacote, e o empacotador prova as duas coisas: zero referência ao Homebrew e os
+  dois binários rodando de dentro do pacote. A configuração e o estado do NUT moram no
+  nosso diretório, pelas variáveis que o NUT documenta (`NUT_CONFPATH`, `NUT_STATEPATH`).
+  Licença GPL-2.0-or-later, com o texto e a fonte ao lado (`NOTICE-NUT.txt`).
+- **As três travas viram interruptores** em Ajustes › Travas, com confirmação ao ligar e
+  aplicação a quente: armar a proteção, desligar o River, mandar nos dispositivos. Fechada,
+  o ato não existe — nem na tela, nem no Home Assistant. Fechar a de armamento com uma
+  proteção armada continua recusado. O aparelho publicado no NUT acompanha o interruptor a
+  cada volta, sem reinício.
+- **O Home Assistant pela rede é um interruptor** em Ajustes › Home Assistant: reescreve
+  só o `upsd.conf` que o serviço escreveu, reinicia só o servidor, e recusa tocar num
+  arquivo escrito à mão pelo dono (`GET|PUT /v1/nut/rede`).
+- **Disco assinado com Developer ID, runtime endurecido e notarizado.** Cada Mach-O do
+  pacote (Python, dependências, NUT, executável) é assinado de dentro para fora; o disco
+  vai à Apple, tem de voltar "Accepted", e o ticket é grampeado no disco e no programa. A
+  release recusa publicar sem isso (só `--ad-hoc`, explícito).
+
+### Corrigido
+- **O cabo do River vai e volta sozinho, sem botão — e agora de verdade.** A detecção da
+  0.7.0 casava o daemon permanente da EcoFlow (o caminho dele passa por
+  `Contents/MacOS/`), e ligada teria largado o cabo para sempre; passa a casar só o
+  executável da interface (`/Contents/MacOS/PowerManager$`, medido no Mac mini com a
+  interface aberta). O automático nasce ligado; os botões Entregar/Retomar saíram da tela.
+- O LEIA-ME do disco deixou de mandar rodar `brew install nut` e de avisar que o Lixo não
+  remove: as duas coisas deixaram de ser verdade.
+- O aviso do Lixo na tela Serviço diz o que acontece agora, com o ícone certo.
+
+### Removido
+- `tools/river-cabo.sh`: falava de agentes de usuário que a 0.5.0 aposentou, e era a
+  origem dos dois agentes que sobraram no Mac mini.
+- `FILE_ONLY_KEYS` e a recusa `chave_somente_arquivo`: as travas deixaram de ser "somente
+  arquivo".
+
 ## [0.7.0] — 2026-09-05
 
 A ponte passa a ser **também um driver do NUT**. É o que faz o Home Assistant
