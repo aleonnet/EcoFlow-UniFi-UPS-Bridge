@@ -62,6 +62,10 @@ struct RiverBridgeApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        // A janela aparece AO ABRIR o programa. Sem isto, quem abria o River
+        // Bridge via só o ícone no Dock e a barra de menu — a tela só surgia
+        // depois de um clique no Dock, o que ninguém adivinha (dono, no Mac
+        // mini, 2026-09-05).
         Window("River Bridge", id: "main") {
             DashboardWindow(store: store)
                 // Min width = iPhone XR width (owner 2026-08-31): shrinking
@@ -88,6 +92,12 @@ struct RiverBridgeApp: App {
         .windowStyle(.hiddenTitleBar)
         // A power panel always opens on Energia — never on a restored tab.
         .restorationBehavior(.disabled)
+        // E ela ABRE ao lançar o programa. Com `.restorationBehavior(.disabled)`
+        // não há janela restaurada, e um programa que também vive na barra de
+        // menu não abre janela sozinho: quem abria o River Bridge via só o ícone
+        // no Dock e nada mais, até clicar no Dock de novo (dono, no Mac mini,
+        // 2026-09-05). É o comportamento documentado de `defaultLaunchBehavior`.
+        .defaultLaunchBehavior(.presented)
     }
 
     /// True behind-window translucency. SwiftUI's containerBackground with a

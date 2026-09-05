@@ -98,6 +98,7 @@ class NutSupervisor:
         self._driver: subprocess.Popen | None = None
         self._servidor: subprocess.Popen | None = None
         self._pausado = False
+        self._motivo_da_pausa: str | None = None
         # Recuo: um leitor que não sobe (cabo solto, aparelho desligado) não pode
         # virar tempestade de processos. Cada falha seguida espera mais, até o teto.
         self._falhas = 0
@@ -214,6 +215,7 @@ class NutSupervisor:
         """Larga o cabo. O aplicativo do fabricante consegue abrir o aparelho."""
         with self._lock:
             self._pausado = True
+            self._motivo_da_pausa = motivo
             self._parar(self._servidor)
             self._parar(self._driver)
             self._servidor = None
@@ -256,8 +258,12 @@ class NutSupervisor:
     def estado(self) -> EstadoDoCabo:
         with self._lock:
             if self._pausado:
+                # O motivo REAL de quem pausou, não uma frase fixa. A anterior
+                # dizia "liberado para o aplicativo da EcoFlow" acontecesse o que
+                # acontecesse — inclusive quando quem pausou foi o dono pela tela.
                 return EstadoDoCabo(lendo=False, pausado_pelo_dono=True,
-                                    motivo="liberado para o aplicativo da EcoFlow")
+                                    motivo=self._motivo_da_pausa
+                                    or "o leitor foi pausado")
             vivo = self._driver is not None and self._driver.poll() is None
             if vivo:
                 return EstadoDoCabo(lendo=True, pausado_pelo_dono=False)

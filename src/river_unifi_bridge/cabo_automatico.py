@@ -29,10 +29,21 @@ from __future__ import annotations
 import subprocess
 import time
 
-# O caminho do pacote do aplicativo do fabricante, lido dentro dele em 2026-09-04.
-# É o que se procura na linha de comando dos processos: o nome do executável
-# dentro do pacote pode mudar entre versões, o caminho do pacote não.
-APLICATIVO_DO_FABRICANTE = "/Applications/PowerManager.app"
+# O executável do APLICATIVO do fabricante — não o pacote inteiro.
+#
+# A primeira versão procurava `/Applications/PowerManager.app`, o caminho do
+# pacote, na linha de comando de qualquer processo. Isso não distingue "o dono
+# abriu o aplicativo" de "um ajudante de fundo dele está rodando": a EcoFlow
+# instala um daemon de sistema que roda SEMPRE (lido dentro do pacote deles em
+# 2026-09-04), e o binário de um ajudante de `.app` mora dentro do próprio
+# pacote. O serviço roda como root e enxerga todo processo da máquina, então o
+# casamento era permanente — o cabo era largado no primeiro ciclo e nunca voltava,
+# com o aplicativo fechado (visto pelo dono no Mac mini, 2026-09-05).
+#
+# `Contents/MacOS/` é onde mora o executável principal de um aplicativo, e só
+# ele: ajudantes vivem em `Contents/Resources`, `Contents/Library` ou
+# `Contents/Helpers`. É a diferença entre "aberto" e "instalado".
+APLICATIVO_DO_FABRICANTE = "/Applications/PowerManager.app/Contents/MacOS/"
 # De quanto em quanto tempo olhamos. Não é a cada ciclo do laço (2 s) de
 # propósito: cada olhada é um processo novo, e o que se ganha em pressa não paga.
 # Com 5 s, o aplicativo do fabricante espera no máximo isso para receber o cabo.

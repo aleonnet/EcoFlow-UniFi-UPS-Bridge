@@ -65,7 +65,16 @@ struct ServicoGroup: View {
                 }
             }
         }
-        .task { conferir() }
+        .task {
+            // Perguntar UMA vez era o defeito que o dono viu no Mac mini em
+            // 2026-09-05: ele ligou a chave nos Ajustes do Sistema, voltou, e a
+            // tela continuava dizendo "falta aprovar". O macOS não avisa quando
+            // isso muda — quem tem de perguntar de novo somos nós.
+            while !Task.isCancelled {
+                conferir()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
         .confirmacao(Binding(
             get: {
                 guard perguntandoSeRemove else { return nil }
@@ -102,35 +111,48 @@ struct ServicoGroup: View {
     // MARK: - o que a tela faz
 
     private func conferir() {
+        estado = Self.estadoAgora()
+    }
+
+    /// Em que pé o serviço está, AGORA, perguntando ao sistema.
+    ///
+    /// É função de módulo porque o painel principal também precisa dela: até
+    /// aqui ele decidia pela presença do arquivo de ficha, e uma ficha órfã de
+    /// uma instalação removida o fazia dizer "sem comunicação com o serviço"
+    /// quando a verdade era "o serviço não está instalado" (visto pelo dono no
+    /// Mac mini, 2026-09-05). Duas fontes para a mesma pergunta, e a errada
+    /// falava primeiro.
+    static func estadoAgora() -> EstadoDoServico {
         // A recusa cruzada vem PRIMEIRO: com o serviço instalado pela linha de
         // comando, registrar outro daria dois vigias disputando o mesmo cabo e a
         // mesma porta, e o que perdesse ficaria mudo sem ninguém perceber.
-        if InstalacaoPelaLinhaDeComando.existe() {
-            estado = .instaladoPelaLinhaDeComando
-            return
-        }
-        switch SMAppService.daemon(plistName: Self.plistDoServico).status {
-        case .enabled: estado = .noAr
-        case .requiresApproval: estado = .esperandoAprovacao
-        case .notRegistered: estado = .naoInstalado
-        case .notFound: estado = .desligadoPeloSistema
-        @unknown default: estado = .naoInstalado
+        if InstalacaoPelaLinhaDeComando.existe() { return .instaladoPelaLinhaDeComando }
+        switch SMAppService.daemon(plistName: plistDoServico).status {
+        case .enabled: return .noAr
+        case .requiresApproval: return .esperandoAprovacao
+        case .notRegistered: return .naoInstalado
+        case .notFound: return .desligadoPeloSistema
+        @unknown default: return .naoInstalado
         }
     }
 
     private func instalar() {
         trabalhando = true
         recado = nil
+        var queixa: String?
         do {
             try SMAppService.daemon(plistName: Self.plistDoServico).register()
         } catch {
-            // O erro mais comum aqui É o pedido de aprovação, e ele não é falha:
-            // a documentação diz que o sistema não sobe o serviço "until an admin
-            // approves the LaunchDaemon in System Preferences".
-            recado = L10n.t("O macOS respondeu: ", "macOS said: ") + error.localizedDescription
+            queixa = L10n.t("O macOS respondeu: ", "macOS said: ") + error.localizedDescription
         }
         trabalhando = false
         conferir()
+        // Erro que NÃO impediu o registro não é queixa: o dono via, na mesma
+        // tela, "falta aprovar" e "a operação não pôde ser concluída", e as duas
+        // não podiam ser verdade ao mesmo tempo (Mac mini, 2026-09-05). Se o
+        // sistema já conhece o serviço, o registro valeu — o que falta é o ato
+        // dele nos Ajustes, que a linha de cima já explica.
+        recado = (estado == .esperandoAprovacao || estado == .noAr) ? nil : queixa
         aoMudar()
     }
 

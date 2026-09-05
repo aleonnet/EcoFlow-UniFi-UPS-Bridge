@@ -64,7 +64,8 @@ struct DashboardWindow: View {
 
                 Group {
                     switch section {
-                    case .energia: EnergiaSection(store: store)
+                    case .energia:
+                        EnergiaSection(aoPedirAjustes: { section = .ajustes }, store: store)
                     case .saude: HealthView(store: store)
                     case .ajustes: SettingsView(store: store)
                     }
@@ -168,6 +169,9 @@ struct DashboardWindow: View {
 
 // Energia = hero flow + dense chart + compact events, all on the ground.
 struct EnergiaSection: View {
+    /// Levar o dono para os Ajustes é decisão de quem tem as abas na mão.
+    var aoPedirAjustes: () -> Void = {}
+
     var store: TelemetryStore
     @State private var scrollOffset: CGFloat = 0
     @State private var headerMinY: CGFloat = 1000
@@ -194,16 +198,10 @@ struct EnergiaSection: View {
         ScrollView(showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: Espaco.medio, pinnedViews: [.sectionHeaders]) {
                 Section {
-                    if case .serviceDown(let reason) = store.phase {
-                        ConnectionBanner(reason: reason)
-                    }
-                    // O cabo pode ter ido para o aplicativo da EcoFlow sozinho.
-                    // Sem este aviso, a tela ficava parada e o dono não tinha
-                    // como saber por quê — a troca não tem botão, por decisão
-                    // dele.
-                    if store.health?.cabo?.pausado == true {
-                        CaboEmprestadoBanner(motivo: store.health?.cabo?.motivo)
-                    }
+                    // O aviso do topo diz o que está faltando AGORA, e o que
+                    // fazer. Ele pergunta ao sistema em que pé o serviço está —
+                    // não deduz pela presença de um arquivo.
+                    AvisoDoTopo(store: store, aoPedirAjustes: aoPedirAjustes)
                     FlowScene(store: store)
                     ChartsView(store: store, chips: selectedChips)
                 }
@@ -254,6 +252,58 @@ struct EnergiaSection: View {
     }
 }
 
+/// O aviso do topo: o que está faltando agora, e o que fazer a respeito.
+///
+/// Ele existe porque a tela silenciava ou errava justamente quando o dono mais
+/// precisava dela. Duas coisas medidas no Mac mini em 2026-09-05:
+///
+/// - com uma ficha órfã de uma instalação removida, o painel dizia "sem
+///   comunicação com o serviço" — como se houvesse um serviço inalcançável —
+///   quando a verdade era que ele não estava instalado. A pergunta agora é feita
+///   ao sistema (`ServicoGroup.estadoAgora()`), não ao sistema de arquivos.
+/// - sem o NUT instalado, o serviço sobe, não acha o leitor do no-break e diz
+///   isso no estado do cabo; a tela não mostrava nada, e o dono via um programa
+///   vazio e mudo.
+///
+/// A ordem é a de quem está travado: primeiro o que impede tudo.
+struct AvisoDoTopo: View {
+    var store: TelemetryStore
+    var aoPedirAjustes: () -> Void
+    @State private var servico: EstadoDoServico = .naoInstalado
+
+    var body: some View {
+        Group {
+            if servico == .naoInstalado || servico == .esperandoAprovacao {
+                Aviso(tom: .atencao, texto: servico.titulo, detalhe: servico.explicacao,
+                      simbolo: "power",
+                      rotuloDaAcao: L10n.t("Abrir Ajustes", "Open Settings"),
+                      acao: aoPedirAjustes)
+            } else if let motivoDoCabo = store.health?.cabo?.motivo,
+                      store.health?.cabo?.lendo == false {
+                // A frase vem do SERVIÇO — é ele que sabe se o NUT falta, se o
+                // leitor não subiu ou se o cabo está emprestado.
+                Aviso(tom: .atencao,
+                      texto: L10n.t("O River não está sendo lido",
+                                    "The River is not being read"),
+                      detalhe: motivoDoCabo,
+                      simbolo: "cable.connector.horizontal")
+            } else if case .serviceDown(let motivo) = store.phase {
+                ConnectionBanner(reason: motivo)
+            }
+        }
+        .task {
+            // De novo, e de novo. O macOS não avisa quando o dono liga a chave
+            // nos Ajustes do Sistema: quem tem de perguntar somos nós. Sem isto
+            // a tela ficava congelada em "falta aprovar" DEPOIS de aprovado —
+            // visto pelo dono no Mac mini, 2026-09-05, e ele chamou o que era.
+            while !Task.isCancelled {
+                servico = ServicoGroup.estadoAgora()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+}
+
 struct ConnectionBanner: View {
     let reason: String
 
@@ -263,23 +313,20 @@ struct ConnectionBanner: View {
     }
 }
 
-/// O cabo do River está com o aplicativo da EcoFlow.
+/// O leitor do no-break está pausado.
 ///
-/// Este aviso é a única coisa que o dono vê da troca automática — não há botão,
-/// por decisão dele. Ele fica na tela o TEMPO TODO em que o cabo está fora, e
-/// não só no instante da troca: um aviso que passa não explica por que a tela
-/// está parada cinco minutos depois.
-struct CaboEmprestadoBanner: View {
+/// O título diz o ESTADO — não o nome de outro programa. A versão anterior
+/// anunciava a marca do fabricante no topo da tela, e ainda por cima misturava
+/// duas línguas (título do app, detalhe do serviço). O dono chamou o que era.
+struct LeitorPausadoBanner: View {
     let motivo: String?
 
     var body: some View {
         Aviso(
             tom: .atencao,
-            texto: L10n.t("O cabo do River está com o aplicativo da EcoFlow",
-                          "The River's cable is with the EcoFlow app"),
-            detalhe: motivo ?? L10n.t(
-                "Enquanto ele estiver lá, a energia não está sendo vigiada. Assim que aquele aplicativo fechar, o cabo volta sozinho.",
-                "While it is there, power is not being watched. As soon as that app closes, the cable comes back on its own."),
-            simbolo: "cable.connector.horizontal")
+            texto: L10n.t("O leitor do no-break está pausado",
+                          "The UPS reader is paused"),
+            detalhe: motivo,
+            simbolo: "pause.circle")
     }
 }
