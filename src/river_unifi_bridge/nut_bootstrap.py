@@ -61,8 +61,55 @@ CONTA_DE_LEITURA = """# Conta de LEITURA para outros programas desta máquina (o
     upsmon secondary
 """
 
-UPSD_CONF = "LISTEN 127.0.0.1 3493\n"
+# As duas formas do `upsd.conf` que NÓS escrevemos: só esta máquina, ou a rede
+# local (é o que o Home Assistant, noutra máquina, precisa). Qualquer outra
+# forma é do dono, e o interruptor da tela não toca nela.
+UPSD_CONF_LOCAL = "LISTEN 127.0.0.1 3493\n"
+UPSD_CONF_REDE = "LISTEN 0.0.0.0 3493\n"
+UPSD_CONF = UPSD_CONF_LOCAL
 NUT_CONF = "MODE=standalone\n"
+
+
+class ConfiguracaoDoDono(Exception):
+    """O `upsd.conf` não é o que escrevemos: é do dono, e fica como está."""
+
+
+def rede_aberta(etc: str = ETC_PADRAO) -> bool | None:
+    """O servidor do no-break aceita a rede? `None` = o arquivo não é nosso, ou não existe."""
+    try:
+        with open(os.path.join(etc, "upsd.conf"), encoding="utf-8") as fh:
+            conteudo = fh.read()
+    except OSError:
+        return None
+    if conteudo == UPSD_CONF_REDE:
+        return True
+    if conteudo == UPSD_CONF_LOCAL:
+        return False
+    return None
+
+
+def abrir_para_a_rede(etc: str, aberta: bool) -> bool:
+    """Liga ou desliga a escuta na rede. Devolve se o arquivo mudou.
+
+    Só mexe num `upsd.conf` que seja EXATAMENTE uma das duas formas nossas: o
+    dono que configurou o servidor à mão continua com o arquivo dele, e a tela
+    diz isso em vez de reescrever por cima. A linha `LISTEN` só é lida na
+    partida do servidor (upsd.conf(5): "This parameter will only be read at
+    startup"), então quem chama reinicia o servidor depois.
+    """
+    caminho = os.path.join(etc, "upsd.conf")
+    atual = rede_aberta(etc)
+    if atual is None:
+        raise ConfiguracaoDoDono(
+            f"{caminho} não é o arquivo que o serviço escreveu; ele é seu e fica como está")
+    if atual == aberta:
+        return False
+    novo = UPSD_CONF_REDE if aberta else UPSD_CONF_LOCAL
+    modo = os.stat(caminho).st_mode & 0o777
+    descritor = os.open(caminho, os.O_WRONLY | os.O_TRUNC, modo)
+    with os.fdopen(descritor, "w", encoding="utf-8") as fh:
+        fh.write(novo)
+    return True
 
 
 def _gid_admin() -> int | None:

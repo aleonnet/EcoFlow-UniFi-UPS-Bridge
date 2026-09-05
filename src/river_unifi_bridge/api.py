@@ -206,7 +206,55 @@ class ApiServer:
         app.router.add_post("/v1/river/cabo", self._h_river_cabo_post)
         app.router.add_post("/v1/river/desligar", self._h_river_desligar)
         app.router.add_put("/v1/river/aparelho", self._h_river_aparelho)
+        app.router.add_get("/v1/nut/rede", self._h_nut_rede_get)
+        app.router.add_put("/v1/nut/rede", self._h_nut_rede_put)
         return app
+
+    # -- o servidor do no-break na rede (o Home Assistant mora noutra máquina) --
+
+    @staticmethod
+    def _etc_do_nut() -> str:
+        return os.environ.get("RUB_NUT_ETC") or "/opt/homebrew/etc/nut"
+
+    async def _h_nut_rede_get(self, _req: web.Request) -> web.Response:
+        """`aberta`: true/false quando o arquivo é nosso; null quando é do dono."""
+        from . import nut_bootstrap
+
+        aberta = await asyncio.to_thread(nut_bootstrap.rede_aberta, self._etc_do_nut())
+        return web.json_response({"aberta": aberta, "propria": aberta is not None})
+
+    async def _h_nut_rede_put(self, request: web.Request) -> web.Response:
+        """Liga ou desliga a escuta na rede local — o interruptor da tela.
+
+        Até a 0.7.0 isto era editar o `upsd.conf` à mão e reiniciar o serviço
+        (o caminho de nerd que o dono vetou). A linha só é lida na partida do
+        servidor, então o servidor do no-break é reiniciado aqui — só ele: o
+        leitor de fábrica segura o cabo do River e não é tocado.
+        """
+        from . import nut_bootstrap
+
+        try:
+            corpo = await request.json()
+        except Exception:
+            return self._refuse(400, "validacao", "esperado {\"aberta\": true|false}")
+        if not isinstance(corpo.get("aberta"), bool):
+            return self._refuse(400, "validacao", "aberta tem de ser true ou false")
+        try:
+            mudou = await asyncio.to_thread(
+                nut_bootstrap.abrir_para_a_rede, self._etc_do_nut(), corpo["aberta"])
+        except nut_bootstrap.ConfiguracaoDoDono as exc:
+            return self._refuse(409, "configuracao_do_dono", str(exc))
+        except OSError as exc:
+            return self._refuse(500, "arquivo_nut",
+                                f"não consegui gravar a configuração do no-break: {exc}"[:200])
+        reiniciado = False
+        if mudou and self.supervisor is not None:
+            await asyncio.to_thread(self.supervisor.reiniciar_servidor)
+            reiniciado = True
+        log_json("WARN" if mudou else "INFO", "nut_rede",
+                 aberta=corpo["aberta"], mudou=mudou, servidor_reiniciado=reiniciado)
+        return web.json_response({"aberta": corpo["aberta"], "mudou": mudou,
+                                  "servidor_reiniciado": reiniciado})
 
     # -- o River como APARELHO: quem está com o cabo, e o que mandamos nele ---
 

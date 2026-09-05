@@ -996,6 +996,54 @@ class SupervisorFalso:
         self.acoes.append("retomar"); self._lendo = True; self._pausado = False
         return EstadoDoCabo(lendo=True, pausado_pelo_dono=False)
 
+    def reiniciar_servidor(self):
+        self.acoes.append("reiniciar_servidor")
+
+
+async def test_the_network_switch_rewrites_our_upsd_conf_and_restarts_the_server(
+        client, server, tmp_path, monkeypatch):
+    """O Home Assistant mora noutra máquina: o interruptor da tela abre a escuta
+    na rede e reinicia SÓ o servidor (a linha LISTEN só é lida na partida)."""
+    from river_unifi_bridge import nut_bootstrap
+
+    etc = tmp_path / "nut"; etc.mkdir()
+    (etc / "upsd.conf").write_text(nut_bootstrap.UPSD_CONF_LOCAL)
+    monkeypatch.setenv("RUB_NUT_ETC", str(etc))
+    server.supervisor = SupervisorFalso()
+
+    resp = await client.get("/v1/nut/rede", headers=client.auth)
+    assert await resp.json() == {"aberta": False, "propria": True}
+
+    resp = await client.put("/v1/nut/rede", json={"aberta": True}, headers=client.auth)
+    assert resp.status == 200
+    assert await resp.json() == {"aberta": True, "mudou": True, "servidor_reiniciado": True}
+    assert (etc / "upsd.conf").read_text() == nut_bootstrap.UPSD_CONF_REDE
+    assert server.supervisor.acoes == ["reiniciar_servidor"]
+
+    # Já aberta: nada muda, nada reinicia.
+    resp = await client.put("/v1/nut/rede", json={"aberta": True}, headers=client.auth)
+    assert (await resp.json())["mudou"] is False
+    assert server.supervisor.acoes == ["reiniciar_servidor"]
+
+    resp = await client.put("/v1/nut/rede", json={"aberta": "sim"}, headers=client.auth)
+    assert resp.status == 400
+
+
+async def test_the_network_switch_never_touches_the_owners_upsd_conf(
+        client, server, tmp_path, monkeypatch):
+    etc = tmp_path / "nut"; etc.mkdir()
+    proprio = "LISTEN 192.168.1.13 3493\nMAXAGE 30\n"
+    (etc / "upsd.conf").write_text(proprio)
+    monkeypatch.setenv("RUB_NUT_ETC", str(etc))
+    server.supervisor = SupervisorFalso()
+
+    resp = await client.get("/v1/nut/rede", headers=client.auth)
+    assert await resp.json() == {"aberta": None, "propria": False}
+    resp = await client.put("/v1/nut/rede", json={"aberta": True}, headers=client.auth)
+    assert resp.status == 409 and (await resp.json())["motivo"] == "configuracao_do_dono"
+    assert (etc / "upsd.conf").read_text() == proprio
+    assert server.supervisor.acoes == []
+
 
 async def test_the_cable_can_be_lent_and_taken_back(client, server):
     """Emprestar o cabo é ATO explícito, e a tela sabe quem está com ele."""

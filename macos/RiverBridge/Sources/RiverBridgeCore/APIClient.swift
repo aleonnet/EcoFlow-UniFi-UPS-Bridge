@@ -141,6 +141,25 @@ public struct APIClient: Sendable {
         return (try? JSONCoding.decoder().decode(Resposta.self, from: dados).apagados) ?? []
     }
 
+    // MARK: - O servidor do no-break na rede (0.8.0)
+
+    /// O que o serviço diz sobre a escuta na rede: `aberta` é nil quando o
+    /// arquivo de configuração do servidor é do dono (o interruptor não o toca).
+    public struct RedeDoNut: Decodable, Sendable {
+        public var aberta: Bool?
+        public var propria: Bool
+    }
+
+    public func nutRede() async throws -> RedeDoNut {
+        try JSONCoding.decoder().decode(RedeDoNut.self, from: try await run(request("v1/nut/rede")))
+    }
+
+    /// Liga ou desliga a escuta na rede local; o serviço reinicia só o servidor.
+    public func nutRede(aberta: Bool) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["aberta": aberta])
+        _ = try await run(request("v1/nut/rede", method: "PUT", body: body))
+    }
+
     // MARK: - Dispositivos por instância (2026-09-03)
 
     /// GET /v1/device-types — the daemon's catalog of types (404 on a 0.2.0 daemon).

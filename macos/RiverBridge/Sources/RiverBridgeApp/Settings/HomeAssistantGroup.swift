@@ -17,6 +17,12 @@ struct HomeAssistantGroup: View {
     @State private var senha: String?
     @State private var revelada = false
     @State private var copiado: String?
+    // A escuta na rede (0.8.0): o Home Assistant mora noutra máquina, e até a
+    // 0.7.0 abrir a porta era editar um arquivo à mão e reiniciar. `nil` = o
+    // serviço ainda não respondeu, ou o arquivo do servidor é do dono.
+    @State private var rede: APIClient.RedeDoNut?
+    @State private var redeEmVoo = false
+    @State private var recadoDaRede: String?
 
     private let porta = "3493"
     private let usuario = "homeassistant"
@@ -31,6 +37,8 @@ struct HomeAssistantGroup: View {
                         "Ela nasce quando o serviço sobe pela primeira vez. Instale o serviço no grupo acima e volte aqui.",
                         "It is created the first time the service runs. Install the service in the group above and come back."))
             } else {
+                linhaDaRede
+                SettingsRows.divider
                 Text(L10n.t("Em Ajustes › Dispositivos e serviços › Adicionar integração › Network UPS Tools (NUT):",
                             "In Settings › Devices & services › Add Integration › Network UPS Tools (NUT):"))
                     .font(.caption)
@@ -50,7 +58,71 @@ struct HomeAssistantGroup: View {
                 Aviso(tom: .bom, texto: L10n.t("\(copiado) copiado", "\(copiado) copied"))
             }
         }
-        .task { senha = Self.senhaGuardada() }
+        .task {
+            senha = Self.senhaGuardada()
+            await carregarRede()
+        }
+    }
+
+    // MARK: - a escuta na rede
+
+    /// O interruptor que abre o servidor do no-break para a rede local. Sem ele
+    /// o Home Assistant não alcança este Mac: o servidor nasce escutando só a
+    /// própria máquina. Quando o arquivo do servidor é do dono, a linha explica
+    /// em vez de oferecer um interruptor que reescreveria o que é dele.
+    @ViewBuilder
+    private var linhaDaRede: some View {
+        HStack(alignment: .top, spacing: Espaco.medio) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .frame(width: 26)
+                .foregroundStyle(rede?.aberta == true ? Cor.atencao : Cor.neutro)
+            VStack(alignment: .leading, spacing: Espaco.fio) {
+                Text(L10n.t("Aceitar o Home Assistant pela rede", "Accept Home Assistant over the network"))
+                    .font(.system(.body, design: .rounded))
+                Text(rede?.propria == false
+                     ? L10n.t("A configuração do servidor do no-break é sua (foi escrita à mão), e este interruptor não a toca.",
+                              "The UPS server configuration is yours (written by hand), and this switch does not touch it.")
+                     : L10n.t("O servidor do no-break passa a escutar na rede local. Desligado, só este Mac fala com ele.",
+                              "The UPS server starts listening on the local network. Off, only this Mac talks to it."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let recadoDaRede {
+                    Text(recadoDaRede).font(.caption).foregroundStyle(Cor.atencao)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: Espaco.pequeno)
+            Toggle("", isOn: Binding(
+                get: { rede?.aberta ?? false },
+                set: { novo in Task { await mudarRede(novo) } }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(rede?.propria != true || redeEmVoo)
+        }
+    }
+
+    private func carregarRede() async {
+        guard let endpoint = ApiEndpoint.discover() else { return }
+        rede = try? await APIClient(endpoint: endpoint).nutRede()
+    }
+
+    private func mudarRede(_ aberta: Bool) async {
+        guard let endpoint = ApiEndpoint.discover() else {
+            recadoDaRede = L10n.t("Serviço parado — nada mudou.", "Service down — nothing changed.")
+            return
+        }
+        redeEmVoo = true
+        do {
+            try await APIClient(endpoint: endpoint).nutRede(aberta: aberta)
+            recadoDaRede = nil
+        } catch let APIError.badStatus(_, body) {
+            recadoDaRede = ProtectionRefusal.text(body)
+        } catch {
+            recadoDaRede = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+        await carregarRede()
+        redeEmVoo = false
     }
 
     // MARK: - linhas

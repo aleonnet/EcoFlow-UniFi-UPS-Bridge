@@ -63,6 +63,9 @@ enum ProtectionRefusal {
         case "desligamento_bloqueado":
             return L10n.t("Desligar o River está travado. Ligue \"Permitir desligar o River\" em Ajustes › Travas para usar este botão.",
                           "Turning the River off is locked. Turn on \"Allow turning the River off\" under Settings › Locks to use this button.")
+        case "configuracao_do_dono":
+            return L10n.t("A configuração do servidor do no-break é sua (escrita à mão): o interruptor não a toca. Mude a linha LISTEN você mesmo, se quiser.",
+                          "The UPS server configuration is yours (written by hand): the switch does not touch it. Change the LISTEN line yourself, if you want.")
         case "sem_conta_do_aparelho":
             return L10n.t("O serviço ainda não tem uma conta para mandar no River. Rode a instalação de novo para criá-la.",
                           "The service does not have an account to command the River yet. Run the installation again to create it.")

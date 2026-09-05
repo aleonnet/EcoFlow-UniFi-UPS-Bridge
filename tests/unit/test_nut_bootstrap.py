@@ -98,3 +98,34 @@ def test_as_fichas_de_senha_nascem_fechadas(tmp_path):
     nut_bootstrap.garantir_configuracao(etc=etc, state_dir=estado)
     modo = oct(os.stat(os.path.join(estado, nut_bootstrap.FICHA_ADMIN)).st_mode)[-3:]
     assert modo == "600"
+
+
+# -- o servidor na rede, pelo interruptor da tela (0.8.0) -----------------------
+
+def test_abrir_para_a_rede(tmp_path):
+    etc, estado = pastas(tmp_path)
+    nut_bootstrap.garantir_configuracao(etc=etc, state_dir=estado)
+    assert nut_bootstrap.rede_aberta(etc) is False
+    assert nut_bootstrap.abrir_para_a_rede(etc, True) is True
+    assert nut_bootstrap.rede_aberta(etc) is True
+    assert open(os.path.join(etc, "upsd.conf")).read() == "LISTEN 0.0.0.0 3493\n"
+    assert nut_bootstrap.abrir_para_a_rede(etc, True) is False      # já estava
+    assert nut_bootstrap.abrir_para_a_rede(etc, False) is True
+    assert nut_bootstrap.rede_aberta(etc) is False
+    # A permissão do arquivo (0640) sobrevive à troca.
+    assert oct(os.stat(os.path.join(etc, "upsd.conf")).st_mode & 0o777) == "0o640"
+
+
+def test_arquivo_do_dono_nao_e_tocado(tmp_path):
+    """Quem configurou o servidor à mão continua com o arquivo dele."""
+    import pytest
+
+    etc, _estado = pastas(tmp_path)
+    proprio = "# meu\nLISTEN 127.0.0.1 3493\nMAXAGE 30\n"
+    with open(os.path.join(etc, "upsd.conf"), "w") as fh:
+        fh.write(proprio)
+    assert nut_bootstrap.rede_aberta(etc) is None
+    with pytest.raises(nut_bootstrap.ConfiguracaoDoDono):
+        nut_bootstrap.abrir_para_a_rede(etc, True)
+    assert open(os.path.join(etc, "upsd.conf")).read() == proprio
+    assert nut_bootstrap.rede_aberta(str(tmp_path / "nao-existe")) is None

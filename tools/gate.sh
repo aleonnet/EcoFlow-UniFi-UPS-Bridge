@@ -796,6 +796,16 @@ cena_mutacao S62e src/river_unifi_bridge/remocao.py \
     '              start_new_session=False)' \
     tests/unit/test_remocao.py::test_bootout_nasce_em_sessao_nova
 
+# S63 — o interruptor da rede só reescreve um `upsd.conf` que seja NOSSO. Um
+# arquivo escrito à mão pelo dono é dele: reescrevê-lo por cima apagaria o que
+# ele configurou, sem uma linha de registro.
+cena_mutacao S63 src/river_unifi_bridge/nut_bootstrap.py \
+    '    if atual is None:
+        raise ConfiguracaoDoDono(' \
+    '    if False:
+        raise ConfiguracaoDoDono(' \
+    tests/unit/test_nut_bootstrap.py::test_arquivo_do_dono_nao_e_tocado
+
 # --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
 
 # S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão
