@@ -747,6 +747,55 @@ else
     erro "S60 empacotador: $S60_FALHOU"
 fi
 
+# S61 — o pacote no Lixo dispara a remoção. É o `F_GETPATH` real respondendo a
+# um `mv` real; sem reconhecer o Lixo, o serviço seguiria vivo de dentro dele
+# (visto pelo dono no Mac mini, 2026-09-05).
+cena_mutacao S61 src/river_unifi_bridge/remocao.py \
+    'LIXO = "/.Trash/"' \
+    'LIXO = "/.Nunca/"' \
+    tests/unit/test_remocao.py::test_no_lixo_dispara \
+    tests/unit/test_remocao.py::test_partida_dentro_do_lixo_dispara
+
+# S62 — mover para OUTRA pasta não é jogar fora: só o Lixo dispara.
+cena_mutacao S62 src/river_unifi_bridge/remocao.py \
+    '        if atual is None or LIXO not in atual:
+            return False' \
+    '        if atual is None:
+            return False' \
+    tests/unit/test_remocao.py::test_mover_fora_do_lixo_nao_remove
+
+# S62b — atualizar não é remover: o pacote antigo no Lixo com o novo no lugar
+# NÃO dispara (bloqueador B1 da revisão fria do plano da 0.8.0).
+cena_mutacao S62b src/river_unifi_bridge/remocao.py \
+    '        return not os.path.isdir(self.original)' \
+    '        return True' \
+    tests/unit/test_remocao.py::test_substituido_no_lugar_nao_remove
+
+# S62c — apagar ANTES de desregistrar: ao contrário, o launchd derruba o serviço
+# no meio da limpeza e a chave do console fica no disco.
+cena_mutacao S62c src/river_unifi_bridge/remocao.py \
+    '    apagados = apagar(state_dir, ups_conf, log)
+    desregistrar_(rotulo, log=log)' \
+    '    desregistrar_(rotulo, log=log)
+    apagados = apagar(state_dir, ups_conf, log)' \
+    tests/unit/test_remocao.py::test_retirar_apaga_antes_de_desregistrar
+
+# S62d — relançado de dentro do Lixo, remove na primeira volta (bloqueador B2 da
+# revisão fria: só a regra "mudou de lugar" não vê diferença na partida).
+cena_mutacao S62d src/river_unifi_bridge/remocao.py \
+    '        if LIXO in self.original:
+            return True' \
+    '        if False:
+            return True' \
+    tests/unit/test_remocao.py::test_partida_dentro_do_lixo_dispara
+
+# S62e — o `launchctl bootout` nasce em sessão nova (launchd.plist(5): o launchd
+# mata o grupo de processos do job que morre; bloqueador B3 da revisão fria).
+cena_mutacao S62e src/river_unifi_bridge/remocao.py \
+    '              start_new_session=True)' \
+    '              start_new_session=False)' \
+    tests/unit/test_remocao.py::test_bootout_nasce_em_sessao_nova
+
 # --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
 
 # S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão

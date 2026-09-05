@@ -388,11 +388,10 @@ class ApiServer:
     async def _h_apagar_estado(self, _req: web.Request) -> web.Response:
         """Apaga o que o SERVIÇO criou nesta máquina, a pedido da tela.
 
-        Existe porque arrastar o programa para o Lixo não faz isto: o serviço
-        continua registrado e o estado — chave do console, senhas, histórico,
-        dispositivos — continua no disco. E o app roda como o dono, então ele
-        não consegue apagar sozinho o que um serviço de sistema escreveu; quem
-        apaga é o próprio serviço, que é dono dos arquivos.
+        É o mesmo que o serviço faz sozinho quando o pacote vai para o Lixo
+        (remocao.py) — aqui, sem jogar o programa fora. O app roda como o dono e
+        não consegue apagar o que um serviço de sistema escreveu; quem apaga é o
+        próprio serviço, que é dono dos arquivos.
 
         Duas cercas: nenhuma proteção armada (apagar a chave com a proteção
         ligada a deixaria armada e sem para onde mandar o comando), e a
@@ -404,39 +403,14 @@ class ApiServer:
                                 "há proteção armada: desligue-a (modo ensaio) antes de "
                                 "apagar o estado, senão ela ficaria armada sem a chave "
                                 "que manda o comando")
-        apagados = await asyncio.to_thread(self._apagar_o_que_criamos)
-        log_json("WARN", "estado_apagado", arquivos=len(apagados))
-        return web.json_response({"apagados": apagados})
+        from . import remocao
 
-    def _apagar_o_que_criamos(self) -> list[str]:
-        """Os arquivos do diretório de estado e o nosso trecho do `ups.conf`.
-
-        A configuração do serviço (`bridge.env`) sai junto: ela é nossa, e deixar
-        para trás um arquivo com as travas do dono seria a próxima instalação
-        herdar decisões que ninguém tomou de novo.
-        """
-        from . import nut_conf
-
-        apagados: list[str] = []
-        if self.state_dir and os.path.isdir(self.state_dir):
-            for nome in sorted(os.listdir(self.state_dir)):
-                caminho = os.path.join(self.state_dir, nome)
-                if not os.path.isfile(caminho):
-                    continue
-                try:
-                    os.remove(caminho)
-                    apagados.append(nome)
-                except OSError as exc:
-                    log_json("WARN", "estado_nao_apagado", arquivo=nome,
-                             reason=str(exc)[:200])
         ups_conf = os.path.join(
             os.environ.get("RUB_NUT_ETC") or "/opt/homebrew/etc/nut", "ups.conf")
-        try:
-            if nut_conf.remover(ups_conf):
-                apagados.append("ups.conf (o nosso trecho)")
-        except (nut_conf.ConfMalformada, OSError) as exc:
-            log_json("WARN", "ups_conf_nao_limpo", reason=str(exc)[:200])
-        return apagados
+        apagados = await asyncio.to_thread(
+            remocao.apagar_tudo, self.state_dir, ups_conf, log_json)
+        log_json("WARN", "estado_apagado", arquivos=len(apagados))
+        return web.json_response({"apagados": apagados})
 
     async def _h_river_desligar(self, _req: web.Request) -> web.Response:
         """Desliga o PRÓPRIO River — o ato mais destrutivo do sistema.

@@ -163,6 +163,11 @@ extension DeviceEventKind {
                         tone: .warning, shortPT: "cabo mantido", shortEN: "cable kept",
                         longPT: "Cabo mantido: há proteção armada",
                         longEN: "Cable kept: a protection is armed"),
+        // O pacote foi para o Lixo (0.8.0): o serviço se retirou sozinho
+        DeviceEventKind(type: "PACOTE_NO_LIXO_REMOVIDO", symbol: "trash.fill",
+                        tone: .warning, shortPT: "removido", shortEN: "removed",
+                        longPT: "O programa foi para o Lixo: o serviço se removeu por completo",
+                        longEN: "The app went to the Trash: the service removed itself completely"),
     ]
 }
 

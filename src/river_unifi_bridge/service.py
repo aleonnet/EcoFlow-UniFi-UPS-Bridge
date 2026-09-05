@@ -22,7 +22,7 @@ from .config import BridgeConfig, ConfigError, load_config, recusa_do_vigia_espe
 from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
-from . import river_serial
+from . import eventos, remocao, river_serial
 from . import nut_bootstrap
 from .cabo_automatico import CaboAutomatico
 from .nut_supervisor import NutSupervisor
@@ -421,6 +421,16 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
             _log("WARN", "nut_nao_configurado", reason=str(exc)[:200])
         supervisor = NutSupervisor(cfg.nut_ups, log=_log)
         supervisor.iniciar()
+    # Instalado pelo pacote, o serviço vigia onde o pacote está: foi para o
+    # Lixo, ele se retira sozinho (ver remocao.py). Só existe no caminho do
+    # pacote — o lançador de lá é quem diz onde ele mora.
+    vigia = None
+    if not once and os.environ.get("RUB_PACOTE"):
+        try:
+            vigia = remocao.VigiaDoPacote(os.environ["RUB_PACOTE"])
+        except OSError as exc:
+            _log("WARN", "vigia_do_pacote_nao_subiu", reason=str(exc)[:200])
+    ups_conf_do_nut = os.path.join(os.environ.get("RUB_NUT_ETC") or ETC_DO_NUT, "ups.conf")
     # A ponte também PUBLICA no NUT (ver nut_servico.py); ela nasce lá dentro do
     # `try`, depois da linha do tempo existir — as ordens que chegam pelo NUT
     # entram nela como as da tela. O mesmo vale para o cabo automático, cujo
@@ -490,8 +500,7 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 # Lida a cada volta: a trava é interruptor na tela e aplica a quente.
                 comandos_do_river=lambda: comandos_do_river(cfg),
                 comandos_do_dispositivo=lambda plugin: comandos_do_dispositivo(plugin, cfg),
-                ups_conf=os.path.join(
-                    os.environ.get("RUB_NUT_ETC") or ETC_DO_NUT, "ups.conf"),
+                ups_conf=ups_conf_do_nut,
                 # Aparelho que entra ou sai precisa de um servidor que releia a
                 # configuração. Só o SERVIDOR reinicia: o leitor de fábrica é
                 # quem segura o cabo do River, e derrubá-lo por causa de uma
@@ -569,6 +578,29 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 # abrisse o programa depois dela via tudo parado sem explicação.
                 if shared is not None:
                     shared.set_cabo(supervisor.estado().to_dict())
+            # O pacote foi para o Lixo: o dono mandou remover tudo. Parar o
+            # leitor e a publicação primeiro (o cabo fica livre), apagar o que
+            # criamos, desregistrar, e sair 0 — parada deliberada, o launchd
+            # não relança. Se o SIGTERM do desregistro chegar antes do `return`,
+            # o caminho é o mesmo de sempre (interrupção → 0).
+            if vigia is not None and vigia.deve_remover():
+                _log("WARN", eventos.PACOTE_NO_LIXO, pacote=vigia.original,
+                     agora=vigia.caminho_atual())
+                if shared is not None:
+                    shared.add_event(eventos.PACOTE_NO_LIXO,
+                                     {"detail": "o programa foi para o Lixo"})
+                if ponte is not None:
+                    ponte.encerrar()
+                    ponte = None
+                if supervisor is not None:
+                    supervisor.encerrar()
+                    supervisor = None
+                apagados = remocao.retirar(state_dir(), ups_conf_do_nut, log=_log)
+                _log("ERROR", "parada_deliberada",
+                     reason="o pacote foi para o Lixo: estado apagado e serviço desregistrado",
+                     apagados=len(apagados))
+                vigia.fechar()
+                return EXIT_OK
             if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:
                 last_prune = clock()
                 history.retention_days = cfg.history_retention_days

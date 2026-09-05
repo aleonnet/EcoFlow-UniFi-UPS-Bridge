@@ -114,9 +114,9 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
 
 /// O que "Remover completamente" apaga — a lista que a confirmação mostra.
 ///
-/// Arrastar o programa para o Lixo NÃO faz nada disto: o serviço continua
-/// registrado, e o estado (chave do console, senhas, histórico) continua no
-/// disco. O dono pediu que existisse um caminho que limpasse de verdade.
+/// Desde a 0.8.0 arrastar o programa para o Lixo faz o mesmo: o serviço vigia
+/// onde o pacote está e se retira sozinho. Este botão é o mesmo ato sem jogar
+/// o programa fora — para quem quer reinstalar do zero, por exemplo.
 public struct RemocaoCompleta: Sendable, Equatable {
     public var itens: [String]
 
@@ -143,21 +143,21 @@ public struct RemocaoCompleta: Sendable, Equatable {
             + "depois, se quiser."
     }
 
-    /// A frase que faltava, e cujo custo foi medido: o dono arrastou o programa
-    /// para o Lixo achando que aquilo removia tudo, e ficou com o serviço ainda
-    /// registrado, o processo dele VIVO rodando de dentro do Lixo, e a chave do
-    /// console e as senhas no disco (Mac mini, 2026-09-05).
+    /// O que acontece ao arrastar o programa para o Lixo — dito ANTES.
     ///
-    /// O Lixo apaga o pacote e mais nada: ele não desregistra um serviço de
-    /// sistema, não mata um processo em execução e não apaga arquivo do root.
-    /// Isso é o macOS, não escolha nossa — mas dizer isso ANTES é escolha nossa.
+    /// Até a 0.7.0 esta frase avisava o contrário: o Lixo não removia nada, o
+    /// processo seguia vivo de dentro do Lixo e a chave do console e as senhas
+    /// ficavam no disco (medido pelo dono no Mac mini, 2026-09-05). O macOS não
+    /// faz isso sozinho; desde a 0.8.0 o serviço faz (remocao.py).
     public static var avisoDoLixo: String {
-        L10n.t("Arrastar o programa para o Lixo NÃO remove o serviço: ele continua "
-               + "registrado, rodando, e a chave do console e as senhas ficam no "
-               + "disco. Use Remover completamente primeiro.",
-               "Dragging the app to the Trash does NOT remove the service: it stays "
-               + "registered and running, and the console key and passwords stay on "
-               + "disk. Use Remove completely first.")
+        L10n.t("Arrastar o programa para o Lixo remove tudo: o serviço percebe, "
+               + "para de vigiar, apaga a chave do console, as senhas e o histórico, "
+               + "e se desregistra sozinho. Este botão faz o mesmo sem jogar o "
+               + "programa fora.",
+               "Dragging the app to the Trash removes everything: the service notices, "
+               + "stops watching, erases the console key, the passwords and the "
+               + "history, and unregisters itself. This button does the same without "
+               + "throwing the app away.")
     }
 }
 
