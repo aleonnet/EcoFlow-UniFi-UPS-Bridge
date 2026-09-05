@@ -25,6 +25,10 @@ REPO_SLUG="aleonnet/EcoFlow-UniFi-UPS-Bridge"
 APP_SRC="$RAIZ/macos/RiverBridge/dist/River Bridge.app"
 ASSET_APP="River-Bridge.app.zip"
 ASSET_SRC="river-unifi-bridge-src.tar.gz"
+# O disco de instalação (arrastar para Aplicativos), desde a 0.7.0. Nome SEM
+# versão pela mesma razão dos outros: o instalador e o dono baixam por
+# `releases/latest/download/<asset>`, sem precisar saber a tag.
+ASSET_DMG="River-Bridge.dmg"
 ASSET_SUMS="SHA256SUMS"
 
 MODO="full"; TAG=""; NO_GATE=0
@@ -122,7 +126,13 @@ diga "git archive $ARCH_REF → $ASSET_SRC (prefixo river-unifi-bridge-$TAG/, ca
 git archive --format=tar.gz --prefix="river-unifi-bridge-$TAG/" -o "$DIST/$ASSET_SRC" "$ARCH_REF"
 diga "ditto → $ASSET_APP"
 (cd "$(dirname "$APP_SRC")" && ditto -c -k --keepParent "$(basename "$APP_SRC")" "$DIST/$ASSET_APP")
-(cd "$DIST" && shasum -a 256 "$ASSET_APP" "$ASSET_SRC" > "$ASSET_SUMS")
+diga "tools/build-dmg.sh → $ASSET_DMG"
+"$RAIZ/tools/build-dmg.sh" >"$DIST/build-dmg.log" 2>&1 \
+  || falha "build do disco falhou — veja $DIST/build-dmg.log" 1
+DMG_ORIGEM="$(dirname "$APP_SRC")/River Bridge $V.dmg"
+[ -f "$DMG_ORIGEM" ] || falha "disco não montado em $DMG_ORIGEM" 1
+cp "$DMG_ORIGEM" "$DIST/$ASSET_DMG"
+(cd "$DIST" && shasum -a 256 "$ASSET_APP" "$ASSET_SRC" "$ASSET_DMG" > "$ASSET_SUMS")
 
 # Auto-prova: o zip devolve o mesmo executável; o tarball traz o instalador.
 PROVA="$(mktemp -d)"
@@ -131,6 +141,18 @@ cmp -s "$PROVA/River Bridge.app/Contents/MacOS/RiverBridge" "$APP_SRC/Contents/M
   || falha "o executável extraído do zip difere do original" 1
 tar -tzf "$DIST/$ASSET_SRC" | grep -q "^river-unifi-bridge-$TAG/scripts/install.sh$" \
   || falha "o tarball não traz scripts/install.sh" 1
+# O disco monta, tem o programa e o atalho, e a assinatura ainda verifica lá
+# dentro. Publicar um disco quebrado só apareceria na máquina de quem instala.
+MONTE="$PROVA/dmg"
+hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MONTE" "$DIST/$ASSET_DMG" \
+  || falha "o disco publicado não monta" 1
+prova_dmg=""
+[ -d "$MONTE/River Bridge.app" ] || prova_dmg="o disco não traz o programa"
+[ -L "$MONTE/Aplicativos" ] || prova_dmg="${prova_dmg:-o disco não traz o atalho para Aplicativos}"
+codesign --verify --deep --strict "$MONTE/River Bridge.app" 2>/dev/null \
+  || prova_dmg="${prova_dmg:-a assinatura não verifica dentro do disco}"
+hdiutil detach -quiet "$MONTE" || true
+[ -z "$prova_dmg" ] || falha "$prova_dmg" 1
 rm -rf "$PROVA"
 (cd "$DIST" && shasum -a 256 -c "$ASSET_SUMS" >/dev/null) || falha "SHA256SUMS não confere" 1
 
@@ -152,7 +174,7 @@ diga "git push origin $TAG"
 git push origin "$TAG"
 diga "gh release create $TAG"
 gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$DIST/notes.md" \
-  "$DIST/$ASSET_APP" "$DIST/$ASSET_SRC" "$DIST/$ASSET_SUMS"
+  "$DIST/$ASSET_APP" "$DIST/$ASSET_SRC" "$DIST/$ASSET_DMG" "$DIST/$ASSET_SUMS"
 
 # Pós-prova pela mesma URL que o instalador usa (propagação pode levar segundos).
 URL="https://github.com/$REPO_SLUG/releases/latest/download/$ASSET_SUMS"
