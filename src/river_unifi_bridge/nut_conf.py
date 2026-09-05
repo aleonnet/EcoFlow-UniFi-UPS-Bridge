@@ -31,8 +31,14 @@ from __future__ import annotations
 import os
 import tempfile
 
+from .nut_driver import codifica
+
 MARCA_INICIO = "# >>> River Bridge — gerado pelo serviço, não edite até a marca de fim"
 MARCA_FIM = "# <<< River Bridge — fim do trecho gerado"
+
+
+class ConfMalformada(Exception):
+    """As marcas do nosso trecho não fecham. Não mexemos num arquivo assim."""
 
 
 def secao(aparelho: str, descricao: str) -> str:
@@ -40,11 +46,15 @@ def secao(aparelho: str, descricao: str) -> str:
 
     O `driver` é metade do nome do arquivo do soquete — trocar este nome é o
     servidor procurar num lugar em que ninguém escuta.
+
+    A descrição é escapada com a MESMA função do protocolo do soquete: os dois
+    lados são lidos pelo parseconf do NUT, e o texto vem de fora (é o modelo que
+    o no-break declarou). Uma aspa ali deixava a linha malformada.
     """
     return (f"[{aparelho}]\n"
             f"    driver = river-bridge\n"
             f"    port = auto\n"
-            f'    desc = "{descricao}"\n')
+            f'    desc = "{codifica(descricao)}"\n')
 
 
 def bloco(aparelhos: list[tuple[str, str]]) -> str:
@@ -54,17 +64,38 @@ def bloco(aparelhos: list[tuple[str, str]]) -> str:
 
 
 def _troca_o_bloco(texto: str, novo: str) -> str:
-    inicio = texto.find(MARCA_INICIO)
-    if inicio < 0:
+    """Troca o miolo entre as marcas, ou acrescenta o trecho quando não há marca.
+
+    Marca que não fecha é RECUSA, não conserto. A primeira versão disto
+    acrescentava o trecho novo no fim e deixava a marca órfã para trás — e a
+    volta seguinte do laço (dois segundos depois) tomava a órfã como começo e a
+    marca de fim recém-escrita como término, apagando tudo o que estava entre as
+    duas: conteúdo do dono, inclusive a seção do leitor de fábrica, que é a que a
+    proteção lê. Medido na 2.ª revisão fria da 0.7.0.
+
+    Não mexer num arquivo que não sabemos ler é a única resposta honesta: os
+    aparelhos deixam de ser declarados, o registro diz por quê, e o dono conserta
+    o arquivo. Perder a configuração dele em silêncio não é opção.
+    """
+    inicios = texto.count(MARCA_INICIO)
+    fins = texto.count(MARCA_FIM)
+    if inicios > 1 or fins > 1:
+        raise ConfMalformada(
+            f"achei {inicios} marca(s) de início e {fins} de fim do trecho do River "
+            "Bridge; deveria haver uma de cada. Não mexo num arquivo assim")
+    if inicios != fins:
+        raise ConfMalformada(
+            "o trecho do River Bridge está com uma marca só (a outra foi cortada); "
+            "não mexo num arquivo assim para não apagar o que é seu")
+    if inicios == 0:
         separador = "" if texto.endswith("\n") or not texto else "\n"
         return f"{texto}{separador}\n{novo}"
+    inicio = texto.find(MARCA_INICIO)
     fim = texto.find(MARCA_FIM, inicio)
     if fim < 0:
-        # Marca de abertura sem a de fechamento: alguém cortou o arquivo no meio.
-        # Reescrever daí para a frente apagaria o que viesse depois, então o
-        # trecho novo entra no fim e o pedaço órfão fica visível para quem for ver.
-        separador = "" if texto.endswith("\n") else "\n"
-        return f"{texto}{separador}\n{novo}"
+        raise ConfMalformada(
+            "a marca de fim do trecho do River Bridge vem ANTES da de início; "
+            "não mexo num arquivo assim")
     fim += len(MARCA_FIM)
     if fim < len(texto) and texto[fim] == "\n":
         fim += 1
@@ -78,11 +109,22 @@ def atualizar(caminho: str, aparelhos: list[tuple[str, str]]) -> bool:
     decidir se reinicia o servidor do no-break, e reiniciar sem motivo derrubaria
     a leitura do River a cada volta do laço.
     """
+    # Link simbólico é seguido, não destruído. Sem isto, `os.replace` trocava o
+    # LINK por um arquivo comum: quem mantém a configuração do NUT num repositório
+    # de arquivos pessoais passava a editar um arquivo que o NUT não lê mais, e a
+    # edição dele sumia do sistema sem uma linha de registro (2.ª revisão fria).
+    caminho = os.path.realpath(caminho)
     try:
         with open(caminho, encoding="utf-8") as arquivo:
             antes = arquivo.read()
     except OSError:
         return False                      # não existe, ou não é nosso: não criamos
+    # Arquivo que o dono trancou para escrita fica trancado. A troca atômica passa
+    # pela permissão da PASTA, não pela do arquivo, então sem esta conferência o
+    # "não mexa" dele seria ignorado em silêncio.
+    if not os.access(caminho, os.W_OK):
+        raise ConfMalformada(
+            f"{caminho} está sem permissão de escrita; respeito isso e não mexo nele")
     depois = _troca_o_bloco(antes, bloco(aparelhos))
     if depois == antes:
         return False
@@ -92,8 +134,24 @@ def atualizar(caminho: str, aparelhos: list[tuple[str, str]]) -> bool:
     try:
         with os.fdopen(descritor, "w", encoding="utf-8") as arquivo:
             arquivo.write(depois)
+            arquivo.flush()
+            # O conteúdo vai para o disco ANTES da troca. `os.replace` garante que
+            # ninguém vê o arquivo pela metade; só o `fsync` garante que, depois de
+            # uma queda de energia, o que está lá é o novo e não lixo. Num programa
+            # que existe por causa de queda de energia, essa diferença é o produto.
+            os.fsync(arquivo.fileno())
         os.chmod(temporario, modo)
-        os.replace(temporario, caminho)   # troca atômica: nunca um arquivo pela metade
+        os.replace(temporario, caminho)
+        # E o diretório também: sem isto, a própria troca de nome pode não ter
+        # chegado ao disco.
+        try:
+            fd_pasta = os.open(pasta, os.O_RDONLY)
+            try:
+                os.fsync(fd_pasta)
+            finally:
+                os.close(fd_pasta)
+        except OSError:
+            pass                          # sistema de arquivos que não permite: segue
     except OSError:
         try:
             os.unlink(temporario)

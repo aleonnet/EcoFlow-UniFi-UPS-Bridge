@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from river_unifi_bridge import nut_conf
 
 DO_DONO = """maxretry = 3
@@ -82,17 +84,66 @@ def test_the_file_mode_survives(tmp_path):
     assert oct(os.stat(caminho).st_mode)[-3:] == "640"
 
 
-def test_a_half_cut_block_is_not_used_as_an_excuse_to_eat_the_rest(tmp_path):
+def test_a_half_cut_block_makes_us_keep_our_hands_off(tmp_path):
     """Marca de abertura sem a de fim: alguém cortou o arquivo no meio.
 
-    Reescrever dali para a frente apagaria o que viesse depois — inclusive a
-    seção do leitor de fábrica, que é a que a proteção lê.
+    A primeira versão disto acrescentava o trecho novo no fim e deixava a marca
+    órfã para trás. A volta SEGUINTE do laço — dois segundos depois — tomava a
+    órfã como começo e a marca de fim recém-escrita como término, e apagava tudo
+    entre as duas: conteúdo do dono, inclusive a seção do leitor de fábrica, que
+    é a que a proteção lê (2.ª revisão fria da 0.7.0, reproduzido).
+
+    Não mexer é a única resposta honesta.
     """
     caminho = arquivo(tmp_path, DO_DONO + nut_conf.MARCA_INICIO + "\n[quebrado]\n")
-    nut_conf.atualizar(caminho, APARELHOS)
-    texto = open(caminho, encoding="utf-8").read()
-    assert "[river-office]" in texto and "[quebrado]" in texto
-    assert "[river-bridge]" in texto
+    antes = open(caminho, encoding="utf-8").read()
+    for _ in range(3):                      # o laço chama a cada dois segundos
+        with pytest.raises(nut_conf.ConfMalformada, match="uma marca só"):
+            nut_conf.atualizar(caminho, APARELHOS)
+    assert open(caminho, encoding="utf-8").read() == antes
+
+
+def test_two_blocks_are_refused_instead_of_leaving_one_orphan_forever(tmp_path):
+    """Dois trechos: o arquivo não é o que pensamos, e não se adivinha qual vale."""
+    caminho = arquivo(tmp_path, DO_DONO + nut_conf.bloco([("a", "x")])
+                      + nut_conf.bloco([("b", "y")]))
+    with pytest.raises(nut_conf.ConfMalformada, match="deveria haver uma de cada"):
+        nut_conf.atualizar(caminho, APARELHOS)
+
+
+def test_a_file_the_owner_locked_stays_locked(tmp_path):
+    """A troca atômica passa pela permissão da PASTA, não pela do arquivo.
+
+    Sem esta conferência, o "não mexa" do dono era ignorado em silêncio.
+    """
+    caminho = arquivo(tmp_path, modo=0o444)
+    with pytest.raises(nut_conf.ConfMalformada, match="permissão de escrita"):
+        nut_conf.atualizar(caminho, APARELHOS)
+    assert open(caminho, encoding="utf-8").read() == DO_DONO
+
+
+def test_a_symlink_is_followed_not_destroyed(tmp_path):
+    """Quem guarda a configuração do NUT num repositório pessoal aponta um link.
+
+    Trocando o link por um arquivo comum, ele passava a editar um arquivo que o
+    NUT não lê mais — e a edição dele sumia do sistema sem uma linha de registro.
+    """
+    real = tmp_path / "real.conf"
+    real.write_text(DO_DONO, encoding="utf-8")
+    link = tmp_path / "ups.conf"
+    link.symlink_to(real)
+    assert nut_conf.atualizar(str(link), APARELHOS) is True
+    assert link.is_symlink(), "o link virou arquivo comum"
+    assert "[river-bridge]" in real.read_text(encoding="utf-8")
+
+
+def test_a_description_with_a_quote_does_not_break_the_line(tmp_path):
+    """O texto vem de fora: é o modelo que o no-break declarou."""
+    caminho = arquivo(tmp_path)
+    nut_conf.atualizar(caminho, [("river-bridge", 'RIVER 3 "Plus"')])
+    # A última: a primeira é a do próprio dono, no fixture.
+    linha = [l for l in open(caminho, encoding="utf-8") if "desc =" in l][-1]
+    assert linha.strip() == 'desc = "RIVER 3 \\"Plus\\""'
 
 
 def test_no_temporary_file_is_left_behind(tmp_path):

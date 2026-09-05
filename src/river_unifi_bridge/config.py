@@ -85,6 +85,10 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     # Assistant receber o mesmo que o app mostra. Ver nut_servico.py.
     "RIVER_NUT_PUBLICA": (bool, False, True, None),
     "RIVER_NUT_APARELHO": (str, False, "river-bridge", None),
+    # O cabo do River é um só, e dois programas o querem. Ligado, o serviço larga
+    # o cabo quando o aplicativo do fabricante abre e retoma quando ele fecha —
+    # sem botão na tela (ver cabo_automatico.py). Nunca larga com proteção armada.
+    "RIVER_CABO_AUTOMATICO": (bool, False, True, None),
 }
 
 
@@ -182,6 +186,7 @@ class BridgeConfig:
     river_nut_managed: bool = True
     river_nut_publica: bool = True
     river_nut_aparelho: str = "river-bridge"
+    river_cabo_automatico: bool = True
     # Diagnostics for the caller (never fatal): "<line>: <message>"
     warnings: list[str] = field(default_factory=list)
 

@@ -444,3 +444,99 @@ def test_the_answer_does_not_go_to_a_client_that_did_not_ask(pasta_curta):
         quem_pergunta.fecha()
         outro.fecha()
         d.encerrar()
+
+
+def test_a_second_order_while_one_is_running_is_refused_not_queued(pasta_curta):
+    """Uma ordem por vez.
+
+    Sem isto, cada `INSTCMD` criava uma linha de execução nova, sem limite — e
+    duas ordens de desligamento correndo juntas num roteador de produção não é
+    paralelismo, é confusão.
+    """
+    libera = threading.Event()
+    comecou = threading.Event()
+
+    def devagar(_comando, _parametro):
+        comecou.set()
+        libera.wait(5)
+        return nd.CMD_FEITO
+
+    d = nd.DriverDoNut(os.path.join(pasta_curta, "sock"), executor=devagar)
+    d.iniciar()
+    d.publicar({}, comandos=["load.off"])
+    servidor = Servidor(d.caminho).liga()
+    try:
+        servidor.manda("INSTCMD load.off TRACKING primeira")
+        assert comecou.wait(3)
+        servidor.manda("INSTCMD load.off TRACKING segunda")
+        assert servidor.espera("TRACKING") == f"TRACKING segunda {nd.CMD_FALHOU}"
+        libera.set()
+        assert servidor.espera("TRACKING") == "TRACKING primeira 0"
+        # E depois que a primeira termina, a fila volta a andar.
+        servidor.manda("INSTCMD load.off TRACKING terceira")
+        assert servidor.espera("TRACKING") == "TRACKING terceira 0"
+    finally:
+        libera.set()
+        servidor.fecha()
+        d.encerrar()
+
+
+def test_a_very_long_value_is_cut_without_splitting_an_escape(pasta_curta):
+    """O corte não pode cair no MEIO de um par de escape.
+
+    Terminando em número ímpar de contrabarras, a última escaparia a aspa de
+    fechamento e a linha ficaria aberta: o servidor engoliria a linha seguinte
+    inteira como continuação desta. Um banner de console cheio de arte ASCII
+    basta (2.ª revisão fria da 0.7.0).
+    """
+    # Um texto que, escapado, cai com uma contrabarra exatamente no limite.
+    comprido = "A" * (nd.LIMITE_CARACTERES - 1) + "\\" * 20
+    saida = nd.codifica(comprido)
+    assert len(saida) <= nd.LIMITE_CARACTERES
+    assert (len(saida) - len(saida.rstrip("\\"))) % 2 == 0, "sobrou barra ímpar"
+
+    d = nd.DriverDoNut(os.path.join(pasta_curta, "sock"))
+    d.iniciar()
+    servidor = Servidor(d.caminho).liga()
+    try:
+        d.publicar({"device.model": comprido, "battery.charge": "42"})
+        # As DUAS linhas chegam inteiras — a segunda não é engolida pela primeira.
+        modelo = servidor.espera("SETINFO device.model")
+        carga = servidor.espera("SETINFO battery.charge")
+        assert nd.divide_linha(carga)[2] == "42"
+        assert len(nd.divide_linha(modelo)) == 3
+    finally:
+        servidor.fecha()
+        d.encerrar()
+
+
+def test_the_socket_is_never_group_writable_not_even_for_an_instant(pasta_curta, monkeypatch):
+    """A fresta entre criar e ajustar a permissão também conta.
+
+    Com a máscara antiga o soquete NASCIA 0770 e só virava 0600 na linha
+    seguinte. Nessa fresta, na pasta 0755 de grupo `admin` desta máquina, uma
+    conta administradora conectava — que é exatamente a cerca que esta versão
+    veio fechar (2.ª revisão fria da 0.7.0, medido: "modo entre bind e chmod:
+    0o770").
+    """
+    import stat as _stat
+
+    vistos = []
+    chmod_real = nd.os.chmod
+
+    def espia(caminho, modo):
+        try:
+            vistos.append(_stat.S_IMODE(os.stat(caminho).st_mode))
+        except OSError:
+            pass
+        return chmod_real(caminho, modo)
+
+    monkeypatch.setattr(nd.os, "chmod", espia)
+    d = nd.DriverDoNut(os.path.join(pasta_curta, "sock"))
+    d.iniciar()
+    try:
+        assert vistos, "o driver não chegou a ajustar a permissão"
+        for modo in vistos:
+            assert not modo & 0o077, f"o soquete existiu com {oct(modo)}"
+    finally:
+        d.encerrar()

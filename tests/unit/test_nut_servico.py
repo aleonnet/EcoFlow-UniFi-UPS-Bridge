@@ -185,6 +185,53 @@ def test_closing_takes_every_device_with_it(tmp_path, criados):
     assert not any(d.no_ar for d in criados.feitos)
 
 
+def test_a_ups_conf_we_cannot_read_is_complained_about_once_not_every_lap(tmp_path, criados):
+    """O laço passa por aqui a cada dois segundos.
+
+    Um arquivo que ninguém foi consertar encheria o registro com a mesma linha
+    1.800 vezes por hora — e a queixa que importa se perderia no meio.
+    """
+    from river_unifi_bridge import nut_conf
+
+    conf = tmp_path / "ups.conf"
+    conf.write_text("maxretry = 3\n" + nut_conf.MARCA_INICIO + "\n[cortado]\n",
+                    encoding="utf-8")
+    queixas = []
+    p = PonteDoNut(estado=str(tmp_path), criar_driver=criados, ups_conf=str(conf),
+                   log=lambda nivel, evento, **kw: queixas.append(evento))
+    p.iniciar()
+    for _ in range(5):
+        p.atualizar(snapshot())
+    assert queixas.count("nut_conf_nao_escrito") == 1, queixas
+    assert "[cortado]" in conf.read_text(encoding="utf-8")
+
+
+def test_a_device_entering_and_leaving_is_declared_and_undeclared(tmp_path, criados):
+    """O `ups.conf` acompanha a tela: o servidor do no-break só serve o que está
+    declarado ali, e o dono não vai reinstalar para ganhar um aparelho novo."""
+    from river_unifi_bridge import nut_conf
+
+    conf = tmp_path / "ups.conf"
+    conf.write_text("maxretry = 3\n\n[river-office]\n    driver = usbhid-ups\n",
+                    encoding="utf-8")
+    reinicios = []
+    p = PonteDoNut(estado=str(tmp_path), criar_driver=criados, ups_conf=str(conf),
+                   ao_mudar_a_declaracao=lambda: reinicios.append(1))
+    p.iniciar()
+    p.atualizar(snapshot(), [PluginFalso()])
+    texto = conf.read_text(encoding="utf-8")
+    assert "[river-bridge]" in texto and "[udr7]" in texto
+    assert "[river-office]" in texto, "sumiu a seção do leitor de fábrica"
+    assert len(reinicios) == 1
+    # Volta sem mudança nenhuma: nada é reescrito, e o servidor NÃO reinicia.
+    p.atualizar(snapshot(), [PluginFalso()])
+    assert len(reinicios) == 1
+    # Dispositivo apagado na tela sai da declaração.
+    p.atualizar(snapshot(), [])
+    assert "[udr7]" not in conf.read_text(encoding="utf-8")
+    assert len(reinicios) == 2
+
+
 # -- a cerca do vigia espelho ---------------------------------------------------
 
 def test_the_protection_may_not_read_a_device_we_publish(tmp_path):

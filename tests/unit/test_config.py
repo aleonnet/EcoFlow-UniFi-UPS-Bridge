@@ -100,9 +100,11 @@ def test_allowlist_matches_spec_keys():
         # A ponte publicando no NUT o que o app mostra, e a trava das ordens à
         # mão num dispositivo protegido (0.7.0)
         "RIVER_NUT_PUBLICA", "RIVER_NUT_APARELHO", "DEVICE_CMD_ALLOWED",
+        # O cabo passando sozinho para o aplicativo do fabricante (0.7.0)
+        "RIVER_CABO_AUTOMATICO",
     }
     assert set(_ALLOWLIST) == expected
-    assert len(expected) == 36
+    assert len(expected) == 37
 
 
 @pytest.mark.parametrize(

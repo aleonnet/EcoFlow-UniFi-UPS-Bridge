@@ -109,7 +109,17 @@ def codifica(valor: str) -> str:
     """
     limpo = "".join(" " if (ord(c) < 0x20 or ord(c) == 0x7F) else c for c in valor)
     limpo = limpo.replace("\\", "\\\\").replace('"', '\\"')
-    return limpo[:LIMITE_CARACTERES]
+    if len(limpo) <= LIMITE_CARACTERES:
+        return limpo
+    limpo = limpo[:LIMITE_CARACTERES]
+    # O corte não pode cair NO MEIO de um par de escape. Terminando em número
+    # ímpar de contrabarras, a última escaparia a aspa de fechamento e a linha
+    # ficaria ABERTA — o servidor engoliria a linha seguinte inteira como
+    # continuação desta (2.ª revisão fria da 0.7.0, reproduzido com um texto de
+    # console cheio de arte ASCII).
+    if (len(limpo) - len(limpo.rstrip("\\"))) % 2:
+        limpo = limpo[:-1]
+    return limpo
 
 
 def divide_linha(linha: str) -> list[str]:
@@ -203,6 +213,11 @@ class DriverDoNut:
         self._parar = threading.Event()
         self._acorda_r = -1
         self._acorda_w = -1
+        # Uma ordem por vez. Sem isto, cada `INSTCMD` criava uma linha de execução
+        # nova, sem limite: quatro clientes em 1,2 s deixaram sete vivas depois do
+        # encerramento (2.ª revisão fria da 0.7.0). E duas ordens de desligamento
+        # correndo juntas num roteador de produção não é paralelismo, é confusão.
+        self._ordem_em_curso: str | None = None
 
     # -- ciclo de vida ------------------------------------------------------
     def iniciar(self) -> None:
@@ -222,7 +237,12 @@ class DriverDoNut:
             except FileNotFoundError:
                 pass
             servidor = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            umask_antes = os.umask(0o007)
+            # 0o077, e NÃO o 0o007 do NUT: com 0o007 o soquete NASCIA 0770 e só
+            # virava 0600 no `chmod` seguinte. Nessa fresta, na pasta 0755 de
+            # grupo `admin` desta máquina, uma conta administradora conectava —
+            # que é exatamente a cerca que esta versão veio fechar (2.ª revisão
+            # fria da 0.7.0, medido: "modo entre bind e chmod: 0o770").
+            umask_antes = os.umask(0o077)
             try:
                 servidor.bind(self.caminho)
             finally:
@@ -544,6 +564,18 @@ class DriverDoNut:
                 self._para_um(cliente, f"TRACKING {identificador} {CMD_DESCONHECIDO}\n")
             return
 
+        with self._lock:
+            if self._ordem_em_curso is not None:
+                em_curso = self._ordem_em_curso
+            else:
+                em_curso = None
+                self._ordem_em_curso = nome
+        if em_curso is not None:
+            self._log("WARN", "nut_instcmd_ocupado", comando=nome, em_curso=em_curso)
+            if identificador is not None:
+                self._para_um(cliente, f"TRACKING {identificador} {CMD_FALHOU}\n")
+            return
+
         def rodar() -> None:
             try:
                 codigo = int(executor(nome, parametro))
@@ -551,6 +583,9 @@ class DriverDoNut:
                 self._log("ERROR", "nut_instcmd_falhou", comando=nome,
                           tipo=type(exc).__name__, reason=str(exc)[:200])
                 codigo = CMD_FALHOU
+            finally:
+                with self._lock:
+                    self._ordem_em_curso = None
             if identificador is not None:
                 self._para_um(cliente, f"TRACKING {identificador} {codigo}\n")
 

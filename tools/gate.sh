@@ -673,6 +673,85 @@ cena_mutacao S43 src/river_unifi_bridge/nut_conf.py \
     "    return texto[:inicio] + novo" \
     tests/unit/test_nut_conf.py::test_what_comes_after_our_block_survives_a_rewrite
 
+# S45 — o cabo NÃO é largado com proteção armada. Largar seria ficar cego para a
+# queda de energia justamente com o desligamento automático ligado.
+cena_mutacao S45 src/river_unifi_bridge/cabo_automatico.py \
+    "        if self._ha_protecao_armada():" \
+    "        if False:" \
+    tests/unit/test_cabo_automatico.py::test_the_cable_is_never_handed_over_while_a_protection_is_armed
+
+# S46 — e o que o dono emprestou pela tela não é retomado pelo automático: o
+# programa não discute com o dono no meio de ele usar o aplicativo do fabricante.
+cena_mutacao S46 src/river_unifi_bridge/cabo_automatico.py \
+    '        if getattr(estado, "pausado_pelo_dono", False):' \
+    "        if False:" \
+    tests/unit/test_cabo_automatico.py::test_what_the_owner_lent_by_hand_is_not_taken_back_by_us
+
+# S46b — e o cabo VOLTA quando o aplicativo do fabricante some. Sem isto, o
+# serviço largaria o cabo uma vez e nunca mais vigiaria a energia.
+cena_mutacao S46b src/river_unifi_bridge/cabo_automatico.py \
+    "        estado = self._supervisor.retomar()" \
+    "        estado = None" \
+    tests/unit/test_cabo_automatico.py::test_the_cable_comes_back_when_the_vendor_app_closes \
+    tests/unit/test_cabo_automatico.py::test_a_search_that_blows_up_brings_the_cable_back_instead_of_keeping_it
+
+# --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
+
+# S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão
+# anterior acrescentava o trecho novo e deixava a marca órfã; a volta SEGUINTE do
+# laço (dois segundos depois) tomava a órfã como começo e apagava tudo até a
+# marca de fim nova — conteúdo do dono, e a seção do leitor de fábrica junto.
+cena_mutacao S47 src/river_unifi_bridge/nut_conf.py \
+    "    if inicios != fins:" \
+    "    if False:" \
+    tests/unit/test_nut_conf.py::test_a_half_cut_block_makes_us_keep_our_hands_off
+
+# S47b — e o arquivo que o dono trancou para escrita fica trancado: a troca
+# atômica passa pela permissão da PASTA, então sem esta conferência o "não mexa"
+# dele era ignorado em silêncio.
+cena_mutacao S47b src/river_unifi_bridge/nut_conf.py \
+    "    if not os.access(caminho, os.W_OK):" \
+    "    if False:" \
+    tests/unit/test_nut_conf.py::test_a_file_the_owner_locked_stays_locked
+
+# S48 — link simbólico é seguido, não destruído. Sem isto, quem guarda a
+# configuração do NUT num repositório pessoal passava a editar um arquivo que o
+# NUT não lê mais, e a edição dele sumia sem uma linha de registro.
+cena_mutacao S48 src/river_unifi_bridge/nut_conf.py \
+    "    caminho = os.path.realpath(caminho)" \
+    "    caminho = caminho" \
+    tests/unit/test_nut_conf.py::test_a_symlink_is_followed_not_destroyed
+
+# S49 — o corte de um valor comprido não pode cair no MEIO de um par de escape:
+# terminando em barra ímpar, a linha do protocolo fica ABERTA e o servidor engole
+# a linha seguinte inteira como continuação desta.
+cena_mutacao S49 src/river_unifi_bridge/nut_driver.py \
+    'if (len(limpo) - len(limpo.rstrip("\\"))) % 2:' \
+    "if False:" \
+    tests/unit/test_nut_driver.py::test_a_very_long_value_is_cut_without_splitting_an_escape
+
+# S50 — o soquete não pode ser do grupo NEM POR UM INSTANTE: com a máscara antiga
+# ele nascia 0770 e só virava 0600 na linha seguinte.
+cena_mutacao S50 src/river_unifi_bridge/nut_driver.py \
+    "umask_antes = os.umask(0o077)" \
+    "umask_antes = os.umask(0o007)" \
+    tests/unit/test_nut_driver.py::test_the_socket_is_never_group_writable_not_even_for_an_instant
+
+# S51 — uma ordem por vez. Duas ordens de desligamento correndo juntas num
+# roteador de produção não é paralelismo, é confusão — e sem limite cada INSTCMD
+# criava uma linha de execução nova que sobrevivia ao encerramento.
+cena_mutacao S51 src/river_unifi_bridge/nut_driver.py \
+    "            if self._ordem_em_curso is not None:" \
+    "            if False:" \
+    tests/unit/test_nut_driver.py::test_a_second_order_while_one_is_running_is_refused_not_queued
+
+# S52 — a queixa sobre o `ups.conf` sai UMA vez, não a cada dois segundos: 1.800
+# linhas iguais por hora afogariam a queixa que importa.
+cena_mutacao S52 src/river_unifi_bridge/nut_servico.py \
+    "            if motivo != self._ultima_queixa_do_conf:" \
+    "            if True:" \
+    tests/unit/test_nut_servico.py::test_a_ups_conf_we_cannot_read_is_complained_about_once_not_every_lap
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

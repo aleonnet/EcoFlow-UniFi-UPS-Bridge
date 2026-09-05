@@ -68,6 +68,9 @@ class PonteDoNut:
         # O nome que o dono deu a cada dispositivo, para a declaração no `ups.conf`
         # dizer o mesmo que a tela.
         self._descricoes: dict[str, str] = {}
+        # A última queixa sobre o `ups.conf`, para ela sair uma vez e não a cada
+        # volta do laço.
+        self._ultima_queixa_do_conf: str | None = None
 
     # -- ciclo de vida ------------------------------------------------------
     def iniciar(self) -> None:
@@ -131,9 +134,17 @@ class PonteDoNut:
                        for identificador in sorted(self._dispositivos)]
         try:
             mudou = nut_conf.atualizar(self.ups_conf, declarados)
-        except OSError as exc:
-            self._log("WARN", "nut_conf_nao_escrito", reason=str(exc)[:200])
+        except (nut_conf.ConfMalformada, OSError) as exc:
+            # Uma vez, não a cada dois segundos: o laço passa por aqui em toda
+            # volta, e um arquivo que ninguém foi consertar encheria o registro
+            # com a mesma linha 1.800 vezes por hora. A queixa volta a sair se o
+            # motivo mudar — ou se o arquivo for consertado e quebrar de novo.
+            motivo = str(exc)[:200]
+            if motivo != self._ultima_queixa_do_conf:
+                self._ultima_queixa_do_conf = motivo
+                self._log("WARN", "nut_conf_nao_escrito", reason=motivo)
             return
+        self._ultima_queixa_do_conf = None
         if mudou:
             self._log("INFO", "nut_conf_atualizado",
                       aparelhos=[nome for nome, _ in declarados])

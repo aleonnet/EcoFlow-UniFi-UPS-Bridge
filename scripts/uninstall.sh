@@ -120,6 +120,28 @@ while IFS=$'\t' read -r chave estado; do
   esac
 done < "$MANIFESTO"
 
+# O trecho que o SERVIÇO escreve no ups.conf do NUT (os aparelhos que ele
+# publicava) não está no manifesto: quem o escreveu foi o daemon, em tempo de
+# execução, não o instalador. Deixá-lo para trás faria o servidor do no-break
+# procurar para sempre soquetes de um driver que não existe mais. Só o miolo
+# entre as marcas sai; o resto do arquivo é do dono, e continua sendo.
+tirar_trecho_do_ups_conf() {
+  local arquivo="$NUT_ETC/ups.conf"
+  [ -f "$arquivo" ] || return 0
+  grep -q '^# >>> River Bridge' "$arquivo" 2>/dev/null || return 0
+  local novo; novo="$(mktemp)"
+  awk '/^# >>> River Bridge/{pula=1} !pula{print} /^# <<< River Bridge/{pula=0}' \
+    "$arquivo" > "$novo" || { rm -f "$novo"; return 1; }
+  # Sem a marca de fim, o awk teria comido o arquivo daí para baixo: recusa.
+  if grep -q '^# <<< River Bridge' "$arquivo" 2>/dev/null; then
+    cat "$novo" > "$arquivo" && diga "trecho do River Bridge removido de $arquivo"
+  else
+    diga "AVISO — $arquivo tem a marca de início do River Bridge sem a de fim; não mexi"
+  fi
+  rm -f "$novo"
+}
+tirar_trecho_do_ups_conf || true
+
 rm -f "$MANIFESTO" "$PREFIX/last-run.log" 2>/dev/null || true
 # O próprio uninstall.sh mora em $PREFIX/scripts (classe file: do manifesto):
 # o rm -f acima não afeta o processo em curso, que já tem o arquivo aberto.

@@ -23,6 +23,7 @@ from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from . import river_serial
+from .cabo_automatico import CaboAutomatico
 from .nut_supervisor import NutSupervisor
 from .nut_comandos import (
     ExecutorDeComandos, comandos_do_dispositivo, comandos_do_river)
@@ -400,8 +401,10 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
         supervisor.iniciar()
     # A ponte também PUBLICA no NUT (ver nut_servico.py); ela nasce lá dentro do
     # `try`, depois da linha do tempo existir — as ordens que chegam pelo NUT
-    # entram nela como as da tela.
+    # entram nela como as da tela. O mesmo vale para o cabo automático, cujo
+    # aviso é a única coisa que o dono vê da troca.
     ponte = None
+    cabo = None
     # O `finally` abaixo é o que impede leitor órfão: o launchd manda SIGTERM ao
     # atualizar ou ao desligar a máquina (o `main` converte o sinal em
     # interrupção), e sem ele os dois processos do no-break ficavam com o cabo.
@@ -475,6 +478,17 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                     else (lambda: None)))
             ponte.iniciar()
 
+        # O cabo do River é um só, e o aplicativo do fabricante também o quer.
+        # Ligado, o serviço larga quando aquele aplicativo abre e retoma quando
+        # ele fecha — sem botão nenhum, só o aviso na tela. Com proteção armada,
+        # não larga: seria ficar cego para a queda justamente com o desligamento
+        # automático ligado.
+        if supervisor is not None and cfg.river_cabo_automatico:
+            cabo = CaboAutomatico(
+                supervisor, log=_log,
+                avisar=_registrador(shared, history),
+                ha_protecao_armada=lambda: any(p.armed for p in plugins))
+
         while True:
             try:
                 snap = poll_once(cfg)
@@ -511,6 +525,8 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
             # configuração quando ela muda a quente.
             # Leitor que morre e não volta é pior que leitor que nunca subiu: a tela
             # continuaria com a última leitura e ninguém avisaria.
+            if cabo is not None:
+                cabo.vigiar()
             if supervisor is not None:
                 supervisor.vigiar()
             if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:

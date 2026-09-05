@@ -71,6 +71,17 @@ def _sem_porta_serial(monkeypatch):
         def encerrar(self): self.acoes.append("encerrar")
 
     monkeypatch.setattr(service, "PonteDoNut", _PonteDeTeste)
+
+    # E ninguém procura o aplicativo do fabricante na máquina de quem roda a
+    # suíte: a busca é um `pgrep`, e a cerca anti-spawn acima já o proibiria — o
+    # teste morreria com "spawn proibido" em vez de dizer o que quebrou. Quem
+    # testa a troca de cabo é tests/unit/test_cabo_automatico.py, com a busca
+    # injetada.
+    class _CaboDeTeste:
+        def __init__(self, *_a, **_k): self.acoes = []
+        def vigiar(self): self.acoes.append("vigiar")
+
+    monkeypatch.setattr(service, "CaboAutomatico", _CaboDeTeste)
     monkeypatch.setattr(service, "_porta_serial_lembrada", None, raising=False)
     monkeypatch.setattr(service, "_ultima_varredura", float("-inf"), raising=False)
     monkeypatch.setattr(service, "_ultima_leitura_serial", None, raising=False)
