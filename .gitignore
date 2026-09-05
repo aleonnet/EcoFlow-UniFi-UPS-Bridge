@@ -19,3 +19,5 @@ macos/RiverBridge/dist/
 .roadworthy/state
 .roadworthy/evidence.jsonl
 /*.png
+# Estado de trabalho do Xcode ao abrir o pacote Swift (não é código nosso)
+macos/RiverBridge/.swiftpm/
