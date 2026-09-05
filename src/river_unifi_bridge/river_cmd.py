@@ -17,6 +17,7 @@ para um aparelho que alimenta os equipamentos de alguém.
 
 from __future__ import annotations
 
+import os
 import socket
 from dataclasses import dataclass
 
@@ -125,3 +126,47 @@ def _humano(resposta: str) -> str:
         "INSTCMD-FAILED": "o aparelho recusou o comando",
         "SET-FAILED": "o aparelho recusou a mudança",
     }.get(codigo, "o servidor do no-break recusou o pedido")
+
+
+def alvo_do_river(cfg, state_dir: str | None) -> Alvo:
+    """Com que conta falamos com o nosso próprio servidor do no-break.
+
+    A senha mora num arquivo 0600 do diretório de estado, escrito pelo instalador
+    — nunca no `.env`, que a rota de configuração devolve inteiro para o app. Sem
+    o arquivo, a senha sai vazia e quem chama recusa com frase, em vez de tentar e
+    receber "acesso negado".
+    """
+    senha = os.environ.get("RUB_NUT_PASSWORD")
+    if senha is None and state_dir:
+        try:
+            with open(os.path.join(state_dir, "nut-admin.token"), encoding="utf-8") as fh:
+                senha = fh.read().strip()
+        except OSError:
+            senha = None
+    return Alvo(ups=cfg.nut_ups, host=cfg.nut_host, porta=cfg.nut_port,
+                usuario=os.environ.get("RUB_NUT_USER", USUARIO_PADRAO),
+                senha=senha or "")
+
+
+def desligar_o_aparelho(alvo: Alvo, *, ao_nao_fechar_a_trava=None, fala=_fala) -> None:
+    """Desliga o PRÓPRIO River — o ato mais destrutivo do sistema.
+
+    São três conversas: abrir a trava do driver, mandar o comando, fechar a trava.
+    A trava fica aberta pelo TEMPO DO COMANDO e não um segundo a mais: sem o
+    `finally`, uma tentativa que falhasse deixava o aparelho desligável por
+    qualquer cliente do no-break — com as travas do dono fechadas, e ele sem saber.
+
+    Não há cerca AQUI de propósito: as cercas (a trava de arquivo, a proteção
+    armada) são de quem chama, e são as mesmas na tela e no NUT.
+    """
+    try:
+        gravar_variavel(alvo, "driver.flag.allow_killpower", "1", fala=fala)
+        mandar_comando(alvo, "driver.killpower", fala=fala)
+    finally:
+        try:
+            gravar_variavel(alvo, "driver.flag.allow_killpower", "0", fala=fala)
+        except (RiverCmdError, OSError) as exc:
+            if ao_nao_fechar_a_trava is not None:
+                ao_nao_fechar_a_trava(exc)
+            else:
+                raise

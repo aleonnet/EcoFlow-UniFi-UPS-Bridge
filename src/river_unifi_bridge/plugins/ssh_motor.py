@@ -20,8 +20,8 @@ from dataclasses import replace
 
 from ..config import CORE_FROZEN_KEYS
 from ..protect import (
-    ConfigHolder, ProtectionConfig, ProtectionPolicy, _is_synthetic_driver,
-    _read_private_json, _write_private_json,
+    SUBPROCESS_TIMEOUT_SECONDS, ConfigHolder, ProtectionConfig, ProtectionPolicy,
+    _is_synthetic_driver, _read_private_json, _write_private_json, ssh_argv,
 )
 
 def _com_chave_gerida(pc: ProtectionConfig, chave_path: str) -> ProtectionConfig:
@@ -86,6 +86,48 @@ class SshMotorPlugin(DevicePlugin):
     def comandos_de_leitura(cls) -> dict[str, str]:
         """Os comandos que provam alcance sem tocar em nada. Cada tipo diz os seus."""
         return {}
+
+    # --- ordens que o dono dá à mão --------------------------------------------
+    # A proteção age sozinha numa queda de energia. Isto aqui é outra coisa: o
+    # dono (pela tela ou pelo Home Assistant) manda AGORA. O tipo diz o que sabe
+    # mandar; o que ele não souber, não é oferecido a ninguém.
+    def acoes_manuais(self) -> dict[str, str]:
+        """`{nome da ação: comando remoto}` deste dispositivo."""
+        return {"desligar": self.shutdown_command_for(self.instance)}
+
+    def executar_acao(self, acao: str, *, runner=None) -> str:
+        """Manda a ordem pelo MESMO caminho que a proteção usa para desligar.
+
+        Uma só cerca, e ela é a que importa: sem alcance provado, não se manda
+        nada. Provar por outro caminho não diria nada sobre este, e é este que
+        corta a energia do aparelho de alguém.
+
+        O modo ensaio NÃO vale aqui de propósito: ele governa o que a proteção
+        faz SOZINHA numa queda. Uma ordem que o dono dá agora é uma ordem — um
+        botão que não faz nada seria pior que botão nenhum.
+
+        Devolve texto vazio quando deu certo, ou o motivo em português.
+        """
+        comando = self.acoes_manuais().get(acao)
+        if comando is None:
+            return f"este dispositivo não sabe {acao}"
+        if not self.alcance_valido():
+            return ("ainda não foi provado que este serviço alcança o aparelho: "
+                    "use Testar conexão na tela do dispositivo")
+        from ..protect import _RUNNER
+        argv = ssh_argv(self._holder.get(), self.known_hosts_path, comando)
+        try:
+            resultado = (runner or _RUNNER)(
+                argv, capture_output=True, timeout=SUBPROCESS_TIMEOUT_SECONDS, check=False)
+        except Exception as exc:                 # tempo esgotado, ssh ausente, …
+            return f"{type(exc).__name__}: {exc}"[:200]
+        if getattr(resultado, "returncode", None) == 0:
+            return ""
+        erro = getattr(resultado, "stderr", b"") or b""
+        if isinstance(erro, bytes):
+            erro = erro.decode("utf-8", "replace")
+        return (erro.strip()[:200]
+                or f"o aparelho respondeu {getattr(resultado, 'returncode', None)}")
 
     @classmethod
     def caminhos_do_acesso(cls, instance_id: str, state_dir: str) -> dict:

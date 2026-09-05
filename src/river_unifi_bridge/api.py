@@ -225,18 +225,12 @@ class ApiServer:
         instalador — nunca no `.env`, que a rota de configuração devolve inteiro
         para o app. Sem o arquivo, as rotas de ação recusam com frase clara, em
         vez de tentar com senha vazia e receber "acesso negado" (revisão fria).
+
+        A montagem em si mora em `river_cmd`: a mesma conta é usada pela ordem que
+        chega pelo NUT, e duas cópias poderiam discordar sobre onde está a senha.
         """
-        from .river_cmd import Alvo
-        senha = os.environ.get("RUB_NUT_PASSWORD")
-        if senha is None and self.state_dir:
-            try:
-                with open(os.path.join(self.state_dir, "nut-admin.token"), encoding="utf-8") as fh:
-                    senha = fh.read().strip()
-            except OSError:
-                senha = None
-        return Alvo(ups=self.cfg.nut_ups, host=self.cfg.nut_host, porta=self.cfg.nut_port,
-                    usuario=os.environ.get("RUB_NUT_USER", "riverbridge"),
-                    senha=senha or "")
+        from .river_cmd import alvo_do_river
+        return alvo_do_river(self.cfg, self.state_dir)
 
     def _cabo_emprestado(self, arma: bool) -> web.Response | None:
         """Armar com o cabo na mão do outro aplicativo é armar às cegas.
@@ -407,7 +401,7 @@ class ApiServer:
         proteção armada (para não confundir com o desligamento do console), e a
         confirmação que a tela pede antes de chamar esta rota.
         """
-        from .river_cmd import RiverCmdError, mandar_comando
+        from .river_cmd import RiverCmdError
 
         if not self.cfg.river_poweroff_allowed:
             return self._refuse(409, "desligamento_bloqueado",
@@ -421,36 +415,29 @@ class ApiServer:
         if recusa is not None:
             return recusa
         alvo = self._alvo_river()
-        from .river_cmd import gravar_variavel
+        from .river_cmd import desligar_o_aparelho
+
+        def trava_ficou_aberta(exc) -> None:
+            # Não é só registro: isto vai à linha do tempo do app, porque o
+            # aparelho ficou desligável por qualquer programa desta máquina e o
+            # dono precisa saber para reiniciar o leitor.
+            log_json("ERROR", "killpower_flag_aberta", reason=str(exc)[:200])
+            self.state.add_event("RIVER_KILLPOWER_FLAG_ABERTA", {
+                "detail": "não consegui fechar a trava de desligamento do "
+                          "leitor; reinicie o serviço"})
+            if self.history is not None:
+                self.history.record_event(
+                    "RIVER_KILLPOWER_FLAG_ABERTA",
+                    "não consegui fechar a trava de desligamento do leitor")
 
         def conversa_com_o_aparelho() -> None:
             """As três conversas de soquete, fora do laço de eventos.
 
             Cada uma espera até 5 s; no laço, isso deixava a API muda justamente
-            enquanto o dono acompanha o desligamento na tela.
+            enquanto o dono acompanha o desligamento na tela. A sequência em si
+            mora em `river_cmd`: é a MESMA que a ordem vinda do NUT executa.
             """
-            try:
-                # A trava do próprio driver fica aberta pelo TEMPO DO COMANDO e não
-                # um segundo a mais. Sem o `finally`, uma tentativa que falhasse
-                # deixava o aparelho desligável por qualquer cliente do no-break —
-                # com as duas travas do dono fechadas, e ele sem saber.
-                gravar_variavel(alvo, "driver.flag.allow_killpower", "1")
-                mandar_comando(alvo, "driver.killpower")
-            finally:
-                try:
-                    gravar_variavel(alvo, "driver.flag.allow_killpower", "0")
-                except (RiverCmdError, OSError) as exc:
-                    # Não é só registro: isto vai à linha do tempo do app, porque
-                    # o aparelho ficou desligável por qualquer programa desta
-                    # máquina e o dono precisa saber para reiniciar o leitor.
-                    log_json("ERROR", "killpower_flag_aberta", reason=str(exc)[:200])
-                    self.state.add_event("RIVER_KILLPOWER_FLAG_ABERTA", {
-                        "detail": "não consegui fechar a trava de desligamento do "
-                                  "leitor; reinicie o serviço"})
-                    if self.history is not None:
-                        self.history.record_event(
-                            "RIVER_KILLPOWER_FLAG_ABERTA",
-                            "não consegui fechar a trava de desligamento do leitor")
+            desligar_o_aparelho(alvo, ao_nao_fechar_a_trava=trava_ficou_aberta)
 
         try:
             await asyncio.to_thread(conversa_com_o_aparelho)

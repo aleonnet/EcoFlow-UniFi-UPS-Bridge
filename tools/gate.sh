@@ -449,8 +449,10 @@ cena_mutacao S4ax src/river_unifi_bridge/service.py \
 # primeiro contato real com o roteador seria o comando de desligar, numa queda —
 # e foi assim que um defeito de caminho sobreviveu meses sem aparecer.
 cena_mutacao S4ay src/river_unifi_bridge/plugins/ssh_motor.py \
-    'if not self.alcance_valido():' \
-    'if False:' \
+    '            if not self.alcance_valido():
+                # O portão que faltava' \
+    '            if False:
+                # O portão que faltava' \
     tests/unit/test_api.py::test_arming_is_refused_without_proof_that_we_reach_the_console
 
 # S4az — prova de alcance velha não vale: endereço muda, chave é revogada,
@@ -553,6 +555,36 @@ cena_mutacao S31d src/river_unifi_bridge/service.py \
     '        if False:
             ponte.encerrar()' \
     tests/unit/test_service_loop.py::test_leaving_takes_the_published_devices_with_it
+
+# S32 — desligar o River pelo NUT sem a trava de arquivo aberta. A trava é a
+# MESMA da tela: nem a rota do app nem o Home Assistant a abrem.
+cena_mutacao S32 src/river_unifi_bridge/nut_comandos.py \
+    'if not getattr(self.cfg, "river_poweroff_allowed", False):' \
+    "if False:" \
+    tests/unit/test_nut_comandos.py::test_the_river_is_not_turned_off_with_the_file_lock_shut
+
+# S33 — desligar o River pelo NUT com proteção armada seriam duas ordens de
+# desligamento ao mesmo tempo: a automática da queda e a do dono.
+cena_mutacao S33 src/river_unifi_bridge/nut_comandos.py \
+    'if any(getattr(p, "armed", False) for p in self.plugins):' \
+    "if False:" \
+    tests/unit/test_nut_comandos.py::test_the_river_is_not_turned_off_while_a_protection_is_armed
+
+# S34 — mandar num dispositivo sem alcance PROVADO. Provar por outro caminho não
+# diria nada sobre este, e é este que corta a energia do aparelho de alguém.
+cena_mutacao S34 src/river_unifi_bridge/plugins/ssh_motor.py \
+    '        if not self.alcance_valido():
+            return ("ainda não foi provado que este serviço alcança o aparelho: "' \
+    '        if False:
+            return ("ainda não foi provado que este serviço alcança o aparelho: "' \
+    tests/unit/test_nut_comandos.py::test_a_device_without_proven_reach_never_spawns_an_ssh
+
+# S34b — anunciar uma ordem que o tipo não sabe cumprir. Trocar reiniciar por
+# desligar num roteador de produção é o pior desfecho possível.
+cena_mutacao S34b src/river_unifi_bridge/nut_comandos.py \
+    "return tuple(nome for nome, acao in _ACAO_DO_COMANDO.items() if acao in acoes)" \
+    "return tuple(_ACAO_DO_COMANDO)" \
+    tests/unit/test_nut_comandos.py::test_only_what_the_type_knows_how_to_do_is_announced
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1

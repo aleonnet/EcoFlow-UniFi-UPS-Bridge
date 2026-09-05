@@ -24,6 +24,8 @@ from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from . import river_serial
 from .nut_supervisor import NutSupervisor
+from .nut_comandos import (
+    ExecutorDeComandos, comandos_do_dispositivo, comandos_do_river)
 from .nut_servico import PonteDoNut
 from .nut import NutClient, NutError
 # Import no TOPO, não dentro da função: um monkeypatch de
@@ -326,6 +328,21 @@ def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> N
     _log("INFO", "state", **snap_dict)
 
 
+def _registrador(shared, history):
+    """Uma ordem destrutiva tem de aparecer na LINHA DO TEMPO, não só no registro.
+
+    Quem manda pelo Home Assistant não vê o registro do sistema; quem abre o app
+    depois precisa achar ali o que aconteceu com o aparelho dele.
+    """
+    def registrar(evento: str, detalhe: str) -> None:
+        if shared is not None:
+            shared.add_event(evento, {"detail": detalhe})
+        if history is not None:
+            history.record_event(evento, detalhe)
+
+    return registrar
+
+
 def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
              clock=time.monotonic) -> int:
     tracker = TransitionTracker(cfg)
@@ -366,17 +383,10 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     if not once and cfg.river_nut_managed:
         supervisor = NutSupervisor(cfg.nut_ups, log=_log)
         supervisor.iniciar()
-    # E a ponte passa a PUBLICAR no NUT: um aparelho com tudo o que ela sabe do
-    # River (watts por tomada inclusive) e um por dispositivo protegido. É por
-    # aqui que o Home Assistant recebe o mesmo que o app mostra — ver
-    # nut_servico.py. Falhar aqui não derruba o serviço: publicar é um extra, e a
-    # proteção, que é o motivo de ele existir, não depende disto.
+    # A ponte também PUBLICA no NUT (ver nut_servico.py); ela nasce lá dentro do
+    # `try`, depois da linha do tempo existir — as ordens que chegam pelo NUT
+    # entram nela como as da tela.
     ponte = None
-    if not once and cfg.river_nut_publica:
-        ponte = PonteDoNut(aparelho=cfg.river_nut_aparelho,
-                           estado=os.environ.get("RUB_NUT_STATE") or ESTADO_DO_NUT,
-                           log=_log)
-        ponte.iniciar()
     # O `finally` abaixo é o que impede leitor órfão: o launchd manda SIGTERM ao
     # atualizar ou ao desligar a máquina (o `main` converte o sinal em
     # interrupção), e sem ele os dois processos do no-break ficavam com o cabo.
@@ -421,6 +431,25 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
             # depois da 1.ª leitura boa do UPS, e o app subia dizendo "nenhum
             # dispositivo protegido" com o River desligado (medido no Mac mini).
             shared.set_plugins(plugin_statuses(plugins))  # desde o boot
+
+        # A ponte publica no NUT um aparelho com tudo o que ela sabe do River
+        # (watts por tomada inclusive) e um por dispositivo protegido — é por aqui
+        # que o Home Assistant recebe o mesmo que o app mostra. As ordens que
+        # chegam por ali passam pelas MESMAS cercas da tela (nut_comandos.py).
+        # Falhar aqui não derruba o serviço: publicar é um extra, e a proteção,
+        # que é o motivo de ele existir, não depende disto.
+        if not once and cfg.river_nut_publica:
+            executor = ExecutorDeComandos(
+                cfg, aparelho_do_river=cfg.river_nut_aparelho, plugins=plugins,
+                state_dir=state_dir(), log=_log,
+                registrar=_registrador(shared, history))
+            ponte = PonteDoNut(
+                aparelho=cfg.river_nut_aparelho,
+                estado=os.environ.get("RUB_NUT_STATE") or ESTADO_DO_NUT,
+                log=_log, executor=executor,
+                comandos_do_river=comandos_do_river(cfg),
+                comandos_do_dispositivo=comandos_do_dispositivo)
+            ponte.iniciar()
 
         while True:
             try:

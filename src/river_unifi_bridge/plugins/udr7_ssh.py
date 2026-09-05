@@ -183,6 +183,9 @@ class Udr7SshPlugin(SshMotorPlugin):
     default_name = "UDR7"
     event_prefix = "UDR7_"
     fields = UDR7_FIELDS
+    # Quem fabrica o aparelho. Vai para `device.mfr` quando ele é publicado no NUT
+    # — é o que o Home Assistant mostra na ficha do dispositivo.
+    fabricante = "Ubiquiti"
 
     @classmethod
     def comandos_de_leitura(cls) -> dict[str, str]:
@@ -198,6 +201,13 @@ class Udr7SshPlugin(SshMotorPlugin):
     @classmethod
     def shutdown_command_for(cls, instance) -> str:
         return POWEROFF.argv          # da tabela deste tipo, com fonte verificada
+
+    # O UDR7 é o único tipo que também sabe REINICIAR: o comando existe na tabela
+    # desde a 0.3.0, declarado e nunca usado — a proteção não o dispara de
+    # propósito (reiniciar numa queda gastaria bateria e devolveria o console
+    # ligado). Como ordem do dono, à mão, ele passa a valer.
+    def acoes_manuais(self) -> dict[str, str]:
+        return {"desligar": POWEROFF.argv, "reiniciar": COMMANDS["reboot"].argv}
 
     def authorize(self, changes: dict, snapshot: dict | None,
                   comm_ok: bool) -> tuple[int, str, str] | None:
