@@ -34,3 +34,17 @@ import Testing
     #expect(texto.message.contains("de verdade") || texto.message.contains("really"))
     #expect(texto.confirmLabel.contains("real"))
 }
+
+@Test func abrirParaARedeNomeiaORiscoAntesDeAbrir() {
+    // Abrir o servidor à rede expõe as ordens das travas abertas a quem tiver a
+    // senha, e a senha viaja sem cifra: a confirmação tem de dizer as duas coisas.
+    let texto = RedeConfirmation()
+    #expect(texto.title.hasSuffix("?"))
+    #expect(texto.message.contains("senha") || texto.message.contains("password"))
+    #expect(texto.message.contains("sem cifra") || texto.message.contains("unencrypted"))
+    #expect(texto.message.contains("desligar o River") || texto.message.contains("turning the River off"))
+    for frase in [texto.title, texto.message, texto.confirmLabel] {
+        #expect(frase.contains("_") == false)
+        #expect(frase.contains("LISTEN") == false)
+    }
+}

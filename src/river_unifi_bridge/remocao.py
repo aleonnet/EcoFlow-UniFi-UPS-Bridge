@@ -44,8 +44,13 @@ import subprocess
 
 from . import nut_conf
 
-# O pedaço de caminho que só existe dentro do Lixo de um usuário do macOS.
-LIXO = "/.Trash/"
+# Os pedaços de caminho que só existem dentro de um Lixo do macOS: o do usuário
+# no volume de partida (`~/.Trash/`) e o de um volume externo (`/.Trashes/<uid>/`).
+MARCAS_DO_LIXO = ("/.Trash/", "/.Trashes/")
+
+
+def no_lixo(caminho: str | None) -> bool:
+    return bool(caminho) and any(marca in caminho for marca in MARCAS_DO_LIXO)
 # O rótulo do serviço no launchd, o mesmo do plist dentro do pacote.
 ROTULO = "com.river.unifi-bridge"
 _TAMANHO_DO_CAMINHO = 1024
@@ -68,11 +73,11 @@ class VigiaDoPacote:
 
     def deve_remover(self) -> bool:
         # (a) Relançado de dentro do Lixo: o caminho da partida já diz tudo.
-        if LIXO in self.original:
+        if no_lixo(self.original):
             return True
         # (b) Foi para o Lixo durante a vida — e ninguém ocupou o lugar dele.
         atual = self.caminho_atual()
-        if atual is None or LIXO not in atual:
+        if not no_lixo(atual):
             return False
         return not os.path.isdir(self.original)
 

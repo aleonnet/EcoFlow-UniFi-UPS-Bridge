@@ -10,6 +10,28 @@
 
 import Foundation
 
+/// A confirmação de abrir o servidor do no-break para a rede — o mesmo molde
+/// das travas, porque expõe o mesmo tipo de risco: o protocolo do NUT viaja em
+/// texto claro, e quem tiver a senha do Home Assistant na rede local manda as
+/// ordens que as travas abertas permitirem (revisão fria da 0.8.0).
+public struct RedeConfirmation: Sendable {
+    public init() {}
+
+    public var title: String {
+        L10n.t("Aceitar o Home Assistant pela rede?", "Accept Home Assistant over the network?")
+    }
+
+    public var message: String {
+        L10n.t("O servidor do no-break passa a escutar na rede local. Quem estiver na sua rede lê o River sem senha; quem tiver a senha do Home Assistant manda as ordens que as travas abertas permitirem — desligar o River, desligar ou reiniciar os dispositivos. A senha viaja sem cifra: esta é uma decisão para a sua rede de casa.",
+               "The UPS server starts listening on the local network. Anyone on your network reads the River without a password; anyone with the Home Assistant password sends the orders the open locks allow — turning the River off, shutting down or rebooting the devices. The password travels unencrypted: this is a decision for your home network.")
+    }
+
+    public var confirmLabel: String {
+        L10n.t("Abrir para a rede — o Home Assistant passa a alcançar",
+               "Open to the network — Home Assistant can reach it")
+    }
+}
+
 public struct TravaConfirmation {
     public enum Trava: String, CaseIterable, Sendable {
         /// Permite armar a proteção: o desligamento numa queda passa a ser real.

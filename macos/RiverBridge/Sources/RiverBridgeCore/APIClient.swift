@@ -154,10 +154,19 @@ public struct APIClient: Sendable {
         try JSONCoding.decoder().decode(RedeDoNut.self, from: try await run(request("v1/nut/rede")))
     }
 
+    /// O que o serviço respondeu ao interruptor: `servidorReiniciado` é falso
+    /// quando este serviço não cuida do servidor (quem o reinicia é o dono).
+    public struct RedeMudada: Decodable, Sendable {
+        public var aberta: Bool
+        public var mudou: Bool
+        public var servidorReiniciado: Bool
+    }
+
     /// Liga ou desliga a escuta na rede local; o serviço reinicia só o servidor.
-    public func nutRede(aberta: Bool) async throws {
+    public func nutRede(aberta: Bool) async throws -> RedeMudada {
         let body = try JSONSerialization.data(withJSONObject: ["aberta": aberta])
-        _ = try await run(request("v1/nut/rede", method: "PUT", body: body))
+        return try JSONCoding.decoder().decode(
+            RedeMudada.self, from: try await run(request("v1/nut/rede", method: "PUT", body: body)))
     }
 
     // MARK: - Dispositivos por instância (2026-09-03)

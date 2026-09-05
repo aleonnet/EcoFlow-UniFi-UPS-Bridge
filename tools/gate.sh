@@ -658,10 +658,10 @@ cena_mutacao S41 src/river_unifi_bridge/api.py \
 # continuavam no ar até o reinício.
 cena_mutacao S42 src/river_unifi_bridge/config.py \
     '        "RIVER_SERIAL_PORT",
-        # Fase 3'"'"'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).' \
+        # As três travas (0.8.0)' \
     '        "RIVER_SERIAL_PORT",
         "RIVER_NUT_PUBLICA",
-        # Fase 3'"'"'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).' \
+        # As três travas (0.8.0)' \
     tests/unit/test_api.py::test_turning_publishing_off_is_not_announced_as_taking_effect_now
 
 # S43 — o trecho que o serviço mantém no `ups.conf` não pode comer o que está
@@ -709,6 +709,8 @@ cena_mutacao S57 src/river_unifi_bridge/cabo_automatico.py \
 # S58 — as três travas são interruptores na tela e aplicam a QUENTE. Tirada da
 # lista de aplicação a quente, a trava do River voltaria a exigir reinício — o
 # interruptor diria "feito" e a ordem não existiria até o dono reiniciar.
+# (O plano previa plantar a recusa "somente arquivo" de volta em api.py; esse
+# código deixou de existir, então o mutante possível é este, em config.py.)
 cena_mutacao S58 src/river_unifi_bridge/config.py \
     '        "UDR7_ARM_ALLOWED",
         "RIVER_POWEROFF_ALLOWED",' \
@@ -751,14 +753,14 @@ fi
 # um `mv` real; sem reconhecer o Lixo, o serviço seguiria vivo de dentro dele
 # (visto pelo dono no Mac mini, 2026-09-05).
 cena_mutacao S61 src/river_unifi_bridge/remocao.py \
-    'LIXO = "/.Trash/"' \
-    'LIXO = "/.Nunca/"' \
+    'MARCAS_DO_LIXO = ("/.Trash/", "/.Trashes/")' \
+    'MARCAS_DO_LIXO = ("/.Nunca/", "/.Jamais/")' \
     tests/unit/test_remocao.py::test_no_lixo_dispara \
     tests/unit/test_remocao.py::test_partida_dentro_do_lixo_dispara
 
 # S62 — mover para OUTRA pasta não é jogar fora: só o Lixo dispara.
 cena_mutacao S62 src/river_unifi_bridge/remocao.py \
-    '        if atual is None or LIXO not in atual:
+    '        if not no_lixo(atual):
             return False' \
     '        if atual is None:
             return False' \
@@ -783,7 +785,7 @@ cena_mutacao S62c src/river_unifi_bridge/remocao.py \
 # S62d — relançado de dentro do Lixo, remove na primeira volta (bloqueador B2 da
 # revisão fria: só a regra "mudou de lugar" não vê diferença na partida).
 cena_mutacao S62d src/river_unifi_bridge/remocao.py \
-    '        if LIXO in self.original:
+    '        if no_lixo(self.original):
             return True' \
     '        if False:
             return True' \
@@ -1524,7 +1526,10 @@ rm -rf "$REL"
 # A própria cena é refutada a cada rodada: numa CÓPIA com o jargão replantado, as
 # mesmas buscas têm de acusar — busca que nunca acusaria não é cerca.
 JARG_DIR="$RAIZ/macos/RiverBridge/Sources"
-JARG_TERMOS="UDR7_ARM_ALLOWED|known_hosts|upsc device.serial|(202)"
+# `UDR7_ARM_ALLOWED=1`, e não a chave nua: desde a 0.8.0 a chave é o que o app
+# grava pelo PUT (interruptor em Ajustes › Travas) e vive numa constante; o
+# jargão é a frase "=1 no arquivo", que mandava o dono editar o arquivo.
+JARG_TERMOS="UDR7_ARM_ALLOWED=1|known_hosts|upsc device.serial|(202)"
 conta_jargao() {   # 1 = diretório a varrer; imprime o total das duas buscas
     local dir="$1" total=0 termo antigo_ifs="$IFS"
     IFS='|'
@@ -1553,7 +1558,7 @@ if [ "$JARG_LIMPO" = "0" ] && [ "$JARG_MUT" -ge 5 ]; then
     ok "S21 tela sem jargão: 0 ocorrência na árvore; $JARG_MUT no mutante com o jargão replantado"
 else
     erro "S21 tela sem jargão: árvore=$JARG_LIMPO (esperado 0), mutante=$JARG_MUT (esperado >= 5) — ocorrências:"
-    /usr/bin/grep -rnE 'UDR7_ARM_ALLOWED|known_hosts|upsc device\.serial|\(202\)|\.serviceDown\("' "$JARG_DIR" | head -10
+    /usr/bin/grep -rnE 'UDR7_ARM_ALLOWED=1|known_hosts|upsc device\.serial|\(202\)|\.serviceDown\("' "$JARG_DIR" | head -10
 fi
 rm -rf "$JARG_M"
 

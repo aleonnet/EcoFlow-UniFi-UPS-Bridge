@@ -46,8 +46,12 @@ recusado: desarme primeiro (modo ensaio na folha do dispositivo).
 
 ## 3. O Home Assistant (Ajustes › Home Assistant)
 
-1. Ligue **Aceitar o Home Assistant pela rede**. O servidor do no-break passa a escutar na
-   rede local e é reiniciado sozinho (só ele; o leitor do River não é tocado).
+1. Ligue **Aceitar o Home Assistant pela rede** e confirme. O servidor do no-break passa a
+   escutar na rede local e é reiniciado sozinho (só ele; o leitor do River não é tocado).
+   O que a confirmação diz, e é verdade: o protocolo do NUT viaja em texto claro; quem
+   estiver na sua rede lê o River sem senha, e quem tiver a senha do Home Assistant manda
+   as ordens que as travas abertas permitirem. É uma decisão para a sua rede de casa
+   (backlog B47: o conserto de raiz é usuário próprio ou TLS no servidor).
 2. No Home Assistant: **Ajustes › Dispositivos e serviços › Adicionar integração › Network
    UPS Tools (NUT)**, com os quatro valores que a tela mostra (servidor, porta 3493, usuário
    `homeassistant`, senha — o botão de copiar existe para isso).

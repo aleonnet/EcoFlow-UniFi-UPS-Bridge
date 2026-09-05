@@ -23,6 +23,9 @@ struct HomeAssistantGroup: View {
     @State private var rede: APIClient.RedeDoNut?
     @State private var redeEmVoo = false
     @State private var recadoDaRede: String?
+    // Ligar pede confirmação, como as travas: abre o servidor à rede e, com as
+    // travas abertas, as ordens passam a ser alcançáveis por quem tiver a senha.
+    @State private var confirmandoRede = false
 
     private let porta = "3493"
     private let usuario = "homeassistant"
@@ -62,6 +65,16 @@ struct HomeAssistantGroup: View {
             senha = Self.senhaGuardada()
             await carregarRede()
         }
+        .confirmacao(Binding(
+            get: {
+                guard confirmandoRede else { return nil }
+                let texto = RedeConfirmation()
+                return PedidoDeConfirmacao(
+                    titulo: texto.title, detalhe: texto.message,
+                    rotuloDaAcao: texto.confirmLabel, destrutivo: true
+                ) { Task { await mudarRede(true) } }
+            },
+            set: { if $0 == nil { confirmandoRede = false } }))
     }
 
     // MARK: - a escuta na rede
@@ -80,10 +93,10 @@ struct HomeAssistantGroup: View {
                 Text(L10n.t("Aceitar o Home Assistant pela rede", "Accept Home Assistant over the network"))
                     .font(.system(.body, design: .rounded))
                 Text(rede?.propria == false
-                     ? L10n.t("A configuração do servidor do no-break é sua (foi escrita à mão), e este interruptor não a toca.",
-                              "The UPS server configuration is yours (written by hand), and this switch does not touch it.")
-                     : L10n.t("O servidor do no-break passa a escutar na rede local. Desligado, só este Mac fala com ele.",
-                              "The UPS server starts listening on the local network. Off, only this Mac talks to it."))
+                     ? L10n.t("A configuração do servidor do no-break não é a que o serviço escreveu (foi escrita à mão, ou ainda não existe): este interruptor não a toca.",
+                              "The UPS server configuration is not the one the service wrote (written by hand, or not there yet): this switch does not touch it.")
+                     : L10n.t("O servidor do no-break passa a escutar na rede local, e as ordens das travas abertas ficam ao alcance de quem tiver a senha. Desligado, só este Mac fala com ele.",
+                              "The UPS server starts listening on the local network, and the orders of the open locks are within reach of anyone with the password. Off, only this Mac talks to it."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -95,7 +108,9 @@ struct HomeAssistantGroup: View {
             Spacer(minLength: Espaco.pequeno)
             Toggle("", isOn: Binding(
                 get: { rede?.aberta ?? false },
-                set: { novo in Task { await mudarRede(novo) } }))
+                set: { novo in
+                    if novo { confirmandoRede = true } else { Task { await mudarRede(false) } }
+                }))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .disabled(rede?.propria != true || redeEmVoo)
@@ -114,8 +129,14 @@ struct HomeAssistantGroup: View {
         }
         redeEmVoo = true
         do {
-            try await APIClient(endpoint: endpoint).nutRede(aberta: aberta)
-            recadoDaRede = nil
+            let resposta = try await APIClient(endpoint: endpoint).nutRede(aberta: aberta)
+            // Serviço que não cuida do servidor do no-break (instalação pela
+            // linha de comando com RIVER_NUT_MANAGED=0): o arquivo mudou, mas o
+            // servidor só lê a linha na partida — e quem o reinicia é o dono.
+            recadoDaRede = (resposta.mudou && !resposta.servidorReiniciado)
+                ? L10n.t("Gravado. Este serviço não cuida do servidor do no-break: reinicie-o você para a mudança valer.",
+                         "Saved. This service does not manage the UPS server: restart it yourself for the change to apply.")
+                : nil
         } catch let APIError.badStatus(_, body) {
             recadoDaRede = ProtectionRefusal.text(body)
         } catch {

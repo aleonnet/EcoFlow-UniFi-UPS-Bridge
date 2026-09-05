@@ -35,7 +35,17 @@ def test_no_lixo_dispara(maquina):
     vigia = VigiaDoPacote(app)
     assert vigia.deve_remover() is False          # em Aplicativos, nada acontece
     os.rename(app, maquina / ".Trash" / "River Bridge.app")
-    assert remocao.LIXO in (vigia.caminho_atual() or "")
+    assert remocao.no_lixo(vigia.caminho_atual())
+    assert vigia.deve_remover() is True
+    vigia.fechar()
+
+
+def test_o_lixo_de_um_volume_externo_tambem_conta(maquina):
+    """Num disco externo o Lixo é `/.Trashes/<uid>/`, não `~/.Trash/`."""
+    (maquina / ".Trashes" / "501").mkdir(parents=True)
+    app = pacote_em(maquina / "Applications")
+    vigia = VigiaDoPacote(app)
+    os.rename(app, maquina / ".Trashes" / "501" / "River Bridge.app")
     assert vigia.deve_remover() is True
     vigia.fechar()
 
@@ -57,7 +67,7 @@ def test_substituido_no_lugar_nao_remove(maquina):
     vigia = VigiaDoPacote(app)
     os.rename(app, maquina / ".Trash" / "River Bridge.app")
     pacote_em(maquina / "Applications")           # o novo ocupa o caminho original
-    assert remocao.LIXO in (vigia.caminho_atual() or "")
+    assert remocao.no_lixo(vigia.caminho_atual())
     assert vigia.deve_remover() is False
     vigia.fechar()
 

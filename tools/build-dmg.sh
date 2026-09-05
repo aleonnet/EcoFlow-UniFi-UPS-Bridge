@@ -42,6 +42,34 @@ limpar() {
 }
 trap limpar EXIT
 
+# ── assinatura e notarização (0.8.0) ─────────────────────────────────────────
+# Com `RUB_SIGN_IDENTITY` (Developer ID) e `RUB_NOTARY_PROFILE` (o perfil guardado
+# por `xcrun notarytool store-credentials`), o PROGRAMA vai à Apple primeiro, em
+# zip, tem de voltar "Accepted", e o ticket é grampeado nele ANTES de ele entrar
+# no disco — assim o pacote que o dono arrasta para Aplicativos carrega o ticket
+# e o Gatekeeper o aceita mesmo sem rede (revisão fria da 0.8.0: grampear só a
+# cópia de fora deixava o de dentro do disco sem ticket). Depois o disco em si é
+# assinado, notarizado e grampeado, e a prova final é o Gatekeeper desta máquina.
+IDENTIDADE="${RUB_SIGN_IDENTITY:-}"
+PERFIL="${RUB_NOTARY_PROFILE:-}"
+notarizar() {  # 1=arquivo (zip ou dmg)  2=o que é, para a mensagem
+  echo "│ notarizando $2 (xcrun notarytool submit --wait, perfil $PERFIL)"
+  local nota
+  nota="$(xcrun notarytool submit "$1" --keychain-profile "$PERFIL" --wait 2>&1)" \
+    || { printf '%s\n' "$nota" | tail -5; erro "a notarização de $2 falhou"; }
+  printf '%s\n' "$nota" | grep -q 'status: Accepted' \
+    || { printf '%s\n' "$nota" | tail -8; erro "a Apple não aceitou $2 (veja o registro acima)"; }
+}
+if [ -n "$PERFIL" ]; then
+  [ -n "$IDENTIDADE" ] && [ "$IDENTIDADE" != "-" ] || erro "notarizar exige RUB_SIGN_IDENTITY (Developer ID)"
+  ditto -c -k --keepParent "$APP" "$PALCO/programa.zip"
+  notarizar "$PALCO/programa.zip" "o programa"
+  rm -f "$PALCO/programa.zip"
+  xcrun stapler staple "$APP" >/dev/null 2>&1 || erro "não consegui grampear o ticket no programa"
+  xcrun stapler validate "$APP" >/dev/null 2>&1 || erro "o ticket grampeado no programa não valida"
+  ok "programa notarizado e grampeado"
+fi
+
 cp -R "$APP" "$PALCO/"
 # Um LEIA-ME ao lado do programa, na janela do disco: as três coisas que o dono
 # não tem como adivinhar. Desde a 0.8.0 nada aqui pede terminal: o NUT vai
@@ -86,28 +114,15 @@ codesign --verify --deep --strict "$MONTAGEM/River Bridge.app" 2>/dev/null \
 hdiutil detach -quiet "$MONTAGEM" && MONTAGEM=""
 [ -z "$falhou" ] || erro "$falhou"
 
-# ── assinatura e notarização do disco (0.8.0) ────────────────────────────────
-# Com `RUB_SIGN_IDENTITY`, o disco é assinado; com `RUB_NOTARY_PROFILE` (o
-# perfil guardado por `xcrun notarytool store-credentials`), ele vai à Apple,
-# tem de voltar "Accepted", e o ticket é grampeado no disco E no programa (o
-# ticket vale pelo hash do código, e o programa zipado da release é o mesmo). A
-# prova final é o próprio Gatekeeper desta máquina avaliando o disco.
-IDENTIDADE="${RUB_SIGN_IDENTITY:-}"
-PERFIL="${RUB_NOTARY_PROFILE:-}"
+# ── o disco: assinatura, notarização e a prova do Gatekeeper ─────────────────
 if [ -n "$IDENTIDADE" ] && [ "$IDENTIDADE" != "-" ]; then
   codesign --force --timestamp --sign "$IDENTIDADE" "$DMG" >/dev/null 2>&1 \
     || erro "não consegui assinar o disco com $IDENTIDADE"
   ok "disco assinado ($IDENTIDADE)"
 fi
 if [ -n "$PERFIL" ]; then
-  [ -n "$IDENTIDADE" ] && [ "$IDENTIDADE" != "-" ] || erro "notarizar exige RUB_SIGN_IDENTITY (Developer ID)"
-  echo "│ notarizando (xcrun notarytool submit --wait, perfil $PERFIL)"
-  NOTA="$(xcrun notarytool submit "$DMG" --keychain-profile "$PERFIL" --wait 2>&1)" \
-    || { printf '%s\n' "$NOTA" | tail -5; erro "a notarização falhou"; }
-  printf '%s\n' "$NOTA" | grep -q 'status: Accepted' \
-    || { printf '%s\n' "$NOTA" | tail -8; erro "a Apple não aceitou o disco (veja o registro acima)"; }
+  notarizar "$DMG" "o disco"
   xcrun stapler staple "$DMG" >/dev/null 2>&1 || erro "não consegui grampear o ticket no disco"
-  xcrun stapler staple "$APP" >/dev/null 2>&1 || erro "não consegui grampear o ticket no programa"
   xcrun stapler validate "$DMG" >/dev/null 2>&1 || erro "o ticket grampeado no disco não valida"
   # A prova que importa: o Gatekeeper DESTA máquina aceita o disco como
   # "Notarized Developer ID". Sem isto, a primeira abertura pede "Abrir Assim

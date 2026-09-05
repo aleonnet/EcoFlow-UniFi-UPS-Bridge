@@ -436,15 +436,23 @@ class ApiServer:
     async def _h_apagar_estado(self, _req: web.Request) -> web.Response:
         """Apaga o que o SERVIÇO criou nesta máquina, a pedido da tela.
 
-        É o mesmo que o serviço faz sozinho quando o pacote vai para o Lixo
-        (remocao.py) — aqui, sem jogar o programa fora. O app roda como o dono e
-        não consegue apagar o que um serviço de sistema escreveu; quem apaga é o
-        próprio serviço, que é dono dos arquivos.
+        É a mesma limpeza que o serviço faz sozinho quando o pacote vai para o
+        Lixo (remocao.py) — aqui, sem jogar o programa fora, e sem a saída do
+        processo: quem desregistra o serviço em seguida é o app. O app roda como
+        o dono e não consegue apagar o que um serviço de sistema escreveu; quem
+        apaga é o próprio serviço, que é dono dos arquivos.
+
+        O leitor e o servidor do no-break são PAUSADOS antes de apagar: no
+        pacote, a configuração e os soquetes deles moram no diretório que sai, e
+        apagar por baixo de processo vivo deixaria os dois falando com arquivos
+        que não existem (revisão fria da 0.8.0). Pausado, o vigia não os
+        ressuscita; se o dono cancelar o desregistro em seguida, o serviço
+        segue vivo e mudo até reiniciar — e o reinício recria tudo.
 
         Duas cercas: nenhuma proteção armada (apagar a chave com a proteção
         ligada a deixaria armada e sem para onde mandar o comando), e a
         confirmação que a tela pede antes de chamar — ela nomeia cada coisa que
-        sai. Quem desregistra o serviço em seguida é o app.
+        sai.
         """
         if any(plugin.armed for plugin in self.plugins):
             return self._refuse(409, "armado_remocao",
@@ -453,6 +461,8 @@ class ApiServer:
                                 "que manda o comando")
         from . import remocao
 
+        if self.supervisor is not None:
+            await asyncio.to_thread(self.supervisor.pausar, "remoção pela tela")
         ups_conf = os.path.join(
             os.environ.get("RUB_NUT_ETC") or "/opt/homebrew/etc/nut", "ups.conf")
         apagados = await asyncio.to_thread(
@@ -711,7 +721,10 @@ class ApiServer:
         restart_required = False
         for key, value in parsed.items():
             if key in HOT_RELOAD_KEYS:
-                setattr(self.cfg, key.lower(), value)   # outside any lock (never read by the policy)
+                # Fora de qualquer trava: quem lê `cfg` (a política, via
+                # on_config_applied logo abaixo; as ordens do NUT, na chamada)
+                # lê o objeto inteiro, e um atributo trocado é atômico em Python.
+                setattr(self.cfg, key.lower(), value)
                 applied_hot.append(key)
             else:
                 restart_required = True
