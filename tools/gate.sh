@@ -764,6 +764,15 @@ cena_mutacao S52 src/river_unifi_bridge/nut_servico.py \
     "            if True:" \
     tests/unit/test_nut_servico.py::test_a_ups_conf_we_cannot_read_is_complained_about_once_not_every_lap
 
+# S56 — UMA publicação por volta, e a leitura inteira. Duas publicações faziam a
+# tela receber, no meio de cada volta, um aparelho "sem potência": o gráfico
+# apagava e voltava a cada dois segundos, e o histórico levava duas amostras por
+# ciclo, uma delas sem os watts.
+cena_mutacao S56 src/river_unifi_bridge/service.py \
+    "_process_snapshot(snap, tracker, plugins, shared, history, publicar=False)" \
+    "_process_snapshot(snap, tracker, plugins, shared, history)" \
+    tests/unit/test_service_loop.py::test_the_screen_gets_one_reading_per_lap_and_it_is_the_whole_one
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

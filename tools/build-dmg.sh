@@ -43,6 +43,31 @@ limpar() {
 trap limpar EXIT
 
 cp -R "$APP" "$PALCO/"
+# Um LEIA-ME ao lado do programa, na janela do disco. As duas coisas que o dono
+# não tem como adivinhar e que custaram caro na bancada de 2026-09-05: a
+# primeira abertura passa pelos Ajustes do Sistema (o pacote é assinado só de
+# forma ad-hoc), e o Lixo NÃO remove o serviço.
+cat > "$PALCO/LEIA-ME.txt" <<'TXT'
+River Bridge — o que saber antes de arrastar
+============================================
+
+1. ARRASTE o River Bridge para a pasta Aplicativos, ao lado.
+
+2. NA PRIMEIRA ABERTURA o macOS vai dizer que nao conseguiu verificar o
+   programa — ele ainda nao e assinado com um certificado de distribuicao da
+   Apple. Para abrir:
+       Ajustes do Sistema > Privacidade e Seguranca > "Abrir Assim Mesmo"
+
+3. O NUT PRECISA ESTAR INSTALADO. E ele que fala com o River pelo cabo:
+       brew install nut
+
+4. DEPOIS DE ABRIR: Ajustes > Servico > Instalar o servico, e aprove em
+       Ajustes do Sistema > Geral > Itens de Inicio de Sessao
+
+5. PARA REMOVER use "Remover completamente" na tela Servico ANTES de arrastar o
+   programa para o Lixo. O Lixo apaga so o programa: o servico continua
+   registrado e rodando, e a chave do console e as senhas ficam no disco.
+TXT
 # O atalho para /Applications é o que faz o arrastar funcionar. Sem ele a janela
 # teria só o programa, e o dono teria de achar a pasta sozinho.
 ln -s /Applications "$PALCO/Aplicativos"
@@ -61,6 +86,7 @@ hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MONTAGEM" "$DMG" \
 falhou=""
 [ -d "$MONTAGEM/River Bridge.app" ] || falhou="o programa não está no disco"
 [ -L "$MONTAGEM/Aplicativos" ] || falhou="${falhou:-falta o atalho para Aplicativos}"
+[ -f "$MONTAGEM/LEIA-ME.txt" ] || falhou="${falhou:-falta o LEIA-ME}"
 codesign --verify --deep --strict "$MONTAGEM/River Bridge.app" 2>/dev/null \
   || falhou="${falhou:-a assinatura não verifica dentro do disco}"
 hdiutil detach -quiet "$MONTAGEM" && MONTAGEM=""

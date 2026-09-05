@@ -142,6 +142,23 @@ public struct RemocaoCompleta: Sendable, Equatable {
             + "\n\nO programa em si continua em Aplicativos — arraste-o para o Lixo "
             + "depois, se quiser."
     }
+
+    /// A frase que faltava, e cujo custo foi medido: o dono arrastou o programa
+    /// para o Lixo achando que aquilo removia tudo, e ficou com o serviço ainda
+    /// registrado, o processo dele VIVO rodando de dentro do Lixo, e a chave do
+    /// console e as senhas no disco (Mac mini, 2026-09-05).
+    ///
+    /// O Lixo apaga o pacote e mais nada: ele não desregistra um serviço de
+    /// sistema, não mata um processo em execução e não apaga arquivo do root.
+    /// Isso é o macOS, não escolha nossa — mas dizer isso ANTES é escolha nossa.
+    public static var avisoDoLixo: String {
+        L10n.t("Arrastar o programa para o Lixo NÃO remove o serviço: ele continua "
+               + "registrado, rodando, e a chave do console e as senhas ficam no "
+               + "disco. Use Remover completamente primeiro.",
+               "Dragging the app to the Trash does NOT remove the service: it stays "
+               + "registered and running, and the console key and passwords stay on "
+               + "disk. Use Remove completely first.")
+    }
 }
 
 /// A recusa cruzada entre as duas formas de instalar.

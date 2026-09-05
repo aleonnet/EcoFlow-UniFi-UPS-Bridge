@@ -44,6 +44,9 @@ struct ServicoGroup: View {
             if let recado {
                 Aviso(tom: .atencao, texto: recado)
             }
+            if estado.podeRemover {
+                Aviso(tom: .neutro, texto: RemocaoCompleta.avisoDoLixo, simbolo: "trash.slash")
+            }
             SettingsRows.divider
             HStack(spacing: Espaco.medio) {
                 if estado.podeInstalar {

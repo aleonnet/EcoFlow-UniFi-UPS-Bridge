@@ -778,3 +778,76 @@ def test_the_service_refuses_to_start_reading_a_device_it_publishes(tmp_path, mo
     saida = capsys.readouterr().out
     assert '"parada_deliberada"' in saida
     assert "publicado" in saida
+
+
+def test_the_screen_gets_one_reading_per_lap_and_it_is_the_whole_one(tmp_path, monkeypatch):
+    """Publicar duas vezes por volta fazia o gráfico apagar e voltar.
+
+    A proteção decide com o que o no-break disse, e só depois a porta serial
+    completa os watts. Publicando as DUAS leituras, a tela recebia, no meio de
+    cada volta, um aparelho "sem potência" — e trocava o gráfico pela frase que
+    diz isso, a cada dois segundos. O dono viu no Mac mini em 2026-09-05. O
+    histórico também levava duas amostras por ciclo, uma delas sem os watts.
+
+    Este teste roda o LAÇO de verdade: o defeito estava na ordem dele.
+    """
+    class Terminador(BaseException):
+        pass
+
+    publicados: list[dict] = []
+    amostras: list[dict] = []
+    leitura = river_serial.LeituraRiver(carga_total_w=93.0, carga_ac_w=93.0)
+    voltas = {"n": 0}
+
+    class EstadoEspia:
+        def update_snapshot(self, d): publicados.append(d)
+        def set_plugins(self, _p): pass
+        def add_event(self, *_a, **_k): pass
+        def record_failure(self, *_a, **_k): pass
+        def record_tick_error(self, *_a, **_k): pass
+        def get(self): return (0, None, True, None)
+        def health(self): return {}
+        def set_cabo(self, _e): pass
+
+    class HistoriaEspia:
+        retention_days = 7
+        def record_sample(self, d): amostras.append(d)
+        def record_event(self, *_a, **_k): pass
+        def prune(self): pass
+
+    def anda(_cfg):
+        voltas["n"] += 1
+        if voltas["n"] > 1:
+            raise Terminador()
+        return sim_snap("OL CHRG", "80")
+
+    class Servidor:
+        def __init__(self, cfg, shared, history, *a, **k): pass
+        def start_in_thread(self): return None
+
+    from river_unifi_bridge import api as api_mod
+    monkeypatch.setattr(api_mod, "ApiServer", Servidor)
+    monkeypatch.setattr(service, "poll_once", anda)
+    monkeypatch.setattr(service, "_completa_pela_serial",
+                        lambda snap, cfg, **_k: service.__dict__["_serial_de_teste"](snap, leitura))
+    service.__dict__["_serial_de_teste"] = lambda snap, l: (
+        setattr(snap, "outlets", l.to_dict()),
+        setattr(snap, "output_power_w", l.carga_total_w),
+        setattr(snap, "serial_port_read", True))
+    monkeypatch.setattr(service, "SharedState", EstadoEspia, raising=False)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+
+    import river_unifi_bridge.state as state_mod
+    monkeypatch.setattr(state_mod, "SharedState", EstadoEspia)
+    import river_unifi_bridge.history as history_mod
+    monkeypatch.setattr(history_mod, "HistoryStore", lambda *a, **k: HistoriaEspia())
+
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = True
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+
+    assert len(publicados) == 1, f"a tela recebeu {len(publicados)} leituras numa volta"
+    assert len(amostras) == 1, f"o histórico levou {len(amostras)} amostras numa volta"
+    assert publicados[0]["power"]["output_power_w"] == 93.0
+    assert publicados[0]["outlets"] is not None

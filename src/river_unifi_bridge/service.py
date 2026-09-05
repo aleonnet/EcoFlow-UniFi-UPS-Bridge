@@ -315,8 +315,14 @@ def _handle_poll_failure(exc: Exception, tracker, plugins, shared, history) -> N
         shared.set_plugins(plugin_statuses(plugins))  # mantém na falha
 
 
-def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> None:
-    """One good poll: tracker events -> every plugin -> state/history/log."""
+def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history,
+                      *, publicar: bool = True) -> None:
+    """One good poll: tracker events -> every plugin -> state/history/log.
+
+    `publicar=False` faz a PROTEÇÃO decidir sem que a leitura pela metade chegue
+    à tela. O laço completa a leitura pela porta serial logo depois e publica uma
+    vez só, inteira — ver o comentário no laço.
+    """
     snap_dict = snap.to_dict()
     events = tracker.observe(snap)
     _record_tracker_events(
@@ -326,10 +332,11 @@ def _process_snapshot(snap: UpsSnapshot, tracker, plugins, shared, history) -> N
     if plugins and shared is not None:
         shared.set_plugins(plugin_statuses(plugins))
     _audit_plugins(plugins)
-    if shared is not None:
-        shared.update_snapshot(snap_dict)
-    if history is not None:
-        history.record_sample(snap_dict)
+    if publicar:
+        if shared is not None:
+            shared.update_snapshot(snap_dict)
+        if history is not None:
+            history.record_sample(snap_dict)
     _log("INFO", "state", **snap_dict)
 
 
@@ -522,12 +529,24 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 # porta serial completa consumo e tomadas, e o estado é republicado.
                 # Ordem invertida, a leitura serial atrasaria em segundos o laço que
                 # decide desligar aparelhos (revisão fria, 2.ª rodada).
-                _process_snapshot(snap, tracker, plugins, shared, history)
+                # UMA publicação por volta, e ela é a leitura INTEIRA.
+                #
+                # Antes eram duas: a proteção decidia e publicava a leitura sem
+                # potência, e logo depois a porta serial completava e publicava
+                # de novo. A tela recebia as duas — e, entre elas, ela via um
+                # aparelho "sem potência": o gráfico apagava e voltava a cada
+                # volta do laço, a cada dois segundos. O dono viu e chamou o que
+                # era (Mac mini, 2026-09-05). O histórico também levava duas
+                # amostras por ciclo, uma delas sem os watts.
+                #
+                # A ORDEM não mudou, e é ela que importa: a proteção decide
+                # primeiro, com o que o no-break disse, sem esperar a serial.
+                _process_snapshot(snap, tracker, plugins, shared, history, publicar=False)
                 _completa_pela_serial(snap, cfg)
-                if snap.serial_port_read and shared is not None:
+                if shared is not None:
                     shared.update_snapshot(snap.to_dict())
-                    if history is not None:
-                        history.record_sample(snap.to_dict())
+                if history is not None:
+                    history.record_sample(snap.to_dict())
                 # Publicar vem DEPOIS da proteção e da porta serial: antes, o
                 # Home Assistant receberia a leitura sem os watts por tomada, que
                 # é justamente o que ele não tinha antes desta versão.
