@@ -723,6 +723,30 @@ cena_mutacao S58b src/river_unifi_bridge/nut_servico.py \
     'comandos=(), dados_ok=True)' \
     tests/unit/test_nut_servico.py::test_trava_ligada_vira_addcmd_sem_reinicio
 
+# S59 — com o NUT dentro do pacote, o leitor e o servidor nascem com os caminhos
+# do NOSSO diretório (NUT_CONFPATH/NUT_STATEPATH). Sem isso, o servidor procura
+# soquetes em /opt/homebrew, onde ninguém escuta, e o Home Assistant não vê nada.
+cena_mutacao S59 src/river_unifi_bridge/nut_supervisor.py \
+    "                           env=self._ambiente)" \
+    "                           env=None)" \
+    tests/unit/test_nut_supervisor.py::test_os_filhos_nascem_com_os_caminhos_do_pacote
+
+# S60 — o empacotador PROVA que o NUT embutido roda de dentro do pacote: zero
+# referência a /opt/homebrew sobrando e os dois binários respondendo `-V`. Cena
+# de texto (molde da S44): montar o pacote leva minuto e meio.
+S60_FALHOU=""
+grep -q "grep -c '/opt/homebrew'" "$RAIZ/tools/build-app.sh" \
+  || S60_FALHOU="a prova de zero referência a /opt/homebrew sumiu"
+grep -q '"\$NUT_DEST/sbin/upsd" -V' "$RAIZ/tools/build-app.sh" \
+  || S60_FALHOU="${S60_FALHOU:-a prova de que o upsd embutido roda sumiu}"
+grep -q 'export RUB_NUT_PREFIX="\$AQUI/nut"' "$RAIZ/tools/build-app.sh" \
+  || S60_FALHOU="${S60_FALHOU:-o lançador não aponta o supervisor para o NUT do pacote}"
+if [ -z "$S60_FALHOU" ]; then
+    ok "S60 empacotador: NUT embutido com prova de relocação e de arranque"
+else
+    erro "S60 empacotador: $S60_FALHOU"
+fi
+
 # --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
 
 # S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão

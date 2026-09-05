@@ -53,6 +53,41 @@ RECUO_BASE = 2.0
 RECUO_MAXIMO = 60.0
 
 
+def ambiente_dos_filhos(base: dict | None = None) -> dict | None:
+    """O ambiente com que o driver e o servidor do NUT nascem.
+
+    Desde a 0.8.0 o NUT vai DENTRO do pacote do App, e a configuração e o
+    estado dele moram no nosso diretório de estado — não em `/opt/homebrew`.
+    Os binários do NUT aceitam isso por variável de ambiente, documentado nas
+    páginas de manual upsd(8) e nutupsdrv(8):
+
+        "NUT_CONFPATH is the path name of the directory that contains upsd.conf
+         and other configuration files"
+        "NUT_STATEPATH is the path name of the directory in which upsd and
+         drivers keep shared state information"
+        "NUT_ALTPIDPATH is the path name of the directory in which upsd and
+         drivers store .pid files"
+
+    As costuras são as MESMAS que o serviço já lê para si (`RUB_NUT_ETC`,
+    `RUB_NUT_STATE`): driver, servidor e o nosso próprio driver publicado têm
+    de olhar para o mesmo lugar, senão o servidor procura soquetes onde ninguém
+    escuta. Sem as costuras, o ambiente é o herdado (o NUT do Homebrew usa os
+    caminhos compilados nele) — e `None` deixa o `Popen` herdar tudo.
+    """
+    origem = os.environ if base is None else base
+    etc = origem.get("RUB_NUT_ETC")
+    estado = origem.get("RUB_NUT_STATE")
+    if not etc and not estado:
+        return None
+    ambiente = dict(origem)
+    if etc:
+        ambiente["NUT_CONFPATH"] = etc
+    if estado:
+        ambiente["NUT_STATEPATH"] = estado
+        ambiente["NUT_ALTPIDPATH"] = estado
+    return ambiente
+
+
 def _usuario_do_processo() -> str:
     """Quem somos, pelo sistema — nunca pela variável de ambiente.
 
@@ -91,6 +126,7 @@ class NutSupervisor:
         self._ups = ups
         self._usuario = usuario or _usuario_do_processo()
         self._prefixo = prefixo or os.environ.get("RUB_NUT_PREFIX") or PREFIXO_PADRAO
+        self._ambiente = ambiente_dos_filhos()
         self._log = log or (lambda *_a, **_k: None)
         self._spawn = spawn
         self._clock = clock
@@ -116,6 +152,11 @@ class NutSupervisor:
         partes = " ".join(f"'{a}'" for a in args)
         return ["/bin/sh", "-c", f"exec -a {nome} '{binario}' {partes}"]
 
+    def _lancar(self, argv: list[str]):
+        """Um filho, com o ambiente que diz ao NUT onde estão configuração e estado."""
+        return self._spawn(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           env=self._ambiente)
+
     # -- ciclo de vida ------------------------------------------------------
     def iniciar(self) -> None:
         with self._lock:
@@ -129,11 +170,9 @@ class NutSupervisor:
         if self._clock() < self._proxima_tentativa:
             return
         if self._driver is None or self._driver.poll() is not None:
-            self._driver = self._spawn(
+            self._driver = self._lancar(
                 self._comando(NOME_DRIVER, f"{self._prefixo}/bin/usbhid-ups",
-                              "-a", self._ups, "-u", self._usuario, "-F"),
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+                              "-a", self._ups, "-u", self._usuario, "-F"))
             self._log("INFO", "nut_driver_iniciado", pid=self._driver.pid, ups=self._ups)
             # O servidor procura o soquete do driver e reclama se ele ainda não
             # existe — então ele sobe na volta SEGUINTE do laço. Dormir aqui
@@ -141,11 +180,9 @@ class NutSupervisor:
             # leitor está falhando (revisão fria da 0.5.0).
             return
         if self._servidor is None or self._servidor.poll() is not None:
-            self._servidor = self._spawn(
+            self._servidor = self._lancar(
                 self._comando(NOME_SERVIDOR, f"{self._prefixo}/sbin/upsd",
-                              "-u", self._usuario, "-F"),
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+                              "-u", self._usuario, "-F"))
             self._log("INFO", "nut_servidor_iniciado", pid=self._servidor.pid)
 
     def vigiar(self) -> None:

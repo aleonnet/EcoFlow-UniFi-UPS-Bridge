@@ -16,8 +16,9 @@ from river_unifi_bridge.nut_supervisor import (
 
 
 class FakeProc:
-    def __init__(self, argv, **_kwargs):
+    def __init__(self, argv, **kwargs):
         self.argv = argv
+        self.kwargs = kwargs
         self.pid = 4242
         self._rc: int | None = None
         self.terminado = False
@@ -206,3 +207,44 @@ def test_the_nut_seam_is_respected_by_the_daemon_too(monkeypatch, tmp_path):
     assert s.disponivel is False
     s.iniciar()
     assert lancados == []                          # nada foi lançado contra o aparelho real
+
+
+def test_os_filhos_nascem_com_os_caminhos_do_pacote(monkeypatch, tmp_path):
+    """Com o NUT dentro do pacote (0.8.0), driver e servidor têm de olhar para a
+    configuração e o estado do NOSSO diretório — pelas variáveis que o NUT
+    documenta (NUT_CONFPATH, NUT_STATEPATH, NUT_ALTPIDPATH). Sem elas, o servidor
+    procuraria soquetes em /opt/homebrew, onde ninguém escuta.
+    """
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "usbhid-ups").write_text("")
+    monkeypatch.setenv("RUB_NUT_ETC", str(tmp_path / "etc"))
+    monkeypatch.setenv("RUB_NUT_STATE", str(tmp_path / "estado"))
+    monkeypatch.setattr("river_unifi_bridge.nut_supervisor.time.sleep", lambda _s: None)
+    lancados: list[FakeProc] = []
+
+    def spawn(argv, **kwargs):
+        p = FakeProc(argv, **kwargs)
+        lancados.append(p)
+        return p
+
+    s = NutSupervisor("river-office", usuario="root", prefixo=str(tmp_path), spawn=spawn,
+                      clock=lambda: 0.0)
+    s.iniciar()
+    s.vigiar()
+    assert len(lancados) == 2
+    for filho in lancados:
+        ambiente = filho.kwargs["env"]
+        assert ambiente["NUT_CONFPATH"] == str(tmp_path / "etc")
+        assert ambiente["NUT_STATEPATH"] == str(tmp_path / "estado")
+        assert ambiente["NUT_ALTPIDPATH"] == str(tmp_path / "estado")
+
+
+def test_sem_as_costuras_o_ambiente_e_o_herdado(monkeypatch):
+    """Instalação pela linha de comando (NUT do Homebrew): nada muda."""
+    from river_unifi_bridge.nut_supervisor import ambiente_dos_filhos
+
+    monkeypatch.delenv("RUB_NUT_ETC", raising=False)
+    monkeypatch.delenv("RUB_NUT_STATE", raising=False)
+    assert ambiente_dos_filhos() is None
+    assert ambiente_dos_filhos({"RUB_NUT_ETC": "/x"}) == {
+        "RUB_NUT_ETC": "/x", "NUT_CONFPATH": "/x"}

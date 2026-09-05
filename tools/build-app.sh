@@ -94,6 +94,76 @@ mv "$RES/src-river_unifi_bridge" "$RES/src/river_unifi_bridge"
 find "$RES/src" "$RES/libs" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 cp "$RAIZ/config/river-unifi-bridge.env.example" "$RES/bridge.env.exemplo"
 
+# ── o NUT vai DENTRO do pacote (0.8.0) ────────────────────────────────────────
+# Até a 0.7.0 o LEIA-ME mandava rodar `brew install nut` no terminal — o oposto
+# da experiência que o dono determinou ("arrastar e usar"). Os dois binários que
+# o serviço lança (o leitor `usbhid-ups` e o servidor `upsd`) e as bibliotecas
+# que eles carregam vêm do Homebrew DESTA máquina, com a versão fixada: dois
+# pacotes com o mesmo número de versão não podem trazer NUTs diferentes.
+#
+# Medido em 2026-09-05 (`otool -L`): `usbhid-ups` depende só de libusb;
+# `upsd` de libssl e libcrypto; as três só do sistema. Depois de copiar, cada
+# referência a /opt/homebrew é reescrita para dentro do pacote
+# (`install_name_tool`), e a prova é dupla: zero referência a /opt/homebrew
+# sobrando, e os dois binários RODANDO de dentro do pacote (`-V`).
+#
+# Onde o NUT lê configuração e guarda estado deixa de ser /opt/homebrew: o
+# lançador (servico.sh, abaixo) aponta as variáveis que o próprio NUT documenta
+# (NUT_CONFPATH, NUT_STATEPATH — upsd(8), nutupsdrv(8)) para o nosso diretório.
+#
+# Licença: o NUT é GPL-2.0-or-later. Vai como programa separado (processos
+# próprios, conversa por soquete), com o texto da licença e a fonte ao lado.
+NUT_VERSAO="2.8.5"
+NUT_ORIGEM="${RUB_NUT_ORIGEM:-/opt/homebrew/opt/nut}"
+NUT_DEST="$RES/nut"
+echo "│ embutindo o NUT ${NUT_VERSAO}"
+[ -x "$NUT_ORIGEM/sbin/upsd" ] || { echo "[ERRO] NUT não encontrado em $NUT_ORIGEM (brew install nut)"; exit 4; }
+NUT_AQUI="$("$NUT_ORIGEM/sbin/upsd" -V 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+[ "$NUT_AQUI" = "$NUT_VERSAO" ] || { echo "[ERRO] o NUT desta máquina é $NUT_AQUI; o pacote fixa $NUT_VERSAO"; exit 3; }
+mkdir -p "$NUT_DEST/bin" "$NUT_DEST/sbin" "$NUT_DEST/lib"
+cp "$NUT_ORIGEM/bin/usbhid-ups" "$NUT_DEST/bin/"
+cp "$NUT_ORIGEM/sbin/upsd" "$NUT_DEST/sbin/"
+cp "$NUT_ORIGEM/LICENSE-GPL2" "$NUT_DEST/LICENSE-GPL2"
+cat > "$NUT_DEST/NOTICE-NUT.txt" <<TXT
+Network UPS Tools (NUT) ${NUT_VERSAO} — https://networkupstools.org/
+Licença: GPL-2.0-or-later (LICENSE-GPL2 ao lado).
+Código-fonte: https://github.com/networkupstools/nut/releases/tag/v${NUT_VERSAO}
+Binários: os do Homebrew (fórmula nut ${NUT_VERSAO}), com as referências às
+bibliotecas reescritas para dentro deste pacote. O River Bridge os executa como
+programas separados; nada do NUT é ligado ao código do River Bridge.
+TXT
+# `relocar ARQUIVO BASE`: cada dependência do Homebrew é copiada para lib/ (uma
+# vez, seguindo a cadeia — libssl carrega libcrypto) e a referência é reescrita
+# para BASE/<nome>: `@executable_path/../lib` para os binários, `@loader_path`
+# para uma biblioteca que carrega outra. O `install_name_tool` invalida a
+# assinatura; a ad-hoc volta aqui mesmo, porque um Mach-O arm64 sem assinatura
+# não executa. A assinatura de distribuição vem no fim, sobre o pacote inteiro.
+relocar() {
+  local alvo="$1" base="$2" dep nome
+  chmod u+w "$alvo"
+  for dep in $(otool -L "$alvo" | awk 'NR>1 {print $1}' | grep '^/opt/homebrew' || true); do
+    nome="$(basename "$dep")"
+    [ "$nome" = "$(basename "$alvo")" ] && { install_name_tool -id "$nome" "$alvo" 2>/dev/null; continue; }
+    if [ ! -f "$NUT_DEST/lib/$nome" ]; then
+      cp "$dep" "$NUT_DEST/lib/$nome"
+      relocar "$NUT_DEST/lib/$nome" "@loader_path"
+    fi
+    # O aviso "will invalidate the code signature" é o esperado: a assinatura
+    # volta na linha seguinte. Silenciado para não parecer erro.
+    install_name_tool -change "$dep" "$base/$nome" "$alvo" 2>/dev/null
+  done
+  codesign --force --sign - "$alvo" >/dev/null 2>&1
+}
+relocar "$NUT_DEST/bin/usbhid-ups" "@executable_path/../lib"
+relocar "$NUT_DEST/sbin/upsd" "@executable_path/../lib"
+# Prova 1: nenhuma referência ao Homebrew sobrou em binário nenhum.
+SOBRAS_NUT="$(find "$NUT_DEST" -type f \( -perm -u+x -o -name '*.dylib' \) -exec otool -L {} \; 2>/dev/null | grep -c '/opt/homebrew' || true)"
+[ "$SOBRAS_NUT" = "0" ] || { echo "[ERRO] $SOBRAS_NUT referência(s) a /opt/homebrew sobraram no NUT embutido"; exit 1; }
+# Prova 2: os dois rodam DE DENTRO do pacote (carregam as bibliotecas de lá).
+[ "$("$NUT_DEST/sbin/upsd" -V 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" = "$NUT_VERSAO" ] \
+  || { echo "[ERRO] o upsd embutido não roda de dentro do pacote"; exit 1; }
+"$NUT_DEST/bin/usbhid-ups" -V >/dev/null 2>&1 || { echo "[ERRO] o usbhid-ups embutido não roda de dentro do pacote"; exit 1; }
+
 # O que o launchd executa. Script porque o `BundleProgram` aponta para UM
 # arquivo, e o serviço precisa de PYTHONPATH e do arquivo de configuração.
 cat > "$RES/servico.sh" <<'SH'
@@ -115,6 +185,18 @@ PYTHONDONTWRITEBYTECODE=1 "$AQUI/python/bin/python3" -m river_unifi_bridge.local
 [ -f "$CONFIG" ] || { cp "$AQUI/bridge.env.exemplo" "$CONFIG"; chmod 600 "$CONFIG"; }
 export RUB_STATE_DIR="$ESTADO"
 export RUB_LAUNCHD=1
+# O NUT mora dentro do pacote (0.8.0), e a configuração e o estado dele no
+# NOSSO diretório: são as mesmas costuras que o serviço, o supervisor e o
+# instalador já respeitam. O supervisor traduz as duas em NUT_CONFPATH e
+# NUT_STATEPATH para o leitor e o servidor. O caminho do estado é curto de
+# propósito: o nome de um soquete Unix cabe em 104 bytes no macOS.
+export RUB_NUT_PREFIX="$AQUI/nut"
+export RUB_NUT_ETC="$ESTADO/nut"
+export RUB_NUT_STATE="$ESTADO/nut-state"
+mkdir -p "$RUB_NUT_ETC" "$RUB_NUT_STATE"; chmod 700 "$RUB_NUT_ETC" "$RUB_NUT_STATE"
+# Onde o pacote está: é o que o serviço vigia para se retirar quando o dono o
+# arrasta para o Lixo (remocao.py).
+export RUB_PACOTE="$(cd "$AQUI/../.." && pwd)"
 # NADA é escrito dentro do pacote em tempo de execução: o Python grava `.pyc`
 # ao lado do código, e isso QUEBRA a assinatura do pacote (medido em
 # 2026-09-05: 671 arquivos criados na primeira execução, e o

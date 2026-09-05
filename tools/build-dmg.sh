@@ -43,30 +43,24 @@ limpar() {
 trap limpar EXIT
 
 cp -R "$APP" "$PALCO/"
-# Um LEIA-ME ao lado do programa, na janela do disco. As duas coisas que o dono
-# não tem como adivinhar e que custaram caro na bancada de 2026-09-05: a
-# primeira abertura passa pelos Ajustes do Sistema (o pacote é assinado só de
-# forma ad-hoc), e o Lixo NÃO remove o serviço.
+# Um LEIA-ME ao lado do programa, na janela do disco: as três coisas que o dono
+# não tem como adivinhar. Desde a 0.8.0 nada aqui pede terminal: o NUT vai
+# dentro do pacote, o disco é assinado e notarizado, e o Lixo remove tudo.
 cat > "$PALCO/LEIA-ME.txt" <<'TXT'
 River Bridge — o que saber antes de arrastar
 ============================================
 
 1. ARRASTE o River Bridge para a pasta Aplicativos, ao lado.
 
-2. NA PRIMEIRA ABERTURA o macOS vai dizer que nao conseguiu verificar o
-   programa — ele ainda nao e assinado com um certificado de distribuicao da
-   Apple. Para abrir:
-       Ajustes do Sistema > Privacidade e Seguranca > "Abrir Assim Mesmo"
-
-3. O NUT PRECISA ESTAR INSTALADO. E ele que fala com o River pelo cabo:
-       brew install nut
-
-4. DEPOIS DE ABRIR: Ajustes > Servico > Instalar o servico, e aprove em
+2. DEPOIS DE ABRIR: Ajustes > Servico > Instalar o servico, e aprove em
        Ajustes do Sistema > Geral > Itens de Inicio de Sessao
+   O macOS pede isso para todo servico que sobe com o computador. Tudo o que o
+   River Bridge precisa ja esta dentro dele — nada mais para instalar.
 
-5. PARA REMOVER use "Remover completamente" na tela Servico ANTES de arrastar o
-   programa para o Lixo. O Lixo apaga so o programa: o servico continua
-   registrado e rodando, e a chave do console e as senhas ficam no disco.
+3. PARA REMOVER, arraste o programa para o Lixo. O servico percebe, para de
+   vigiar, apaga a chave do console, as senhas e o historico, e se desregistra
+   sozinho. (Em Ajustes > Servico, "Remover completamente" faz o mesmo sem
+   jogar o programa fora.)
 TXT
 # O atalho para /Applications é o que faz o arrastar funcionar. Sem ele a janela
 # teria só o programa, e o dono teria de achar a pasta sozinho.
