@@ -57,7 +57,7 @@ notarizar() {  # 1=arquivo (zip ou dmg)  2=o que é, para a mensagem
   local nota
   nota="$(xcrun notarytool submit "$1" --keychain-profile "$PERFIL" --wait 2>&1)" \
     || { printf '%s\n' "$nota" | tail -5; erro "a notarização de $2 falhou"; }
-  printf '%s\n' "$nota" | grep -q 'status: Accepted' \
+  grep -q 'status: Accepted' <<< "$nota" \
     || { printf '%s\n' "$nota" | tail -8; erro "a Apple não aceitou $2 (veja o registro acima)"; }
 }
 if [ -n "$PERFIL" ]; then
@@ -128,7 +128,7 @@ if [ -n "$PERFIL" ]; then
   # "Notarized Developer ID". Sem isto, a primeira abertura pede "Abrir Assim
   # Mesmo" na máquina de quem instala.
   VEREDITO="$(spctl -a -t open --context context:primary-signature -v "$DMG" 2>&1)"
-  printf '%s\n' "$VEREDITO" | grep -q 'source=Notarized Developer ID' \
+  grep -q 'source=Notarized Developer ID' <<< "$VEREDITO" \
     || { printf '%s\n' "$VEREDITO"; erro "o Gatekeeper não aceita o disco como notarizado"; }
   ok "disco notarizado e grampeado: $VEREDITO"
 fi

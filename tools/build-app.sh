@@ -281,9 +281,9 @@ if [ "$IDENTIDADE" != "-" ]; then
   # (medido em 2026-09-05, na primeira execução com o certificado de verdade).
   for prova in "$APP/Contents/MacOS/RiverBridge" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
     LAUDO="$(codesign -dv --verbose=2 "$prova" 2>&1 || true)"
-    printf '%s\n' "$LAUDO" | grep -q 'flags=.*runtime' \
+    grep -q 'flags=.*runtime' <<< "$LAUDO" \
       || { echo "[ERRO] sem runtime endurecido: $prova"; exit 1; }
-    printf '%s\n' "$LAUDO" | grep -q 'Authority=Developer ID Application' \
+    grep -q 'Authority=Developer ID Application' <<< "$LAUDO" \
       || { echo "[ERRO] não é Developer ID: $prova"; exit 1; }
   done
 fi

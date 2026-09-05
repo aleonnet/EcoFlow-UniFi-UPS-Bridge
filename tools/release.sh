@@ -96,7 +96,11 @@ cd "$RAIZ"
 if [ "$AD_HOC" = "0" ]; then
   [ -n "${RUB_SIGN_IDENTITY:-}" ] && [ "${RUB_SIGN_IDENTITY:-}" != "-" ] \
     || falha "RUB_SIGN_IDENTITY ausente: exporte o nome do certificado 'Developer ID Application: …' (ou --ad-hoc, de propósito)" 4
-  security find-identity -v -p codesigning 2>/dev/null | grep -qF "$RUB_SIGN_IDENTITY" \
+  # Toda conferência captura a saída ANTES de procurar (here-string, não cano):
+  # `grep -q` fecha o cano ao achar, o produtor leva SIGPIPE e o `pipefail`
+  # transforma uma assinatura boa em erro (medido em 2026-09-05, na primeira
+  # release com Developer ID). Vale para cada `grep -q` deste arquivo.
+  grep -qF "$RUB_SIGN_IDENTITY" <<< "$(security find-identity -v -p codesigning 2>/dev/null || true)" \
     || falha "o certificado '$RUB_SIGN_IDENTITY' não está no chaveiro desta máquina" 4
   [ -n "${RUB_NOTARY_PROFILE:-}" ] \
     || falha "RUB_NOTARY_PROFILE ausente: guarde a credencial com 'xcrun notarytool store-credentials <perfil>' e exporte o nome (ou --ad-hoc)" 4
@@ -130,12 +134,12 @@ diga "tools/build-app.sh"
 bundle_v="$(plutil -extract CFBundleShortVersionString raw -o - "$APP_SRC/Contents/Info.plist")"
 [ "$bundle_v" = "$V" ] || falha "Info.plist diz $bundle_v, esperado $V" 3
 codesign --verify --deep --strict "$APP_SRC" || falha "assinatura do app não verifica" 1
-file "$APP_SRC/Contents/MacOS/RiverBridge" | grep -q arm64 || falha "binário não é arm64" 3
-if xattr -lr "$APP_SRC" 2>/dev/null | grep -q com.apple.quarantine; then
+grep -q arm64 <<< "$(file "$APP_SRC/Contents/MacOS/RiverBridge")" || falha "binário não é arm64" 3
+if grep -q com.apple.quarantine <<< "$(xattr -lr "$APP_SRC" 2>/dev/null || true)"; then
   echo "[AVISO] o app de origem carrega com.apple.quarantine — o zip herdaria; limpe antes (xattr -dr)"
 fi
 if [ "$AD_HOC" = "0" ]; then
-  codesign -dv --verbose=2 "$APP_SRC" 2>&1 | grep -q 'Authority=Developer ID Application' \
+  grep -q 'Authority=Developer ID Application' <<< "$(codesign -dv --verbose=2 "$APP_SRC" 2>&1 || true)" \
     || falha "o app não saiu assinado com Developer ID" 1
 fi
 
@@ -168,7 +172,7 @@ PROVA="$(mktemp -d)"
 ditto -xk "$DIST/$ASSET_APP" "$PROVA"
 cmp -s "$PROVA/River Bridge.app/Contents/MacOS/RiverBridge" "$APP_SRC/Contents/MacOS/RiverBridge" \
   || falha "o executável extraído do zip difere do original" 1
-tar -tzf "$DIST/$ASSET_SRC" | grep -q "^river-unifi-bridge-$TAG/scripts/install.sh$" \
+grep -q "^river-unifi-bridge-$TAG/scripts/install.sh$" <<< "$(tar -tzf "$DIST/$ASSET_SRC")" \
   || falha "o tarball não traz scripts/install.sh" 1
 # O disco monta, tem o programa e o atalho, e a assinatura ainda verifica lá
 # dentro. Publicar um disco quebrado só apareceria na máquina de quem instala.
