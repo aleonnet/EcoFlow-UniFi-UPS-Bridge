@@ -71,11 +71,11 @@ struct SettingsView: View {
     @ViewBuilder
     private func linhaDoCabo(_ cabo: EstadoDoCabo) -> some View {
         let comEles = cabo.pausado == true
-        HStack(spacing: 10) {
+        HStack(spacing: Espaco.medio) {
             Image(systemName: comEles ? "cable.connector.slash" : "cable.connector")
                 .frame(width: 26)
                 .foregroundStyle(comEles ? Cor.atencao : Cor.neutro)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Espaco.fio) {
                 Text(comEles
                      ? L10n.t("O River está com o aplicativo da EcoFlow",
                               "The EcoFlow app has the River")
@@ -194,7 +194,7 @@ struct SettingsView: View {
 
     private var conteudo: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: Espaco.secao) {
                 // HIG: steppers are for SMALL ranges; for a large range with a
                 // handful of sensible values, a picker fits mouse AND finger
                 // (developer.apple.com/design/human-interface-guidelines/steppers).
@@ -206,7 +206,7 @@ struct SettingsView: View {
                 // precisa dela quando o serviço já está no ar.
                 HomeAssistantGroup()
                 SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: Espaco.medio) {
                         Image(systemName: "circle.lefthalf.filled")
                             .frame(width: 26)
                             .foregroundStyle(.secondary)
@@ -223,7 +223,7 @@ struct SettingsView: View {
                         .fixedSize()
                     }
                     SettingsRows.divider
-                    HStack(spacing: 10) {
+                    HStack(spacing: Espaco.medio) {
                         Image(systemName: "globe")
                             .frame(width: 26)
                             .foregroundStyle(.secondary)
@@ -242,7 +242,7 @@ struct SettingsView: View {
                 }
 
                 if configFailed {
-                    HStack(spacing: 10) {
+                    HStack(spacing: Espaco.medio) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(Cor.atencao)
                         Text(L10n.t("Sem resposta do serviço — os valores abaixo não foram carregados.",
@@ -255,8 +255,8 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.glass)
                     }
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .padding(Espaco.confortavel)
+                    .background(RoundedRectangle(cornerRadius: Raio.cartao, style: .continuous)
                         .fill(Cor.atencao.opacity(0.12)))
                 }
 
@@ -292,7 +292,7 @@ struct SettingsView: View {
                 .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("Histórico", "History")) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: Espaco.medio) {
                         Image(systemName: "clock.arrow.circlepath")
                             .frame(width: 26)
                             .foregroundStyle(.secondary)
@@ -312,7 +312,7 @@ struct SettingsView: View {
                     .comDica(L10n.t("Por quanto tempo os números e os eventos ficam guardados neste Mac. O que passa disso é apagado sozinho, uma vez por hora.",
                                  "How long readings and events are kept on this Mac. Anything older is deleted automatically, once an hour."))
                     SettingsRows.divider
-                    HStack(spacing: 10) {
+                    HStack(spacing: Espaco.medio) {
                         Image(systemName: "trash")
                             .frame(width: 26)
                             .foregroundStyle(.secondary)
@@ -392,11 +392,11 @@ struct SettingsView: View {
                                          "The River accepts one reader at a time. Here you hand the cable over to the EcoFlow app — and take it back whenever you want."))
                     }
                     SettingsRows.divider
-                    HStack(spacing: 10) {
+                    HStack(spacing: Espaco.medio) {
                         Image(systemName: "power")
                             .frame(width: 26)
                             .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Espaco.fio) {
                             Text(L10n.t("Desligar o River", "Turn the River off"))
                                 .font(.system(.body, design: .rounded))
                             Text(L10n.t("Corta a energia de tudo o que estiver ligado nele.",
@@ -433,7 +433,7 @@ struct SettingsView: View {
                     SettingsRows.group(L10n.t("Consumo por tomada", "Draw per outlet")) {
                         ForEach(Array(store.tomadas.enumerated()), id: \.offset) { indice, item in
                             if indice > 0 { SettingsRows.divider }
-                            HStack(spacing: 10) {
+                            HStack(spacing: Espaco.medio) {
                                 Image(systemName: "powerplug")
                                     .frame(width: 26)
                                     .foregroundStyle(.secondary)
@@ -474,7 +474,7 @@ struct SettingsView: View {
                 // convention — owner 2026-08-31): only errors and the
                 // pending-restart action ever appear here.
                 if restartRequired || feedback != nil || notice != nil || devicesFeedback != nil {
-                    HStack(spacing: 12) {
+                    HStack(spacing: Espaco.confortavel) {
                         if restartRequired {
                             Button(L10n.t("Reiniciar serviço para aplicar", "Restart service to apply")) { Task { await restart() } }
                                 .buttonStyle(.glass)
@@ -506,8 +506,8 @@ struct SettingsView: View {
             }
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.top, 6)
+            .padding(.horizontal, Espaco.respiro)
+            .padding(.top, Espaco.mini)
         }
         .task {
             if let endpoint = ApiEndpoint.discover() {
@@ -601,7 +601,7 @@ struct SettingsView: View {
             },
             set: { if $0 == nil { showClearDialog = false } }))
         .sheet(isPresented: $showClearDatePick) {
-            VStack(spacing: 14) {
+            VStack(spacing: Espaco.cartao) {
                 Text(L10n.t("Apagar eventos anteriores a…", "Delete events older than…"))
                     .font(.system(.headline, design: .rounded))
                 DatePicker("", selection: $clearBefore, in: ...Date.now,
@@ -620,7 +620,7 @@ struct SettingsView: View {
                     .tint(Cor.perigo)
                 }
             }
-            .padding(20)
+            .padding(Espaco.janela)
             .frame(width: 340)
         }
         .onChange(of: [powerLossDelay, restoreDelay, commLossDelay, lowBattery, pollInterval, retentionDays]) {
@@ -642,7 +642,7 @@ struct SettingsView: View {
     // MARK: - Building blocks in the house language
 
     private var versionFooter: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: Espaco.micro) {
             Text("River Bridge \(appVersion) · " + L10n.t("Serviço", "Service") + " " + (serviceVersion ?? L10n.t("sem resposta", "no answer")))
                 .font(.caption).foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -654,8 +654,8 @@ struct SettingsView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.top, Espaco.pequeno)
+        .padding(.bottom, Espaco.confortavel)
     }
 
     // MARK: - Dispositivos protegidos
@@ -697,7 +697,7 @@ struct SettingsView: View {
             addInitialType = nil
             showAdd = true
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: Espaco.medio) {
                 Image(systemName: "plus.circle.fill")
                     .frame(width: 26)
                     .foregroundStyle(ok ? accent : Color.secondary)
@@ -728,15 +728,15 @@ struct SettingsView: View {
         let detail = store.health?.pluginDetail(id: instance.id)
         let ligado = optimistic[instance.id] ?? (detail?.enabled ?? false)
         let badge = DevicePluginUIRegistry.plugin(typeID: instance.type)?.badge(state: detail?.state)
-        HStack(spacing: 10) {
+        HStack(spacing: Espaco.medio) {
             Image(systemName: type?.symbol ?? "shield.lefthalf.filled")
                 .frame(width: 26)
                 .foregroundStyle(.secondary)
             Button {
                 openSheet = .edit(instance)
             } label: {
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Espaco.pequeno) {
+                    VStack(alignment: .leading, spacing: Espaco.fio) {
                         Text(deviceName(instance))
                             .font(.system(.body, design: .rounded))
                         if let badge {

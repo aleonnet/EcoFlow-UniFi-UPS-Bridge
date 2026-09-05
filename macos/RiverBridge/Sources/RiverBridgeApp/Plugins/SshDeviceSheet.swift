@@ -190,7 +190,7 @@ struct SshDeviceSheet: View {
     // --- acesso ao console ---------------------------------------------------
     @ViewBuilder
     private func grupoDeAcesso(estreito: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Espaco.medio) {
             if let alcance, alcance.alcance, let r = alcance.resposta {
                 Label(L10n.t("Conexão provada: \(r.model ?? "") · \(r.firmware ?? "")",
                              "Connection proven: \(r.model ?? "") · \(r.firmware ?? "")"),
@@ -207,7 +207,7 @@ struct SshDeviceSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let acesso {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Espaco.micro) {
                     Text(L10n.t("Identidade do console: \(acesso.impressaoDoConsole)",
                                 "Console identity: \(acesso.impressaoDoConsole)"))
                     Text(L10n.t("Chave do serviço: \(acesso.impressaoDaChave)",
@@ -221,7 +221,7 @@ struct SshDeviceSheet: View {
             // console visto pela primeira vez e conferir depois seria conferir
             // tarde (revisão fria da 0.6.0).
             if acesso == nil {
-                HStack(spacing: 8) {
+                HStack(spacing: Espaco.pequeno) {
                     Button(L10n.t("Conferir o aparelho…", "Check the device…")) {
                         Task { await prepararAcesso(aceitandoIdentidade: false) }
                     }
@@ -236,7 +236,7 @@ struct SshDeviceSheet: View {
                 SecureField(L10n.t("Senha do console (usada uma vez)", "Console password (used once)"),
                             text: $senhaDoConsole)
                     .textFieldStyle(.roundedBorder)
-                HStack(spacing: 8) {
+                HStack(spacing: Espaco.pequeno) {
                     Button(L10n.t("Instalar a chave", "Install the key")) {
                         Task { await instalarChave() }
                     }

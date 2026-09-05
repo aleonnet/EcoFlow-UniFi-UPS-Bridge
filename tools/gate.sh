@@ -1571,6 +1571,29 @@ else
     erro "S53 telas: diálogo escrito fora da forma canônica em: $S53_FORA"
 fi
 
+# S55 — ZERO nome de cor e ZERO número de espaço soltos na tela. Medido em
+# 2026-09-05, antes: 57 nomes de tinta em 12 arquivos e 94 espaçamentos
+# numéricos, em treze valores diferentes. Isso não é um sistema — é a soma de
+# decisões tomadas uma a uma, sem nada com que comparar. A paleta mora em
+# Theme.swift e a escala em DesignSystem.swift; fora delas, nada.
+S55_FONTES="$RAIZ/macos/RiverBridge/Sources"
+s55_conta() {  # 1=padrão 2=arquivo a ignorar
+  grep -rn "$1" "$S55_FONTES" 2>/dev/null | grep -v "$2" | grep -vc '^\s*//' || true
+}
+S55_COR="$(grep -rn '\.\(orange\|red\|green\|yellow\|blue\|teal\|gray\|mint\|purple\|indigo\)\b' \
+           "$S55_FONTES" 2>/dev/null | grep -v 'Theme.swift' | grep -v '///' | grep -c . || true)"
+S55_ESP="$(grep -rn 'spacing: [0-9]\|\.padding(\(\.[a-z]*, \)\?[0-9]\+)\|cornerRadius: [0-9]' \
+           "$S55_FONTES" 2>/dev/null | grep -v 'DesignSystem.swift' | grep -c . || true)"
+if [ "$S55_COR" = "0" ] && [ "$S55_ESP" = "0" ]; then
+    ok "S55 telas: 0 cor solta (paleta em Theme.swift) e 0 espaço solto (escala em DesignSystem.swift)"
+else
+    erro "S55 telas: $S55_COR cor(es) e $S55_ESP espaço(s) fora da paleta/escala:"
+    grep -rn '\.\(orange\|red\|green\|yellow\|blue\|teal\|gray\|mint\|purple\|indigo\)\b' \
+      "$S55_FONTES" 2>/dev/null | grep -v 'Theme.swift' | grep -v '///' | head -4
+    grep -rn 'spacing: [0-9]\|\.padding(\(\.[a-z]*, \)\?[0-9]\+)\|cornerRadius: [0-9]' \
+      "$S55_FONTES" 2>/dev/null | grep -v 'DesignSystem.swift' | head -4
+fi
+
 # S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.
 # Sem isto, uma LG_MASK editada à mão passaria por todas as outras cenas (o quadro
 # final é derivado da própria máscara — ver S14).

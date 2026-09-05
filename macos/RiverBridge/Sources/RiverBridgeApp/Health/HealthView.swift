@@ -70,11 +70,11 @@ struct HealthView: View {
         ScrollView(showsIndicators: false) {
             // STICKY section header (owner 2026-08-31): the eyebrow pins to
             // the top of the scroll and the cards pass UNDER it — never over.
-            LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: Espaco.cartao, pinnedViews: [.sectionHeaders]) {
                 Section {
                     LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 330), spacing: 14)],
-                        alignment: .leading, spacing: 14
+                        columns: [GridItem(.adaptive(minimum: 330), spacing: Espaco.cartao)],
+                        alignment: .leading, spacing: Espaco.cartao
                     ) {
                         ForEach(links) { item in
                             card(item)
@@ -83,7 +83,7 @@ struct HealthView: View {
                 } header: {
                     Text(L10n.t("Cadeia de integração", "Integration chain")).eyebrow()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Espaco.pequeno)
                         .background {
                             // Transparent at rest; material only while
                             // content actually passes underneath (validated
@@ -102,8 +102,8 @@ struct HealthView: View {
             .frame(maxWidth: .infinity)
             // Full-bleed scroll + padded content (gradient-seam class fix);
             // 24 also keeps the hover glow inside the clip.
-            .padding(.horizontal, 24)
-            .padding(.bottom, 14)
+            .padding(.horizontal, Espaco.respiro)
+            .padding(.bottom, Espaco.cartao)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geo in
             geo.contentOffset.y
@@ -120,17 +120,17 @@ struct HealthView: View {
         // O tipo do elo existe quando o elo É um dispositivo: assim o badge
         // específico entra e o genérico continua servindo os outros cinco.
         let (label, color) = badge(item.status, typeID: item.typeID)
-        return HStack(alignment: .top, spacing: 12) {
+        return HStack(alignment: .top, spacing: Espaco.confortavel) {
             Image(systemName: item.symbol)
                 .font(.system(size: 17, weight: .medium))
                 .frame(width: 40, height: 40)
                 .background(.quaternary.opacity(0.5), in: Circle())
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Espaco.micro) {
                 Text(item.name).font(.system(.headline, design: .rounded))
                 Text(label)
                     .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, Espaco.pequeno)
+                    .padding(.vertical, Espaco.fio)
                     .background(color.opacity(0.15), in: Capsule())
                     .foregroundStyle(color)
                 if let detail = item.detail, !detail.isEmpty {
@@ -142,9 +142,9 @@ struct HealthView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(Espaco.cartao)
         .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Raio.painel, style: .continuous))
         .hoverLift(glow: color)
     }
 

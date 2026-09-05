@@ -9,19 +9,26 @@ import RiverBridgeCore
 import SwiftUI
 
 enum SettingsRows {
+    // Geometria DESTA tela, não degrau de escala: a coluna de texto começa onde
+    // o ícone termina, e a divisória acompanha. Números que existem por causa da
+    // largura do ícone — fingi-los degraus de uma grade de 2 pt esconderia a
+    // decisão em vez de nomeá-la.
+    private static let colunaDoIcone: CGFloat = 36
+    private static let recuoDaDivisoria: CGFloat = 46
+
     static var divider: some View {
-        Divider().padding(.leading, 46)
+        Divider().padding(.leading, recuoDaDivisoria)
     }
 
     @ViewBuilder
     static func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Espaco.pequeno) {
             Text(title).eyebrow()
             // No hover on big containers — hover belongs to interactive
             // elements only (owner 2026-08-31, print do bloco aceso).
-            VStack(spacing: 8) { content() }
-                .padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            VStack(spacing: Espaco.pequeno) { content() }
+                .padding(Espaco.cartao)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Raio.painel, style: .continuous))
                 // Material, NOT glassEffect: neighbouring glass shapes merge
                 // their backdrop into a gray wash when the window is key
                 // (measured 2026-08-31). House grammar: glass is for the
@@ -37,7 +44,7 @@ enum SettingsRows {
         let options = presets.contains(value.wrappedValue)
             ? presets
             : (presets + [value.wrappedValue]).sorted()
-        return HStack(spacing: 10) {
+        return HStack(spacing: Espaco.medio) {
             Image(systemName: symbol)
                 .frame(width: 26)
                 .foregroundStyle(.secondary)
@@ -68,8 +75,8 @@ enum SettingsRows {
             .font(.system(.body, design: numeric ? .monospaced : .default))
             .autocorrectionDisabled()
         if estreito {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: Espaco.mini) {
+                HStack(spacing: Espaco.medio) {
                     Image(systemName: symbol)
                         .frame(width: 26)
                         .foregroundStyle(.secondary)
@@ -81,10 +88,10 @@ enum SettingsRows {
                 campo
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity)
-                    .padding(.leading, 36)
+                    .padding(.leading, colunaDoIcone)
             }
         } else {
-            HStack(spacing: 10) {
+            HStack(spacing: Espaco.medio) {
                 Image(systemName: symbol)
                     .frame(width: 26)
                     .foregroundStyle(.secondary)
@@ -117,7 +124,7 @@ enum SettingsRows {
             }
         }
         .labelsHidden()
-        let cabecalho = VStack(alignment: .leading, spacing: 2) {
+        let cabecalho = VStack(alignment: .leading, spacing: Espaco.fio) {
             Text(label)
                 .font(.system(.body, design: .rounded))
                 .fixedSize()
@@ -128,18 +135,18 @@ enum SettingsRows {
             }
         }
         if estreito {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: Espaco.mini) {
+                HStack(alignment: .top, spacing: Espaco.medio) {
                     Image(systemName: symbol).frame(width: 26).foregroundStyle(.secondary)
                     cabecalho
                     Spacer(minLength: 0)
                 }
                 seletor
                     .frame(maxWidth: .infinity)
-                    .padding(.leading, 36)
+                    .padding(.leading, colunaDoIcone)
             }
         } else {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: Espaco.medio) {
                 Image(systemName: symbol).frame(width: 26).foregroundStyle(.secondary)
                 cabecalho
                 Spacer(minLength: 8)
@@ -158,8 +165,8 @@ enum SettingsRows {
                           zeroLabel: String? = nil, accent: Color,
                           estreito: Bool = false) -> some View {
         if estreito {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: Espaco.mini) {
+                HStack(spacing: Espaco.medio) {
                     Image(systemName: symbol).frame(width: 26).foregroundStyle(.secondary)
                     Text(label).font(.system(.body, design: .rounded))
                         .fixedSize(horizontal: false, vertical: true)
@@ -173,11 +180,11 @@ enum SettingsRows {
                                       set: { value.wrappedValue = Int($0) }),
                        in: Double(range.lowerBound)...Double(range.upperBound), step: 1)
                     .tint(accent)
-                    .padding(.leading, 36)
+                    .padding(.leading, colunaDoIcone)
             }
             .animation(.snappy(duration: 0.2), value: value.wrappedValue)
         } else {
-        HStack(spacing: 10) {
+        HStack(spacing: Espaco.medio) {
             Image(systemName: symbol)
                 .frame(width: 26)
                 .foregroundStyle(.secondary)
@@ -229,7 +236,7 @@ struct Dica: View {
         .popover(isPresented: $aberta, arrowEdge: .bottom) {
             Text(texto)
                 .font(.callout)
-                .padding(12)
+                .padding(Espaco.confortavel)
                 .frame(maxWidth: 320)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -240,7 +247,7 @@ struct Dica: View {
 extension View {
     /// A linha com o ⓘ à direita. Substitui o `.help` solto, que some no toque.
     func comDica(_ texto: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Espaco.mini) {
             self
             Dica(texto: texto)
         }

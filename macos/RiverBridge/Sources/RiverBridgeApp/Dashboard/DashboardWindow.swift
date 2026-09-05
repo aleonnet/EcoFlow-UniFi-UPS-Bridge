@@ -6,6 +6,10 @@ import RiverBridgeCore
 import SwiftUI
 
 struct DashboardWindow: View {
+    // Geometria DESTA janela: a faixa que os botões de fechar/minimizar/ampliar
+    // ocupam na barra de título escondida. Não é respiro, é desvio de obstáculo.
+    private static let faixaDosBotoesDaJanela: CGFloat = 72
+
     var store: TelemetryStore
     @State private var section: Section = DashboardWindow.initialSection()
     @State private var headerWidth: CGFloat = 1000
@@ -52,7 +56,7 @@ struct DashboardWindow: View {
         ZStack {
             AuroraBackground(store: store)
 
-            VStack(spacing: 10) {
+            VStack(spacing: Espaco.medio) {
                 // Nav lives in the hidden-title-bar dead strip: zero useful
                 // height spent (owner's call 2026-08-31 — top over side rail,
                 // and the same capsule becomes a bottom tab bar on iPhone).
@@ -71,7 +75,7 @@ struct DashboardWindow: View {
                 // an inset ScrollView paints its backdrop haze as a full-height
                 // column and breaks the ground gradient at both edges (owner's
                 // print, light theme). Full-bleed scroll, padded content.
-                .padding(.bottom, 16)
+                .padding(.bottom, Espaco.largo)
             }
         }
         // Language switch rebuilds the CONTENT tree; the section state lives
@@ -86,7 +90,7 @@ struct DashboardWindow: View {
     private var header: some View {
         let accent = Theme.accentColor(onBattery: store.isOnBattery, lowBattery: store.isLowBattery)
         return HStack {
-            HStack(spacing: 9) {
+            HStack(spacing: Espaco.medio) {
                 // The logo BEATS with the data: each applied SSE reading
                 // (store.beat) fires one systole/diastole — a live pulse,
                 // not a decorative loop (owner 2026-08-31).
@@ -103,18 +107,18 @@ struct DashboardWindow: View {
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                 }
             }
-            .padding(.leading, 72)   // clears the traffic lights
+            .padding(.leading, Self.faixaDosBotoesDaJanela)
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 2) {
+            HStack(spacing: Espaco.fio) {
                 ForEach(Section.allCases) { item in
                     let isSelected = section == item
                     let showsLabel = headerWidth >= 700 || isSelected
                     Button {
                         section = item
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: Espaco.mini) {
                             Image(systemName: item.symbol)
                             if showsLabel {
                                 Text(item.label)
@@ -125,7 +129,7 @@ struct DashboardWindow: View {
                             .weight(isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? .primary : .secondary)
                         .padding(.horizontal, showsLabel ? 14 : 11)
-                        .padding(.vertical, 7)
+                        .padding(.vertical, Espaco.pequeno)
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -140,11 +144,11 @@ struct DashboardWindow: View {
                     .accessibilityLabel(item.label)
                 }
             }
-            .padding(3)
+            .padding(Espaco.micro)
             .glassEffect(.regular.interactive(), in: Capsule())
-            .padding(.trailing, 18)
+            .padding(.trailing, Espaco.secao)
         }
-        .padding(.top, 10)
+        .padding(.top, Espaco.medio)
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in
@@ -188,7 +192,7 @@ struct EnergiaSection: View {
         // Single scroll, no nested scrolling (UX smell): the EVENTOS eyebrow
         // pins at the top while rows pass under — same pattern as Saúde.
         ScrollView(showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: Espaco.medio, pinnedViews: [.sectionHeaders]) {
                 Section {
                     if case .serviceDown(let reason) = store.phase {
                         ConnectionBanner(reason: reason)
@@ -211,7 +215,7 @@ struct EnergiaSection: View {
                                     period: $eventPeriod,
                                     customFrom: $customFrom, customTo: $customTo)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Espaco.pequeno)
                         .background {
                             Rectangle().fill(.ultraThinMaterial)
                                 .mask {
@@ -228,8 +232,8 @@ struct EnergiaSection: View {
                         }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 8)
+            .padding(.horizontal, Espaco.respiro)
+            .padding(.bottom, Espaco.pequeno)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geo in
             geo.contentOffset.y

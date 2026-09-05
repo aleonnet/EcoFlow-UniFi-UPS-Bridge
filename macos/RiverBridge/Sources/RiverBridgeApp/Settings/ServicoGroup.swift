@@ -27,11 +27,11 @@ struct ServicoGroup: View {
 
     var body: some View {
         SettingsRows.group(L10n.t("Serviço", "Service")) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: Espaco.medio) {
                 Image(systemName: icone)
                     .frame(width: 26)
                     .foregroundStyle(cor)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Espaco.micro) {
                     Text(estado.titulo)
                         .font(.system(.body, design: .rounded))
                     Text(estado.explicacao)
@@ -45,7 +45,7 @@ struct ServicoGroup: View {
                 Aviso(tom: .atencao, texto: recado)
             }
             SettingsRows.divider
-            HStack(spacing: 10) {
+            HStack(spacing: Espaco.medio) {
                 if estado.podeInstalar {
                     Button(L10n.t("Instalar o serviço", "Install the service"), action: instalar)
                         .buttonStyle(.borderedProminent)

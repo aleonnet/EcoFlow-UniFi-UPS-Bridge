@@ -129,7 +129,7 @@ struct FlowScene: View {
                 .stroke(color.opacity(active ? 0.9 : 0.3), lineWidth: 2)
                 .shadow(color: color.opacity(active ? 0.7 : 0), radius: 7)
                 .shadow(color: color.opacity(active ? 0.35 : 0), radius: 16)
-            VStack(spacing: 2) {
+            VStack(spacing: Espaco.fio) {
                 Image(systemName: symbol)
                     .font(.system(size: radius * 0.42, weight: .medium))
                     .foregroundStyle(active ? .primary : .secondary)

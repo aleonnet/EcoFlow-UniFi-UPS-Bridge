@@ -7,6 +7,10 @@ import RiverBridgeCore
 import SwiftUI
 
 struct ChartsView: View {
+    // Geometria DESTE gráfico: a folga da direita existe para o último rótulo do
+    // eixo não ser cortado. Depende da largura do texto, não de uma escala.
+    private static let folgaDosRotulos: CGFloat = 26
+
     var store: TelemetryStore
     /// Type chips shared with the events list (owner): in Events mode the
     /// histogram honours the same filter; empty = everything.
@@ -149,7 +153,7 @@ struct ChartsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Espaco.mini) {
             header
             if loadFailed {
                 Text(L10n.t("Histórico indisponível — o app não está falando com o serviço.",
@@ -284,11 +288,11 @@ struct ChartsView: View {
             // live chips share the first line; BOTH capsules live on their
             // own line, scrolling horizontally when the window is narrower
             // than they are (the chips-row pattern) — nothing ever squeezes.
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .top, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Espaco.pequeno) {
+                HStack(alignment: .top, spacing: Espaco.pequeno) {
+                    VStack(alignment: .leading, spacing: Espaco.fio) {
                         Text(eyebrowText).eyebrow()
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline, spacing: Espaco.pequeno) {
                             Text(nowValue)
                                 .font(.system(size: 22, weight: .semibold, design: .rounded))
                                 .monospacedDigit()
@@ -311,7 +315,7 @@ struct ChartsView: View {
                 // ScrollView here painted backdrop haze over its rect, the
                 // same class as the edge-seam fix; killed in favor of
                 // compact segments that actually fit).
-                HStack(spacing: 6) {
+                HStack(spacing: Espaco.mini) {
                     picker
                     scopePicker
                 }
@@ -321,9 +325,9 @@ struct ChartsView: View {
             // .center: the right cluster (chips + picker) aligns vertically
             // with the hero block instead of floating on the eyebrow line.
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Espaco.fio) {
                     Text(eyebrowText).eyebrow()
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: Espaco.pequeno) {
                         Text(nowValue)
                             .font(.system(size: 26, weight: .semibold, design: .rounded))
                             .monospacedDigit()
@@ -348,7 +352,7 @@ struct ChartsView: View {
     /// Time-scope segments (Stocks/Health anchor): also the natural zoom
     /// reset — picking a scope re-frames window, bucket and scroll.
     private var scopePicker: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Espaco.fio) {
             ForEach(ChartScope.allCases) { s in
                 Button {
                     scope = s
@@ -359,7 +363,7 @@ struct ChartsView: View {
                         .font((narrow ? Font.caption : .callout).weight(scope == s ? .semibold : .regular))
                         .foregroundStyle(scope == s ? .primary : .secondary)
                         .padding(.horizontal, narrow ? 7 : 9)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, Espaco.micro)
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -370,12 +374,12 @@ struct ChartsView: View {
                 }
             }
         }
-        .padding(2)
+        .padding(Espaco.fio)
         .glassEffect(.regular, in: Capsule())
     }
 
     private var picker: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Espaco.fio) {
             ForEach(Metric.allCases) { m in
                 Button {
                     metric = m
@@ -384,7 +388,7 @@ struct ChartsView: View {
                         .fixedSize()   // never hyphenate ("Potên-cia" no telefone)
                         .font((narrow ? Font.caption : .callout).weight(metric == m ? .semibold : .regular))
                         .padding(.horizontal, narrow ? 7 : 10)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, Espaco.micro)
                 }
                 .buttonStyle(.plain)
                 .background {
@@ -394,18 +398,18 @@ struct ChartsView: View {
                 }
             }
         }
-        .padding(2)
+        .padding(Espaco.fio)
         .glassEffect(.regular, in: Capsule())
     }
 
     private func chip(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .trailing, spacing: 0) {
+        VStack(alignment: .trailing, spacing: Espaco.nenhum) {
             Text(label).eyebrow()
             Text(value)
                 .font(.system(.callout, design: .rounded).weight(.medium))
                 .monospacedDigit()
         }
-        .padding(.trailing, 6)
+        .padding(.trailing, Espaco.mini)
     }
 
     /// Chart legend label per (instance, type) — distinct hues so the stacked
@@ -430,7 +434,7 @@ struct ChartsView: View {
     // Events over time (owner 2026-08-31): stacked histogram — color = type,
     // bar height = FREQUENCY in each 2-minute bucket, legend names the hues.
     private var eventsChart: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Espaco.pequeno) {
             eventsChartCore
             legendRow
         }
@@ -468,9 +472,9 @@ struct ChartsView: View {
     /// short names, horizontally scrollable when narrower than its content.
     private var legendRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            HStack(spacing: Espaco.cartao) {
                 ForEach(legendKeys, id: \.label) { key in
-                    HStack(spacing: 5) {
+                    HStack(spacing: Espaco.mini) {
                         Circle().fill(key.color).frame(width: 7, height: 7)
                         Text(key.label)
                             .font(.caption2)
@@ -560,7 +564,7 @@ struct ChartsView: View {
             }
         }
         .frame(height: 150)
-        .padding(.trailing, 26)
+        .padding(.trailing, Self.folgaDosRotulos)
         // Hover scrub on the histogram too (drag stays pan): the callout
         // shows the stacked breakdown for the bucket under the cursor.
         .chartOverlay { proxy in
@@ -581,7 +585,7 @@ struct ChartsView: View {
     /// Discreet GLASS callout for hover values (owner): material capsule,
     /// theme-accented hairline, value + time.
     private func hoverCallout(valor: String, hora: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Espaco.mini) {
             Text(valor)
                 .font(.caption.weight(.semibold))
                 .monospacedDigit()
@@ -592,8 +596,8 @@ struct ChartsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize()
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
+        .padding(.horizontal, Espaco.medio)
+        .padding(.vertical, Espaco.micro)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay { Capsule().strokeBorder(accent.opacity(0.35), lineWidth: 1) }
         .shadow(color: accent.opacity(0.20), radius: 6)
@@ -620,7 +624,7 @@ struct ChartsView: View {
                     y: .value(metric.label, avg)
                 )
                 .symbolSize(0)
-                .annotation(position: .top, spacing: 2) {
+                .annotation(position: .top, spacing: Espaco.fio) {
                     Text(L10n.t("Pico", "Peak"))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -674,7 +678,7 @@ struct ChartsView: View {
         .simultaneousGesture(magnify)
         .onTapGesture(count: 2) { zoomOut() }
         .frame(height: 150)
-        .padding(.trailing, 26)   // room for trailing labels — nothing clips
+        .padding(.trailing, Self.folgaDosRotulos)   // o último rótulo não é cortado
         // Scrub moved from drag to CONTINUOUS HOVER: drag now belongs to the
         // native pan (scrollable axes) — one gesture, one meaning.
         .chartOverlay { proxy in

@@ -41,12 +41,12 @@ struct AddDeviceSheet: View {
     }
 
     private var typeList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Espaco.nenhum) {
+            HStack(spacing: Espaco.confortavel) {
                 Image(systemName: "plus.circle.fill")
                     .font(.title2)
                     .foregroundStyle(accent)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Espaco.fio) {
                     Text(L10n.t("Adicionar dispositivo", "Add device"))
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                     Text(L10n.t("Escolha o que a ponte deve desligar numa queda.",
@@ -55,16 +55,16 @@ struct AddDeviceSheet: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.horizontal, Espaco.janela)
+            .padding(.vertical, Espaco.cartao)
             Divider()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Espaco.medio) {
                     ForEach(DeviceTypeRegistry.all) { type in
                         typeRow(type)
                     }
                 }
-                .padding(20)
+                .padding(Espaco.janela)
             }
             Divider()
             HStack {
@@ -73,8 +73,8 @@ struct AddDeviceSheet: View {
                     .buttonStyle(.glass)
                     .keyboardShortcut(.cancelAction)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.horizontal, Espaco.janela)
+            .padding(.vertical, Espaco.cartao)
         }
         // Quadro FIXO, o mesmo de DeviceSheetFrame (e pelo mesmo motivo medido).
         .frame(width: size.width, height: size.height)
@@ -98,13 +98,13 @@ struct AddDeviceSheet: View {
         Button {
             chosen = type
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: Espaco.cartao) {
                 Image(systemName: type.symbol)
                     .font(.title3)
                     .frame(width: 40, height: 40)
                     .background(Circle().fill(.white.opacity(0.06)))
                     .foregroundStyle(ok ? accent : Color.secondary)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Espaco.micro) {
                     Text(type.label)
                         .font(.system(.body, design: .rounded).weight(.medium))
                         .foregroundStyle(ok ? Color.primary : Color.secondary)
@@ -118,8 +118,8 @@ struct AddDeviceSheet: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.04)))
+            .padding(Espaco.cartao)
+            .background(RoundedRectangle(cornerRadius: Raio.largo, style: .continuous).fill(.white.opacity(0.04)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

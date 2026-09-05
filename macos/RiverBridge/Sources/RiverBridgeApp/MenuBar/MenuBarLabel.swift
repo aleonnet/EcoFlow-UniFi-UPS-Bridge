@@ -10,7 +10,7 @@ struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: Espaco.micro) {
             Image(nsImage: MenuBarIcon.image(
                 fraction: store.chargeFraction,
                 live: store.phase == .live

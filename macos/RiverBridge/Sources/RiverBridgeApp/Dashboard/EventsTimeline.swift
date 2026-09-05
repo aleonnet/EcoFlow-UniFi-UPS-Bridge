@@ -103,7 +103,7 @@ struct EventsTimeline: View {
     // is the list — SOURCE OF TRUTH is the daemon's persisted log (survives
     // app restarts; coherent with Limpar). SSE arrivals just trigger reload.
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Espaco.micro) {
             if loadFailed {
                 Text(L10n.t("Histórico indisponível — a UI não alcança o serviço.", "History unavailable — the UI can’t reach the service."))
                     .font(.callout)
@@ -219,13 +219,13 @@ private struct EventRow: View {
         // window and ALWAYS leaks past the app frame near edges. The detail
         // opens INSIDE the row card — accordion, phone-identical, never
         // overflows, scrolls with the list.
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Espaco.nenhum) {
             Button {
                 withAnimation(.spring(duration: 0.3)) {
                     selected = isSelected ? nil : event
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: Espaco.pequeno) {
                     Image(systemName: EventsTimeline.symbol(for: event.event))
                         .foregroundStyle(color)
                         .frame(width: 18)
@@ -241,24 +241,24 @@ private struct EventRow: View {
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(isSelected ? 180 : 0))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .contentShape(RoundedRectangle(cornerRadius: 9))
+                .padding(.horizontal, Espaco.medio)
+                .padding(.vertical, Espaco.mini)
+                .contentShape(RoundedRectangle(cornerRadius: Raio.selo))
             }
             .buttonStyle(.plain)
 
             if isSelected {
                 EventDetailInline(event: event)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, Espaco.confortavel)
+                    .padding(.bottom, Espaco.medio)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .background {
-            RoundedRectangle(cornerRadius: 9)
+            RoundedRectangle(cornerRadius: Raio.selo)
                 .fill(lit ? Color.primary.opacity(0.10) : .clear)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 9)
+                    RoundedRectangle(cornerRadius: Raio.selo)
                         .strokeBorder(color.opacity(lit ? 0.4 : 0), lineWidth: 1)
                 }
                 .shadow(color: color.opacity(lit ? 0.35 : 0), radius: 10)
@@ -296,7 +296,7 @@ struct EventDetailInline: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Espaco.medio) {
             // No title here: the row above already carries icon + label.
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
                 detailRow(L10n.t("Quando", "When"), friendlyWhen)
@@ -338,15 +338,15 @@ struct EventsFilterBar: View {
     @State private var narrow = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Espaco.pequeno) {
+            HStack(spacing: Espaco.medio) {
                 Text(L10n.t("Eventos", "Events")).eyebrow().fixedSize()
                 Spacer(minLength: 8)
                 // Segmented buttons, not a menu (owner 2026-08-31). With
                 // Datas active the De/Até pickers TAKE THE SEGMENTS' PLACE
                 // inside the same capsule (owner: no extra row, no leftover
                 // Tudo); the ✕ returns to Tudo.
-                HStack(spacing: 2) {
+                HStack(spacing: Espaco.fio) {
                     if period == .personalizado {
                         HStack(spacing: narrow ? 5 : 8) {
                             DatePicker(L10n.t("De", "From"), selection: $customFrom, displayedComponents: .date)
@@ -361,8 +361,8 @@ struct EventsFilterBar: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, Espaco.micro)
+                                .padding(.vertical, Espaco.micro)
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -379,7 +379,7 @@ struct EventsFilterBar: View {
                                     .font((narrow ? Font.caption : .callout).weight(period == p ? .semibold : .regular))
                                     .foregroundStyle(period == p ? .primary : .secondary)
                                     .padding(.horizontal, narrow ? 7 : 9)
-                                    .padding(.vertical, 4)
+                                    .padding(.vertical, Espaco.micro)
                                     .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
@@ -392,13 +392,13 @@ struct EventsFilterBar: View {
                         }
                     }
                 }
-                .padding(2)
+                .padding(Espaco.fio)
                 .glassEffect(.regular, in: Capsule())
                 .fixedSize()
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: Espaco.mini) {
                     ForEach(all) { chip in
                         chipButton(chip)
                     }
@@ -419,15 +419,15 @@ struct EventsFilterBar: View {
         return Button {
             if isOn { chipIDs.remove(chip.id) } else { chipIDs.insert(chip.id) }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: Espaco.mini) {
                 Image(systemName: chip.symbol)
                     .foregroundStyle(chip.color)
                 Text(chip.label).fixedSize()
             }
             .font(.system(.callout, design: .rounded).weight(isOn ? .semibold : .regular))
             .foregroundStyle(isOn ? .primary : .secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
+            .padding(.horizontal, Espaco.confortavel)
+            .padding(.vertical, Espaco.mini)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

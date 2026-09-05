@@ -13,7 +13,7 @@ struct MenuBarPopover: View {
     @AppStorage("showsDockIcon") private var showsDockIcon = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Espaco.fio) {
             // Title row — like "Battery                    On Hold: 80%"
             HStack {
                 Text("River Bridge").font(.headline)
@@ -25,8 +25,8 @@ struct MenuBarPopover: View {
                         .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 4)
+            .padding(.horizontal, Espaco.medio)
+            .padding(.top, Espaco.micro)
 
             Group {
                 Text(L10n.t("Fonte: ", "Source: ") + store.stateLabel)
@@ -39,15 +39,15 @@ struct MenuBarPopover: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, Espaco.medio)
 
             divider
 
             Text(L10n.t("Telemetria", "Telemetry"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 2)
+                .padding(.horizontal, Espaco.medio)
+                .padding(.vertical, Espaco.fio)
 
             metricRow("bolt.fill", L10n.t("Carga", "Load"), store.powerText)
             metricRow("gauge.with.needle", L10n.t("Uso", "Usage"), store.loadText)
@@ -79,12 +79,12 @@ struct MenuBarPopover: View {
                 NSApp.terminate(nil)
             }
         }
-        .padding(6)
+        .padding(Espaco.mini)
         .frame(width: 300)
     }
 
     private var divider: some View {
-        Divider().padding(.vertical, 4).padding(.horizontal, 10)
+        Divider().padding(.vertical, Espaco.micro).padding(.horizontal, Espaco.medio)
     }
 
     private func metricRow(_ symbol: String, _ label: String, _ value: String) -> some View {
@@ -99,8 +99,8 @@ struct MenuBarPopover: View {
                 .monospacedDigit()
         }
         .font(.body)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 3)
+        .padding(.horizontal, Espaco.medio)
+        .padding(.vertical, Espaco.micro)
     }
 }
 
@@ -121,13 +121,13 @@ private struct MenuRow: View {
                 Spacer()
             }
             .font(.body)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, Espaco.medio)
+            .padding(.vertical, Espaco.mini)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Raio.mini)
                 .fill(hovering ? Color.primary.opacity(0.1) : .clear)
         )
         .onHover { hovering = $0 }

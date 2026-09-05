@@ -39,12 +39,12 @@ struct DeviceSheetFrame<Content: View>: View {
     private var accent: Color { Theme.accentColor(onBattery: false, lowBattery: false) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Espaco.nenhum) {
             header
             Divider()
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) { content(estreito) }
-                    .padding(20)
+                VStack(alignment: .leading, spacing: Espaco.secao) { content(estreito) }
+                    .padding(Espaco.janela)
             }
             // A folha abre no TOPO, sempre: a de edição do host SSH abria rolada
             // até o seletor de comando (captura de 2026-09-03), porque o valor
@@ -81,11 +81,11 @@ struct DeviceSheetFrame<Content: View>: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Espaco.confortavel) {
             Image(systemName: type.symbol)
                 .font(.title2)
                 .foregroundStyle(accent)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Espaco.fio) {
                 // O nome DIGITADO manda no cabeçalho: a pessoa vê o que está
                 // prestes a salvar, não o que já está salvo.
                 Text(typedName.trimmingCharacters(in: .whitespaces).isEmpty ? currentName : typedName)
@@ -98,15 +98,15 @@ struct DeviceSheetFrame<Content: View>: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Espaco.janela)
+        .padding(.vertical, Espaco.cartao)
     }
 
     /// O aviso ocupa a linha de cima, em toda a largura; os botões ficam
     /// inteiros na de baixo (com o aviso ao lado, "Remover dispositivo…"
     /// quebrava em duas linhas — captura de 2026-09-03).
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Espaco.medio) {
             if let feedback {
                 Label(feedback, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(Cor.atencao)
@@ -116,7 +116,7 @@ struct DeviceSheetFrame<Content: View>: View {
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 12) {
+            HStack(spacing: Espaco.confortavel) {
             Spacer()
             if onRemove != nil, !mode.isNew {
                 // HIG destructive-in-a-list: texto vermelho, não um bloco cheio.
@@ -141,8 +141,8 @@ struct DeviceSheetFrame<Content: View>: View {
                 .disabled(!canSave)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Espaco.janela)
+        .padding(.vertical, Espaco.cartao)
     }
 }
 
@@ -167,8 +167,8 @@ struct ArmingRow: View {
     /// DIREITA (é a ação da linha), a partir da coluna do texto — nunca sob o ícone.
     var body: some View {
         if estreito {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: Espaco.pequeno) {
+                HStack(alignment: .top, spacing: Espaco.medio) {
                     icone
                     textos
                     Spacer(minLength: 0)
@@ -176,7 +176,7 @@ struct ArmingRow: View {
                 HStack { Spacer(minLength: 36); botao }
             }
         } else {
-            HStack(spacing: 10) {
+            HStack(spacing: Espaco.medio) {
                 icone
                 textos
                 Spacer(minLength: 8)
@@ -192,7 +192,7 @@ struct ArmingRow: View {
     }
 
     private var textos: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Espaco.fio) {
             Text(dryRun ? L10n.t("Modo ensaio", "Rehearsal mode")
                         : L10n.t("ARMADA — desliga o aparelho de verdade", "ARMED — really shuts the device down"))
                 .font(.system(.body, design: .rounded))

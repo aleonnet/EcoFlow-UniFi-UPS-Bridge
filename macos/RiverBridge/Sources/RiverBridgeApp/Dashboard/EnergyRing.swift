@@ -73,7 +73,7 @@ struct EnergyRing: View {
     /// 60 fine ticks — the instrument face behind the ring.
     private var ticks: some View {
         ForEach(0..<60, id: \.self) { i in
-            RoundedRectangle(cornerRadius: 1)
+            RoundedRectangle(cornerRadius: Raio.fio)
                 .fill(.secondary.opacity(i % 5 == 0 ? 0.35 : 0.15))
                 .frame(width: i % 5 == 0 ? 2 : 1, height: i % 5 == 0 ? 7 : 4)
                 .offset(y: -2)
@@ -86,7 +86,7 @@ struct EnergyRing: View {
     private var inner: some View {
         Group {
             if showsDetail {
-                VStack(spacing: 2) {
+                VStack(spacing: Espaco.fio) {
                     Text(L10n.t("Autonomia", "Runtime")).eyebrow()
                     Text(store.runtimeText)
                         .modifier(HeroNumber(value: store.runtimeText))
@@ -97,7 +97,7 @@ struct EnergyRing: View {
                         .foregroundStyle(.secondary)
                         .contentTransition(.numericText())
                 }
-                .padding(6)
+                .padding(Espaco.mini)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .glassEffect(.regular.tint(palette[0].opacity(0.14)), in: Circle())
             } else if hasData {
