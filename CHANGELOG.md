@@ -9,6 +9,44 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+A ponte passa a ser **também um driver do NUT**. É o que faz o Home Assistant
+receber o mesmo que o aplicativo mostra — inclusive os watts por tomada, que o
+perfil de no-break do River não publica, e as ordens, que o leitor de fábrica não
+oferece.
+
+### Adicionado
+- **Um aparelho `river-bridge` no NUT** com tudo o que a ponte sabe do River:
+  bateria, autonomia, situação, tensão, potência total, **watts por tomada**
+  (120 V, 12 V, USB-A, USB-C), frequência e temperatura. Os nomes são os do
+  dicionário oficial do NUT, que é o que o Home Assistant sabe ler.
+- **Um aparelho por dispositivo protegido**, com as ordens de desligar e (no
+  console UniFi) reiniciar. Só entra no NUT o dispositivo cujo alcance o serviço
+  já provou: uma ordem que não chega a lugar nenhum é pior que ordem nenhuma.
+- **`DEVICE_CMD_ALLOWED`** — trava de arquivo para as ordens dadas à mão num
+  dispositivo protegido, fechada por padrão. Terceira trava da casa, pelo mesmo
+  motivo das outras duas. Fechada, a ordem nem é oferecida.
+- **Conta `homeassistant`** no servidor do no-break, com senha própria numa ficha
+  0600 e permissão de mandar ordens (sem ela, a integração do Home Assistant nem
+  chega a perguntar quais comandos existem).
+- O serviço mantém no `ups.conf` do NUT um **trecho entre marcas** com os
+  aparelhos que publica. Dispositivo que entra ou sai pela tela aparece e some
+  sem ninguém reinstalar; o resto do arquivo continua sendo do dono, linha por
+  linha.
+
+### Corrigido
+- O que a leitura da porta serial já garantia na tela passa a valer na
+  publicação: watt vencido **sai** do NUT em vez de congelar.
+
+### Segurança
+- O soquete do driver é **0600**, mais estrito que o 0660 dos drivers do NUT — a
+  pasta em que ele vive é 0755 com grupo `admin`, e 0660 ali deixaria qualquer
+  conta administradora mandar o River desligar sem ficha e sem rastro.
+- Quebra de linha e caracteres de controle são neutralizados no que publicamos:
+  o modelo e o firmware saem do que o **console** respondeu, e uma quebra ali
+  seria uma linha injetada no protocolo.
+- A proteção **não pode ler** um aparelho publicado por nós — nem o do River nem
+  o de um dispositivo. A regra vale na partida e também no que a tela grava.
+
 ## [0.6.0] — 2026-09-05
 
 O App passa a preparar o acesso ao console sozinho, e a proteção só arma depois de
