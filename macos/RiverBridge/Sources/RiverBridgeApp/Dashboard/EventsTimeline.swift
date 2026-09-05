@@ -26,11 +26,11 @@ struct EventChip: Identifiable, Hashable {
     }
     var color: Color {
         switch spec.kind {
-        case .queda: .orange
-        case .bateria: .yellow   // matches the chart legend (owner 2026-08-31)
-        case .restaurada: .green
-        case .comunicacao: .red
-        case .device: .purple    // protection family (chart legend uses the same hue)
+        case .queda: Cor.atencao
+        case .bateria: Cor.bateriaBaixa   // matches the chart legend (owner 2026-08-31)
+        case .restaurada: Cor.bom
+        case .comunicacao: Cor.perigo
+        case .device: Cor.bloqueio    // protection family (chart legend uses the same hue)
         }
     }
 

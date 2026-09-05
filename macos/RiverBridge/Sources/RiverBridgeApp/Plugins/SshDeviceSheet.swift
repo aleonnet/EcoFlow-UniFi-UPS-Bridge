@@ -195,10 +195,10 @@ struct SshDeviceSheet: View {
                 Label(L10n.t("Conexão provada: \(r.model ?? "") · \(r.firmware ?? "")",
                              "Connection proven: \(r.model ?? "") · \(r.firmware ?? "")"),
                       systemImage: "checkmark.seal.fill")
-                    .font(.callout).foregroundStyle(.green)
+                    .font(.callout).foregroundStyle(Cor.bom)
             } else if let alcance, let motivo = alcance.motivo {
                 Label(motivo, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout).foregroundStyle(.orange)
+                    .font(.callout).foregroundStyle(Cor.atencao)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(L10n.t("O serviço precisa provar que alcança este aparelho antes de armar a proteção. Ele cria a chave sozinho; você só informa a senha do console uma vez.",
@@ -254,7 +254,7 @@ struct SshDeviceSheet: View {
                 Button(L10n.t("Aceitar a identidade nova…", "Accept the new identity…")) {
                     Task { await prepararAcesso(aceitandoIdentidade: true) }
                 }
-                .buttonStyle(.glass).tint(.orange)
+                .buttonStyle(.glass).tint(Cor.atencao)
                 .disabled(ocupadoNoAcesso)
             }
             if acesso != nil || alcance != nil {

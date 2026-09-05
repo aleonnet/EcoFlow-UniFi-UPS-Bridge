@@ -9,35 +9,52 @@
 import Foundation
 
 public enum DeviceStateText {
-    /// O tom do selo. Quem desenha traduz para cor; o núcleo não conhece SwiftUI.
-    public enum Tom: Sendable { case secondary, blue, orange, red, purple }
+    /// O tom do selo, pelo PAPEL — não pela cor.
+    ///
+    /// Antes os casos se chamavam pelos nomes das tintas: um vocabulário
+    /// semântico batizado de "azul" e "roxo". Quem lesse um estado com tom roxo
+    /// não sabia o que aquilo significava, e trocar a paleta obrigaria a mexer
+    /// no contrato. O papel é estável; a tinta é escolha da camada de tela
+    /// (a paleta única vive em Theme.swift).
+    public enum Tom: Sendable {
+        /// Nada a dizer: a proteção está desligada.
+        case neutro
+        /// Ligada, mas em ensaio — ela avisa e não age.
+        case ensaio
+        /// Vai agir, e falta uma condição do dono.
+        case atencao
+        /// O desfecho que importa: desligou, falhou, está armada de verdade.
+        case perigo
+        /// Barrada por uma cerca: a configuração não deixa agir.
+        case bloqueio
+    }
 
     /// `console`: o UDR7 fala em "console"; o host genérico em "máquina".
     public static func badge(state: String?, console: Bool) -> (texto: String, tom: Tom)? {
         let alvo = console ? L10n.t("console", "console") : L10n.t("máquina", "machine")
         switch state {
-        case "desabilitado": return (L10n.t("Desligada", "Off"), .secondary)
-        case "dry_run": return (L10n.t("Modo ensaio", "Rehearsal"), .blue)
-        case "armado_nao_verificado": return (L10n.t("Armada — alcance não verificado", "Armed — reach unverified"), .orange)
-        case "enviado": return (L10n.t("Desligamento enviado", "Shutdown sent"), .red)
-        case "fonte_nao_real": return (L10n.t("Bloqueada — fonte não aceita", "Blocked — source not accepted"), .purple)
-        case "fonte_nao_local": return (L10n.t("Bloqueada — NUT não é local", "Blocked — NUT not local"), .purple)
-        case "corte_nao_configurado": return (L10n.t("Bloqueada — corte do River não configurado", "Blocked — River cutoff not set"), .purple)
-        case "limiar_nao_configurado": return (L10n.t("Bloqueada — limiar não configurado", "Blocked — threshold not set"), .purple)
+        case "desabilitado": return (L10n.t("Desligada", "Off"), .neutro)
+        case "dry_run": return (L10n.t("Modo ensaio", "Rehearsal"), .ensaio)
+        case "armado_nao_verificado": return (L10n.t("Armada — alcance não verificado", "Armed — reach unverified"), .atencao)
+        case "enviado": return (L10n.t("Desligamento enviado", "Shutdown sent"), .perigo)
+        case "fonte_nao_real": return (L10n.t("Bloqueada — fonte não aceita", "Blocked — source not accepted"), .bloqueio)
+        case "fonte_nao_local": return (L10n.t("Bloqueada — NUT não é local", "Blocked — NUT not local"), .bloqueio)
+        case "corte_nao_configurado": return (L10n.t("Bloqueada — corte do River não configurado", "Blocked — River cutoff not set"), .bloqueio)
+        case "limiar_nao_configurado": return (L10n.t("Bloqueada — limiar não configurado", "Blocked — threshold not set"), .bloqueio)
         case "limiar_abaixo_do_corte": return (L10n.t("Bloqueada — o limiar precisa ficar acima do corte do River",
-                                                      "Blocked — the threshold must sit above the River cutoff"), .purple)
-        case "config_incompleta": return (L10n.t("Bloqueada — configuração incompleta", "Blocked — incomplete config"), .purple)
-        case "chave_insegura": return (L10n.t("Bloqueada — chave SSH ausente/insegura", "Blocked — SSH key missing/insecure"), .purple)
+                                                      "Blocked — the threshold must sit above the River cutoff"), .bloqueio)
+        case "config_incompleta": return (L10n.t("Bloqueada — configuração incompleta", "Blocked — incomplete config"), .bloqueio)
+        case "chave_insegura": return (L10n.t("Bloqueada — chave SSH ausente/insegura", "Blocked — SSH key missing/insecure"), .bloqueio)
         case "host_desconhecido": return (L10n.t("Bloqueada — identidade do \(alvo) não registrada",
-                                                 "Blocked — the \(alvo)'s identity is not registered"), .purple)
-        case "calibrando": return (L10n.t("Bloqueada — calibrando", "Blocked — calibrating"), .purple)
-        case "armamento_ausente": return (L10n.t("Bloqueada — o armamento não foi concluído", "Blocked — arming was not completed"), .purple)
-        case "config_trocada": return (L10n.t("Bloqueada — configuração mudou após armar", "Blocked — config changed after arming"), .purple)
-        case "aguardando_restauracao": return (L10n.t("Aguardando energia voltar", "Waiting for power to return"), .orange)
+                                                 "Blocked — the \(alvo)'s identity is not registered"), .bloqueio)
+        case "calibrando": return (L10n.t("Bloqueada — calibrando", "Blocked — calibrating"), .bloqueio)
+        case "armamento_ausente": return (L10n.t("Bloqueada — o armamento não foi concluído", "Blocked — arming was not completed"), .bloqueio)
+        case "config_trocada": return (L10n.t("Bloqueada — configuração mudou após armar", "Blocked — config changed after arming"), .bloqueio)
+        case "aguardando_restauracao": return (L10n.t("Aguardando energia voltar", "Waiting for power to return"), .atencao)
         case nil:
             // O serviço ainda não disse nada sobre este dispositivo: a linha
             // mostra espera, nunca um estado inventado.
-            return (L10n.t("Aguardando o estado do serviço…", "Waiting for the service's state…"), .secondary)
+            return (L10n.t("Aguardando o estado do serviço…", "Waiting for the service's state…"), .neutro)
         default: return nil
         }
     }

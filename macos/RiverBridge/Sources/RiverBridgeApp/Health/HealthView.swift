@@ -155,9 +155,9 @@ struct HealthView: View {
             return doPlugin
         }
         switch status {
-        case "ok": return ("OK", .green)
-        case "falha": return (L10n.t("Falha", "Failed"), .red)
-        case "sem_dados": return (L10n.t("Sem dados", "No data"), .orange)
+        case "ok": return ("OK", Cor.bom)
+        case "falha": return (L10n.t("Falha", "Failed"), Cor.perigo)
+        case "sem_dados": return (L10n.t("Sem dados", "No data"), Cor.atencao)
         case "nao_observavel": return (L10n.t("Não observável", "Not observable"), .secondary)
         case "sem_caminho_nativo_documentado":
             return (L10n.t("Sem caminho nativo documentado", "No documented native path"), .secondary)

@@ -93,9 +93,9 @@ struct ServicoGroup: View {
 
     private var cor: Color {
         switch estado {
-        case .noAr: return .green
-        case .esperandoAprovacao, .instaladoPelaLinhaDeComando: return .orange
-        default: return .secondary
+        case .noAr: return Cor.bom
+        case .esperandoAprovacao, .instaladoPelaLinhaDeComando: return Cor.atencao
+        default: return Cor.neutro
         }
     }
 

@@ -93,16 +93,8 @@ enum SshEngineText {
     /// o serviço é testado; aqui fica só a cor.
     static func badge(state: String?, console: Bool) -> (String, Color)? {
         guard let selo = DeviceStateText.badge(state: state, console: console) else { return nil }
-        return (selo.texto, cor(selo.tom))
-    }
-
-    private static func cor(_ tom: DeviceStateText.Tom) -> Color {
-        switch tom {
-        case .secondary: .secondary
-        case .blue: .blue
-        case .orange: .orange
-        case .red: .red
-        case .purple: .purple
-        }
+        // A tinta vem da paleta (Theme.swift), não daqui: a segunda tabela de
+        // cores era como a mesma ideia saía de uma cor aqui e de outra ali.
+        return (selo.texto, selo.tom.color)
     }
 }

@@ -74,7 +74,7 @@ struct SettingsView: View {
         HStack(spacing: 10) {
             Image(systemName: comEles ? "cable.connector.slash" : "cable.connector")
                 .frame(width: 26)
-                .foregroundStyle(comEles ? Color.orange : .secondary)
+                .foregroundStyle(comEles ? Cor.atencao : Cor.neutro)
             VStack(alignment: .leading, spacing: 2) {
                 Text(comEles
                      ? L10n.t("O River está com o aplicativo da EcoFlow",
@@ -244,7 +244,7 @@ struct SettingsView: View {
                 if configFailed {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Cor.atencao)
                         Text(L10n.t("Sem resposta do serviço — os valores abaixo não foram carregados.",
                                     "No answer from the service — the values below were not loaded."))
                             .font(.callout)
@@ -257,7 +257,7 @@ struct SettingsView: View {
                     }
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.orange.opacity(0.12)))
+                        .fill(Cor.atencao.opacity(0.12)))
                 }
 
                 SettingsRows.group(L10n.t("Alarmes", "Alarms")) {
@@ -326,7 +326,7 @@ struct SettingsView: View {
                             showClearDialog = true
                         } label: {
                             Text(L10n.t("Limpar eventos…", "Clear events…"))
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Cor.perigo)
                                 .frame(minHeight: 28)
                                 .contentShape(Rectangle())
                         }
@@ -409,7 +409,7 @@ struct SettingsView: View {
                             confirmacaoRiver = .desligarRiver
                         } label: {
                             Text(L10n.t("Desligar…", "Turn off…"))
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Cor.perigo)
                                 .frame(minHeight: 28)
                                 .contentShape(Rectangle())
                         }
@@ -419,7 +419,7 @@ struct SettingsView: View {
                                  "Switches the River's own output off: everything plugged into it loses power at once. It only works with the lock open in the service file and no protection armed."))
                     if let riverFeedback {
                         Text(riverFeedback)
-                            .font(.caption).foregroundStyle(.orange)
+                            .font(.caption).foregroundStyle(Cor.atencao)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -478,17 +478,17 @@ struct SettingsView: View {
                         if restartRequired {
                             Button(L10n.t("Reiniciar serviço para aplicar", "Restart service to apply")) { Task { await restart() } }
                                 .buttonStyle(.glass)
-                                .tint(.orange)
+                                .tint(Cor.atencao)
                         }
                         Spacer()
                         if let devicesFeedback {
                             Label(devicesFeedback, systemImage: "exclamationmark.triangle.fill")
                                 .font(.callout)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Cor.atencao)
                         } else if let feedback {
                             Label(feedback, systemImage: "exclamationmark.triangle.fill")
                                 .font(.callout)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Cor.atencao)
                                 .contentTransition(.opacity)
                         } else if let notice {
                             Label(notice, systemImage: "checkmark.circle")
@@ -617,7 +617,7 @@ struct SettingsView: View {
                         Task { await clearEvents(to: cutoff) }
                     }
                     .buttonStyle(.glassProminent)
-                    .tint(.red)
+                    .tint(Cor.perigo)
                 }
             }
             .padding(20)
@@ -649,7 +649,7 @@ struct SettingsView: View {
             if let serviceVersion, serviceVersion != appVersion {
                 Text(L10n.t("Versões diferentes — rode o instalador para alinhar app e serviço.",
                             "Versions differ — run the installer to align app and service."))
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.caption).foregroundStyle(Cor.atencao)
                     .multilineTextAlignment(.center)
             }
         }

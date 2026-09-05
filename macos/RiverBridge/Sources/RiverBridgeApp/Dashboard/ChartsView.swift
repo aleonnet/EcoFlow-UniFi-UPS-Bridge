@@ -461,7 +461,7 @@ struct ChartsView: View {
     /// Protection events share one family (purple, with red/orange for the
     /// outcomes that matter) instead of falling into the teal default.
     private func legendColor(_ type: String) -> Color {
-        DeviceTypeRegistry.qualquerEvento(type)?.tone.color ?? .purple
+        DeviceTypeRegistry.qualquerEvento(type)?.tone.color ?? Cor.bloqueio
     }
 
     /// One-line legend (the automatic one wrapped — owner's print): dots +

@@ -141,14 +141,61 @@ struct HeroNumber: ViewModifier {
 /// o que foi barrado é laranja; ligar/desligar é índigo e o religamento é menta.
 /// Mudança declarada: na TIMELINE, ARMED/DISARMED passam de roxo a índigo e o
 /// WoL a menta — iguais à legenda do gráfico, que até aqui divergia da lista.
+/// **A paleta. O único lugar do programa que nomeia uma tinta.**
+///
+/// Fora daqui, nada diz "laranja" nem "vermelho": a tela pede um PAPEL
+/// (`Cor.atencao`, `Cor.perigo`) e esta tabela decide com que tinta ele é
+/// pintado. Antes eram 57 nomes de cor espalhados por 12 arquivos, e a mesma
+/// ideia saía de uma cor num lugar e de outra noutro — sem nada com que
+/// comparar. A cena S55 do portão reprova nome de cor fora deste arquivo.
+enum Cor {
+    /// Sem nada a dizer — desligado, ausente, apoio de texto.
+    static let neutro = Color.secondary
+    /// Está bem: no ar, provado, feito.
+    static let bom = Color.green
+    /// Ligado em ensaio: avisa e não age.
+    static let ensaio = Color.blue
+    /// Falta uma condição sua, ou algo foi barrado.
+    static let atencao = Color.orange
+    /// O desfecho que importa: desligou, falhou, está armado de verdade.
+    static let perigo = Color.red
+    /// Barrado por uma cerca da configuração — a família da proteção.
+    static let bloqueio = Color.purple
+    /// Ligar e desligar, como um interruptor.
+    static let alternancia = Color.indigo
+    /// Religar pela rede.
+    static let religamento = Color.mint
+    /// Bateria baixa, na legenda do gráfico.
+    static let bateriaBaixa = Color.yellow
+}
+
+/// A cor de cada FAMÍLIA de evento de dispositivo — pelo papel, na paleta acima.
+///
+/// Escolhas declaradas: a família é a do bloqueio; o desfecho que importa é
+/// perigo; o barrado é atenção; ligar/desligar é alternância e o religamento é o
+/// dele. Na TIMELINE, ARMED/DISARMED passam de roxo a índigo e o WoL a menta —
+/// iguais à legenda do gráfico, que até aqui divergia da lista.
 extension DeviceEventTone {
     var color: Color {
         switch self {
-        case .family: .purple
-        case .danger: .red
-        case .warning: .orange
-        case .toggle: .indigo
-        case .wake: .mint
+        case .family: Cor.bloqueio
+        case .danger: Cor.perigo
+        case .warning: Cor.atencao
+        case .toggle: Cor.alternancia
+        case .wake: Cor.religamento
+        }
+    }
+}
+
+/// E o tom de um ESTADO de dispositivo, na mesma paleta.
+extension DeviceStateText.Tom {
+    var color: Color {
+        switch self {
+        case .neutro: Cor.neutro
+        case .ensaio: Cor.ensaio
+        case .atencao: Cor.atencao
+        case .perigo: Cor.perigo
+        case .bloqueio: Cor.bloqueio
         }
     }
 }

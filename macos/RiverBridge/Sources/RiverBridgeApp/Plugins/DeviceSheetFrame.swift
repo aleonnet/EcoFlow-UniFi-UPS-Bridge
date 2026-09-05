@@ -109,7 +109,7 @@ struct DeviceSheetFrame<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             if let feedback {
                 Label(feedback, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout).foregroundStyle(.orange)
+                    .font(.callout).foregroundStyle(Cor.atencao)
                     .fixedSize(horizontal: false, vertical: true)
             } else if let notice {
                 Label(notice, systemImage: "checkmark.circle")
@@ -122,7 +122,7 @@ struct DeviceSheetFrame<Content: View>: View {
                 // HIG destructive-in-a-list: texto vermelho, não um bloco cheio.
                 Button(role: .destructive) { showRemoveDialog = true } label: {
                     Text(L10n.t("Remover dispositivo…", "Remove device…"))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Cor.perigo)
                         .frame(minHeight: 28)
                         .contentShape(Rectangle())
                 }
@@ -188,7 +188,7 @@ struct ArmingRow: View {
     private var icone: some View {
         Image(systemName: dryRun ? "theatermasks.fill" : "bolt.shield.fill")
             .frame(width: 26)
-            .foregroundStyle(dryRun ? Color.secondary : Color.red)
+            .foregroundStyle(dryRun ? Cor.neutro : Cor.perigo)
     }
 
     private var textos: some View {
@@ -206,7 +206,7 @@ struct ArmingRow: View {
                  : L10n.t("A trava de armamento está fechada. Para armar, abra-a no arquivo do serviço e reinicie (veja o guia).",
                           "The arming lock is closed. To arm, open it in the service file and restart (see the guide)."))
                 .font(.caption)
-                .foregroundStyle(armAllowed && alcanceProvado ? Color.orange : Color.secondary)
+                .foregroundStyle(armAllowed && alcanceProvado ? Cor.atencao : Cor.neutro)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -217,7 +217,7 @@ struct ArmingRow: View {
             Button(role: .destructive) { onTurnOffRehearsal() } label: {
                 Text(L10n.t("Desligar modo ensaio…", "Turn rehearsal off…"))
                     .fixedSize()
-                    .foregroundStyle(armAllowed && enabled && alcanceProvado ? Color.red : Color.secondary)
+                    .foregroundStyle(armAllowed && enabled && alcanceProvado ? Cor.perigo : Cor.neutro)
                     .frame(minHeight: 28)
                     .contentShape(Rectangle())
             }
