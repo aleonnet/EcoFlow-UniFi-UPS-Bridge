@@ -78,11 +78,20 @@ echo "│ embutindo Python ${PY_VERSAO}"
 tar xzf "$TARBALL" -C "$RES"          # cria $RES/python
 
 echo "│ embutindo dependências e o nosso código"
-"$RES/python/bin/python3" -m pip -q install --target "$RES/libs" "aiohttp>=3.12" \
+# `--no-compile`: o pip compila os `.pyc` por padrão, e eles não podem estar aqui.
+# Não é economia de espaço — é que o pacote assinado não pode ganhar arquivo
+# nenhum depois de assinado, e a prova de arranque lá embaixo conta exatamente
+# isso. Com os `.pyc` do pip dentro, ela acusava 645 arquivos "deixados pelo
+# serviço" que na verdade eram do próprio empacotamento (medido em 2026-09-05).
+"$RES/python/bin/python3" -m pip -q install --no-compile --target "$RES/libs" "aiohttp>=3.12" \
   || { echo "[ERRO] não consegui instalar as dependências no pacote"; exit 1; }
 cp -R "$RAIZ/src/river_unifi_bridge" "$RES/src-river_unifi_bridge"
 mkdir -p "$RES/src" && rm -rf "$RES/src/river_unifi_bridge" 2>/dev/null || true
 mv "$RES/src-river_unifi_bridge" "$RES/src/river_unifi_bridge"
+# E o que veio junto da árvore de trabalho (o `__pycache__` de quem roda a
+# suíte) também sai: ele entraria assinado e voltaria a divergir na primeira
+# atualização do código.
+find "$RES/src" "$RES/libs" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 cp "$RAIZ/config/river-unifi-bridge.env.example" "$RES/bridge.env.exemplo"
 
 # O que o launchd executa. Script porque o `BundleProgram` aponta para UM
@@ -146,10 +155,17 @@ codesign --verify --deep --strict "$APP" 2>/dev/null \
 
 # Arranque de prova: o serviço tem de rodar do pacote E não deixar rastro nele.
 # Sem isto, o defeito só apareceria na máquina de quem instalou.
+#
+# A marca de tempo é tirada AGORA, imediatamente antes de rodar — não do
+# Info.plist. Comparando com o Info.plist, tudo o que o empacotamento escreveu
+# depois dele (as dependências, o nosso código) contava como "deixado pelo
+# serviço", e a prova acusava um defeito que não existia enquanto poderia deixar
+# passar o que existe.
+MARCA="$(mktemp)"
 PROVA="$(mktemp -d)"
 RUB_STATE_DIR="$PROVA" "$RES/servico.sh" --version >/dev/null 2>&1 || true
-RESTOS="$(find "$APP" -name '*.pyc' -newer "$APP/Contents/Info.plist" | wc -l | tr -d ' ')"
-rm -rf "$PROVA"
+RESTOS="$(find "$APP" -newer "$MARCA" | wc -l | tr -d ' ')"
+rm -rf "$PROVA" "$MARCA"
 [ "$RESTOS" = "0" ] || { echo "[ERRO] rodar o serviço deixou $RESTOS arquivos novos dentro do pacote (quebra a assinatura)"; exit 1; }
 codesign --verify --deep --strict "$APP" 2>/dev/null \
   || { echo "[ERRO] a assinatura não verifica DEPOIS de o serviço rodar"; exit 1; }

@@ -1424,6 +1424,29 @@ else
     ls -1 "$NUT_REAL_STATE" 2>/dev/null | head -5
 fi
 
+# S44 — o empacotador não pode voltar a duas formas que já falharam, as duas
+# medidas em 2026-09-05. Esta cena confere o TEXTO do empacotador, não uma
+# execução: montar o pacote leva minuto e meio e baixa o Python, e o portão roda
+# a cada mudança. A execução de verdade é o próprio `build-app.sh`, que falha
+# sozinho quando alguma das duas quebra.
+#   1. o pip compilando `.pyc` dentro do pacote — arquivo que entra depois da
+#      assinatura e a quebra;
+#   2. a prova de arranque comparando com o Info.plist em vez de uma marca tirada
+#      na hora — assim ela acusava 645 arquivos do próprio empacotamento como se
+#      fossem do serviço, e deixaria passar os que o serviço deixasse de verdade.
+S44_FALHOU=""
+grep -q 'pip -q install --no-compile' "$RAIZ/tools/build-app.sh" \
+  || S44_FALHOU="o pip voltou a compilar .pyc dentro do pacote"
+grep -q 'find "\$APP" -newer "\$MARCA"' "$RAIZ/tools/build-app.sh" \
+  || S44_FALHOU="${S44_FALHOU:-a prova de arranque não usa uma marca tirada na hora}"
+grep -q 'Info.plist" | wc -l' "$RAIZ/tools/build-app.sh" \
+  && S44_FALHOU="${S44_FALHOU:-a prova de arranque voltou a comparar com o Info.plist}"
+if [ -z "$S44_FALHOU" ]; then
+    ok "S44 empacotador: sem .pyc do pip, e a prova de arranque com marca própria"
+else
+    erro "S44 empacotador: $S44_FALHOU"
+fi
+
 # S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.
 # Sem isto, uma LG_MASK editada à mão passaria por todas as outras cenas (o quadro
 # final é derivado da própria máscara — ver S14).
