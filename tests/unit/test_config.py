@@ -258,22 +258,22 @@ def test_retired_keys_only_warn_in_an_installed_env(tmp_path):
 
 def test_protection_key_sets_are_consistent():
     from river_unifi_bridge.config import (
-        _ALLOWLIST, FILE_ONLY_KEYS, HOT_RELOAD_KEYS, PROTECTION_KEYS,
+        _ALLOWLIST, HOT_RELOAD_KEYS, PROTECTION_KEYS,
     )
-    # O que NÃO aplica a quente exige reiniciar o serviço; a trava e o endereço do
-    # NUT estão desse lado, e é o que o app informa ao usuário depois de salvar.
+    # O que NÃO aplica a quente exige reiniciar o serviço; o endereço do NUT está
+    # desse lado, e é o que o app informa ao usuário depois de salvar.
     exige_reinicio = set(_ALLOWLIST) - HOT_RELOAD_KEYS
-    # Três travas de ARQUIVO, e o motivo é o mesmo nas três: a API nunca as abre.
+    # As três travas são interruptores na tela desde a 0.8.0 e aplicam a quente.
     # Uma arma a proteção; outra autoriza desligar o próprio River, que corta a
     # energia de tudo o que estiver nele; a terceira autoriza mandar um
     # dispositivo protegido desligar ou reiniciar AGORA, à mão.
-    assert FILE_ONLY_KEYS == {"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED",
-                              "DEVICE_CMD_ALLOWED"}
-    assert "UDR7_ARM_ALLOWED" in exige_reinicio
+    assert {"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED",
+            "DEVICE_CMD_ALLOWED"} <= HOT_RELOAD_KEYS
+    assert "UDR7_ARM_ALLOWED" not in exige_reinicio
     assert "NUT_HOST" in exige_reinicio
     assert {"NUT_HOST", "NUT_PORT", "NUT_UPS", "PROTECT_UDR7", "PROTECT_DRY_RUN"} <= PROTECTION_KEYS
     assert len(PROTECTION_KEYS) == 19
-    assert (PROTECTION_KEYS - FILE_ONLY_KEYS - {"NUT_HOST", "NUT_PORT", "NUT_UPS"}) <= HOT_RELOAD_KEYS
+    assert (PROTECTION_KEYS - {"NUT_HOST", "NUT_PORT", "NUT_UPS"}) <= HOT_RELOAD_KEYS
     # O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção:
     # aplica a quente e pode ser trocado com o daemon armado. É o nó da cena S4m —
     # sem o `- DEVICE_NAME_KEYS` em config.py, o prefixo o engoliria e renomear

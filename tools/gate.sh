@@ -706,6 +706,23 @@ cena_mutacao S57 src/river_unifi_bridge/cabo_automatico.py \
     'APLICATIVO_DO_FABRICANTE = r"/Applications/PowerManager.app/Contents/MacOS/"' \
     tests/unit/test_cabo_automatico.py::test_o_daemon_deles_nao_e_o_aplicativo
 
+# S58 — as três travas são interruptores na tela e aplicam a QUENTE. Tirada da
+# lista de aplicação a quente, a trava do River voltaria a exigir reinício — o
+# interruptor diria "feito" e a ordem não existiria até o dono reiniciar.
+cena_mutacao S58 src/river_unifi_bridge/config.py \
+    '        "UDR7_ARM_ALLOWED",
+        "RIVER_POWEROFF_ALLOWED",' \
+    '        "UDR7_ARM_ALLOWED",' \
+    tests/unit/test_api.py::test_travas_aplicam_a_quente
+
+# S58b — e o aparelho publicado acompanha o interruptor a cada volta: congelar a
+# lista de comandos na construção faria o Home Assistant só ver a ordem depois
+# de um reinício.
+cena_mutacao S58b src/river_unifi_bridge/nut_servico.py \
+    'comandos=self._comandos_do_river(), dados_ok=True)' \
+    'comandos=(), dados_ok=True)' \
+    tests/unit/test_nut_servico.py::test_trava_ligada_vira_addcmd_sem_reinicio
+
 # --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
 
 # S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão

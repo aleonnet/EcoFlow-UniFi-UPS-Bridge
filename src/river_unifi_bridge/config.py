@@ -309,7 +309,13 @@ HOT_RELOAD_KEYS = frozenset(
         "HISTORY_RETENTION_DAYS",
         "RIVER_SERIAL_ENABLED",
         "RIVER_SERIAL_PORT",
-        # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
+        # As três travas (0.8.0): viraram interruptores na tela, com confirmação,
+        # e aplicam a quente. Até a 0.7.0 eram "somente arquivo": abrir uma
+        # exigia editar o .env e reiniciar — o caminho de nerd que o dono vetou.
+        "UDR7_ARM_ALLOWED",
+        "RIVER_POWEROFF_ALLOWED",
+        "DEVICE_CMD_ALLOWED",
+        # Fase 3'-EXP: tudo da proteção aplica a quente.
         "PROTECT_UDR7",
         "PROTECT_DRY_RUN",
         "UDR7_SSH_HOST",
@@ -329,9 +335,6 @@ HOT_RELOAD_KEYS = frozenset(
     }
 )
 
-# Fase 3'-EXP — trava de armamento: só o arquivo .env (nunca o PUT) a abre/fecha.
-FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED",
-                            "DEVICE_CMD_ALLOWED"})
 # Conjunto congelado enquanto o daemon está armado (PUT → 409 `armado`), com a única
 # exceção do desarme (PUT contendo só as chaves do predicado que o torna falso).
 # O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção: pode

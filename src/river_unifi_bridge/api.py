@@ -24,7 +24,6 @@ from . import __version__, eventos
 from .config import (
     BridgeConfig,
     ConfigError,
-    FILE_ONLY_KEYS,
     HOT_RELOAD_KEYS,
     config_field_names,
     recusa_do_vigia_espelho,
@@ -123,21 +122,12 @@ def _authorize(changes: dict, plugins: list, snapshot: dict | None,
                comm_ok: bool) -> tuple[int, str, str] | None:
     """Runs BEFORE anything is written, so a 4xx never leaves a trace no .env.
 
-    The file-only rule is GENERIC and stays here: it has to answer the same way
-    with no plugins at all. Everything else belongs to a device, and the FIRST
-    plugin to refuse wins.
+    Every rule belongs to a device, and the FIRST plugin to refuse wins. (Até a
+    0.7.0 havia uma regra genérica aqui: as três travas eram "somente arquivo".
+    Desde a 0.8.0 elas são interruptores na tela, e o que as protege é a
+    confirmação do ato mais as cercas de cada dispositivo — fechar a trava de
+    armamento com a proteção armada continua sendo 409 `armado`, pelo motor.)
     """
-    file_only = sorted(set(changes) & FILE_ONLY_KEYS)
-    if file_only:
-        # Cada trava tem o SEU nome: a de armamento libera a proteção; a de
-        # desligamento libera cortar a energia do River. Chamar as duas de
-        # "trava de armamento" mandava a pessoa procurar a linha errada.
-        qual = {
-            "UDR7_ARM_ALLOWED": "trava de armamento",
-            "RIVER_POWEROFF_ALLOWED": "trava do desligamento do River",
-        }.get(file_only[0], "trava do dono")
-        return 400, "chave_somente_arquivo", (
-            f"{file_only[0]}: somente no arquivo de configuração do serviço ({qual})")
     for plugin in plugins:
         refusal = plugin.authorize(changes, snapshot, comm_ok)
         if refusal is not None:

@@ -10,8 +10,8 @@ enum ProtectionRefusal {
         let parsed = try? JSONDecoder().decode(Refusal.self, from: Data(body.utf8))
         switch parsed?.motivo {
         case "armamento_bloqueado":
-            return L10n.t("A trava de armamento está fechada. Abra-a no arquivo do serviço e reinicie (veja o guia).",
-                          "The arming lock is closed. Open it in the service file and restart (see the guide).")
+            return L10n.t("A trava de armamento está fechada. Ligue \"Permitir armar a proteção\" em Ajustes › Travas.",
+                          "The arming lock is closed. Turn on \"Allow arming the protection\" under Settings › Locks.")
         case "armado":
             return L10n.t("Esta proteção está armada: ligue o modo ensaio antes de mudar estes campos ou reiniciar.",
                           "This protection is armed: turn rehearsal on before changing these fields or restarting.")
@@ -21,8 +21,6 @@ enum ProtectionRefusal {
         case "sem_snapshot":
             return L10n.t("Sem leitura do River agora — não há como conferir de onde ela vem.",
                           "No reading from the River right now — there is no way to check where it comes from.")
-        case "chave_somente_arquivo":
-            return L10n.t("Essa chave só muda no arquivo do serviço.", "That key only changes in the service file.")
         // Rotas /v1/devices (2026-09-03). `validacao` traz no `erro` o campo e a
         // regra que ele feriu — repassar é o que deixa a pessoa corrigir.
         case "nome_duplicado":
@@ -63,8 +61,8 @@ enum ProtectionRefusal {
             return L10n.t("Há proteção armada. Desligue-a antes, para não haver duas ordens de desligamento ao mesmo tempo.",
                           "A protection is armed. Turn it off first, so there are not two shutdown orders at once.")
         case "desligamento_bloqueado":
-            return L10n.t("Desligar o River está bloqueado no arquivo do serviço. Abra a trava e reinicie para usar este botão (veja o guia).",
-                          "Turning the River off is blocked in the service file. Open the lock and restart to use this button (see the guide).")
+            return L10n.t("Desligar o River está travado. Ligue \"Permitir desligar o River\" em Ajustes › Travas para usar este botão.",
+                          "Turning the River off is locked. Turn on \"Allow turning the River off\" under Settings › Locks to use this button.")
         case "sem_conta_do_aparelho":
             return L10n.t("O serviço ainda não tem uma conta para mandar no River. Rode a instalação de novo para criá-la.",
                           "The service does not have an account to command the River yet. Run the installation again to create it.")

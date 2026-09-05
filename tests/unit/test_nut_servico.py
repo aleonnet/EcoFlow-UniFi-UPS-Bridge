@@ -286,3 +286,27 @@ def test_the_factory_reader_keeps_working_as_the_source(tmp_path):
     arquivo.write_text(CONFIG_MINIMA, encoding="utf-8")
     cfg = load_config(str(arquivo))
     assert cfg.nut_ups == "river-office" and cfg.river_nut_aparelho == "river-bridge"
+
+
+# -- a trava como interruptor (0.8.0) ------------------------------------------
+
+def test_trava_ligada_vira_addcmd_sem_reinicio(tmp_path, criados):
+    """A trava do desligamento do River virou interruptor na tela: o que o
+    aparelho anuncia acompanha o interruptor a cada volta, sem reinício.
+
+    A ponte recebe uma FUNÇÃO e a chama em toda publicação; congelar o resultado
+    na construção faria a ordem só aparecer no Home Assistant depois de um
+    reinício do serviço — o que a tela não pede mais.
+    """
+    trava = {"aberta": False}
+    p = ponte(tmp_path, criados, aparelho="river-bridge",
+              comandos_do_river=lambda: ("load.off",) if trava["aberta"] else ())
+    p.iniciar()
+    p.atualizar(snapshot())
+    assert criados.feitos[0].comandos == ()
+    trava["aberta"] = True
+    p.atualizar(snapshot())
+    assert criados.feitos[0].comandos == ("load.off",)
+    trava["aberta"] = False
+    p.atualizar(snapshot())
+    assert criados.feitos[0].comandos == ()

@@ -281,7 +281,7 @@ class SshMotorPlugin(DevicePlugin):
         if armed_after:
             if not pc.udr7_arm_allowed:
                 return 409, "armamento_bloqueado", (
-                    "trava fechada: UDR7_ARM_ALLOWED=1 no arquivo do serviço e reinicie antes de armar")
+                    "trava fechada: ligue \"Permitir armar a proteção\" em Ajustes › Travas antes de armar")
             if snapshot is None or not comm_ok:
                 return 409, "sem_snapshot", "sem leitura corrente do NUT — não há como verificar a fonte"
             source = snapshot.get("source") or {}

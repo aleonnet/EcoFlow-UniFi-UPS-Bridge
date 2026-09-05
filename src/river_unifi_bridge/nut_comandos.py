@@ -70,9 +70,10 @@ _ACAO_DO_COMANDO = {DESLIGAR: "desligar", REINICIAR: "reiniciar"}
 def comandos_do_river(cfg) -> tuple[str, ...]:
     """O que o aparelho `river-bridge` anuncia.
 
-    Com a trava de arquivo fechada, `load.off` **não é anunciado**: melhor o Home
-    Assistant não oferecer a ordem do que oferecê-la e recusar sempre. A trava só
-    muda com reinício do serviço, então o anúncio não fica oscilando.
+    Com a trava fechada, `load.off` **não é anunciado**: melhor o Home Assistant
+    não oferecer a ordem do que oferecê-la e recusar sempre. A trava é um
+    interruptor na tela (0.8.0) e aplica a quente: quem chama lê isto a cada
+    volta, e o aparelho publicado ganha ou perde o comando na hora.
     """
     return (DESLIGAR,) if getattr(cfg, "river_poweroff_allowed", False) else ()
 
@@ -82,10 +83,10 @@ def comandos_do_dispositivo(plugin, cfg=None) -> tuple[str, ...]:
 
     Duas condições, e as duas têm de valer:
 
-    1. **A trava de arquivo do serviço tem de estar aberta.** Desligar um roteador
-       de produção é ato destrutivo, e na casa todo ato destrutivo tem uma trava
-       que só o arquivo abre — a mesma mecânica do desligamento do River e do
-       armamento da proteção. Fechada, a ordem não é oferecida a ninguém.
+    1. **A trava tem de estar aberta.** Desligar um roteador de produção é ato
+       destrutivo, e na casa todo ato destrutivo tem uma trava com confirmação —
+       a mesma mecânica do desligamento do River e do armamento da proteção.
+       Fechada, a ordem não é oferecida a ninguém.
     2. **O tipo tem de saber fazer.** O console UniFi sabe desligar e reiniciar;
        um host genérico por SSH sabe desligar. O que ele não sabe não vira botão.
     """
@@ -140,8 +141,8 @@ class ExecutorDeComandos:
 
     def _por_que_nao_desligar_o_river(self) -> str | None:
         if not getattr(self.cfg, "river_poweroff_allowed", False):
-            return ("desligar o River está bloqueado no arquivo do serviço; "
-                    "abra a trava e reinicie para poder usar esta ordem")
+            return ("desligar o River está travado; ligue a trava em "
+                    "Ajustes › Travas do aplicativo para poder usar esta ordem")
         if any(getattr(p, "armed", False) for p in self.plugins):
             return ("há proteção armada: desligue-a antes, para não haver duas "
                     "ordens de desligamento ao mesmo tempo")
@@ -179,8 +180,8 @@ class ExecutorDeComandos:
             # fala com o soquete não é obrigado a perguntar o que existe antes de
             # mandar. Anunciar de menos é cortesia; recusar é a cerca.
             self._recusou(_evento(plugin, "ORDEM_RECUSADA"), comando,
-                          "mandar neste dispositivo à mão está bloqueado no arquivo "
-                          "do serviço; abra a trava e reinicie para poder usar esta ordem")
+                          "mandar neste dispositivo à mão está travado; ligue a trava "
+                          "em Ajustes › Travas do aplicativo para poder usar esta ordem")
             return CMD_INVALIDO
         if acao not in (plugin.acoes_manuais() if hasattr(plugin, "acoes_manuais") else {}):
             return CMD_DESCONHECIDO

@@ -646,6 +646,11 @@ inesperado); escrita atômica `mkstemp(dir=<diretório do alvo>)` + fsync + `os.
 - `UDR7_ARM_ALLOWED` é **somente arquivo** (`FILE_ONLY_KEYS`): PUT → `400
   chave_somente_arquivo`. É a trava de armamento — abrir/fechar exige editar o `.env` e
   reiniciar o serviço (2º e 3º passos do runbook).
+  *Emenda 2026-09-05 (plano `docs/plans/2026-09-05-1905-a-ux-determinada-inteira-0-8-0.md`,
+  decisão do dono):* as três travas (`UDR7_ARM_ALLOWED`, `RIVER_POWEROFF_ALLOWED`,
+  `DEVICE_CMD_ALLOWED`) passam a ser **interruptores na tela**, com confirmação ao ligar, e
+  aplicam a quente pelo mesmo `PUT /v1/config`; `FILE_ONLY_KEYS` deixa de existir. Fechar a
+  trava de armamento com uma instância armada continua `409 armado` (chave congelada).
 - Predicado `armado = PROTECT_UDR7 ∧ ¬PROTECT_DRY_RUN`. Transição para armado exige
   `UDR7_ARM_ALLOWED=1` (senão `409 armamento_bloqueado`) e snapshot corrente com
   `comm_ok`, driver fora da denylist e `identity.serial == UDR7_EXPECTED_SERIAL`

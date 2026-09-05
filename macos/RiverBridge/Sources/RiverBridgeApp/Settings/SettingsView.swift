@@ -187,6 +187,10 @@ struct SettingsView: View {
                 // Logo depois do serviço: é a conta que ele criou, e o dono só
                 // precisa dela quando o serviço já está no ar.
                 HomeAssistantGroup()
+                // As três travas como interruptores (0.8.0): é aqui que os atos
+                // que mexem na energia passam a existir — na tela e no Home
+                // Assistant. Antes eram linhas do arquivo do serviço.
+                TravasGroup()
                 SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
                     HStack(spacing: Espaco.medio) {
                         Image(systemName: "circle.lefthalf.filled")

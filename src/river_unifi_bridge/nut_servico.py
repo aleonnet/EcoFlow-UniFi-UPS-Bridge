@@ -59,7 +59,15 @@ class PonteDoNut:
         self._log = log or (lambda *_a, **_k: None)
         self._criar = criar_driver
         self._executor = executor
-        self._comandos_do_river = tuple(comandos_do_river)
+        # Uma função `() -> tupla de comandos`, lida a cada volta: a trava do
+        # desligamento virou interruptor na tela (0.8.0), e o aparelho publicado
+        # ganha ou perde `load.off` sem reinício. Uma tupla ainda é aceita (os
+        # testes e quem não tem trava passam uma), e vale para sempre.
+        if callable(comandos_do_river):
+            self._comandos_do_river = comandos_do_river
+        else:
+            fixos = tuple(comandos_do_river)
+            self._comandos_do_river = lambda: fixos
         # Uma função `(plugin) -> tupla de comandos`: cada TIPO diz o que sabe
         # fazer, em vez de este módulo saber de roteador.
         self._comandos_do_dispositivo = comandos_do_dispositivo or (lambda _p: ())
@@ -116,7 +124,7 @@ class PonteDoNut:
         """Uma volta do laço: o River e os dispositivos, com o que se sabe agora."""
         if self._river is not None:
             self._river.publicar(variaveis_do_river(snap),
-                                 comandos=self._comandos_do_river, dados_ok=True)
+                                 comandos=self._comandos_do_river(), dados_ok=True)
         self._reconciliar(snap, plugins)
         self._declarar(snap)
 

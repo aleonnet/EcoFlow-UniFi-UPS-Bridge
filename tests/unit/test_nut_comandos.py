@@ -64,8 +64,8 @@ def executor(**kw):
 def test_the_river_offers_no_shutdown_while_the_file_lock_is_shut():
     """Melhor não oferecer a ordem do que oferecê-la e recusar sempre.
 
-    A trava só muda com reinício do serviço, então o anúncio não fica oscilando
-    na tela do Home Assistant.
+    A trava é interruptor na tela (0.8.0) e a função lê `cfg` na chamada: é a
+    ponte que a chama a cada volta e faz o anúncio acompanhar o interruptor.
     """
     assert comandos_do_river(cfg(river_poweroff_allowed=False)) == ()
     assert comandos_do_river(cfg(river_poweroff_allowed=True)) == (DESLIGAR,)

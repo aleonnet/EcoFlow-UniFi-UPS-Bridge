@@ -303,12 +303,35 @@ async def _put(c, body):
     return resp.status, await resp.json()
 
 
-async def test_put_file_only_key_is_400(locked):
+async def test_travas_aplicam_a_quente(locked):
+    """As três travas viraram interruptores na tela (0.8.0).
+
+    O PUT grava o arquivo e aplica na hora, sem reinício: a trava de armamento
+    chega à política (armar passa a ser possível), e as duas de ordem chegam a
+    quem anuncia e executa as ordens, que leem `cfg` na chamada.
+    """
     srv, c = locked
-    before = open(srv.env).read()
-    status, body = await _put(c, {"UDR7_ARM_ALLOWED": "1"})
-    assert status == 400 and body["motivo"] == "chave_somente_arquivo"
-    assert open(srv.env).read() == before
+    assert srv.holder.get().udr7_arm_allowed is False
+    for chave, atributo in (("RIVER_POWEROFF_ALLOWED", "river_poweroff_allowed"),
+                            ("DEVICE_CMD_ALLOWED", "device_cmd_allowed"),
+                            ("UDR7_ARM_ALLOWED", "udr7_arm_allowed")):
+        status, body = await _put(c, {chave: "1"})
+        assert status == 200, body
+        assert chave in body["aplicadas_a_quente"] and body["restart_required"] is False
+        assert getattr(srv.cfg, atributo) is True
+        assert f"{chave}=1" in open(srv.env).read()
+    assert srv.holder.get().udr7_arm_allowed is True
+
+
+async def test_fechar_trava_armada_e_recusado(unlocked):
+    """Fechar a trava de armamento com a proteção ARMADA é 409: ela é chave
+    congelada do motor. Desligar a proteção primeiro, depois a trava."""
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
+    status, body = await _put(c, {"UDR7_ARM_ALLOWED": "0"})
+    assert status == 409 and body["motivo"] == "armado"
+    assert srv.holder.get().armed and srv.holder.get().udr7_arm_allowed is True
 
 
 async def test_put_arming_refused_when_lock_closed(locked):
@@ -453,16 +476,17 @@ async def test_restart_refused_when_any_plugin_armed(two_plugins):
     assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
 
 
-async def test_file_only_key_is_refused_even_with_no_plugins(tmp_path, aiohttp_client):
-    """A regra da trava de arquivo é GENÉRICA: vale sem plugin nenhum."""
+async def test_a_lock_switch_works_with_no_plugins_at_all(tmp_path, aiohttp_client):
+    """Os interruptores das travas não dependem de dispositivo nenhum."""
     import asyncio
 
     srv = _prot_server(tmp_path, arm_allowed=True)
     srv.plugins = []
     c = await aiohttp_client(srv.build_app()); c.auth = {"Authorization": f"Bearer {TOKEN}"}
     srv._loop = asyncio.get_running_loop()
-    status, body = await _put(c, {"UDR7_ARM_ALLOWED": "1"})
-    assert status == 400 and body["motivo"] == "chave_somente_arquivo"
+    status, body = await _put(c, {"RIVER_POWEROFF_ALLOWED": "1"})
+    assert status == 200 and "RIVER_POWEROFF_ALLOWED" in body["aplicadas_a_quente"]
+    assert srv.cfg.river_poweroff_allowed is True
 
 
 async def test_rename_allowed_while_armed(unlocked):
@@ -511,8 +535,10 @@ async def test_disarm_batched_with_other_key_is_refused(unlocked):
     assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200
     status, body = await _put(c, {"PROTECT_DRY_RUN": "1", "UDR7_SSH_PORT": "2222"})
     assert status == 409 and body["motivo"] == "armado"
+    # Desarmar E fechar a trava no mesmo pedido não é desarme puro: a trava é
+    # chave congelada enquanto armado, e o motor recusa o conjunto inteiro.
     status, body = await _put(c, {"PROTECT_UDR7": "0", "UDR7_ARM_ALLOWED": "0"})
-    assert status == 400 and body["motivo"] == "chave_somente_arquivo"   # 400 wins
+    assert status == 409 and body["motivo"] == "armado"
     assert srv.holder.get().armed
 
 

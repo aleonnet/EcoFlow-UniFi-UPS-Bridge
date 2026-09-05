@@ -281,8 +281,9 @@ def test_e2e_simulator_dryrun_and_arming_refused(tmp_path):
             assert "PROTECT_DRY_RUN=1" in env_file.read_text()
             assert not (state_dir / "udr7_armed.json").exists()
             assert not stub_log.exists()
+            # A trava é interruptor na tela (0.8.0): em ensaio, fecha a quente.
             status, body = api.put({"UDR7_ARM_ALLOWED": "0"})
-            assert status == 400 and body["motivo"] == "chave_somente_arquivo"
+            assert status == 200 and "UDR7_ARM_ALLOWED" in body["aplicadas_a_quente"]
         finally:
             stop(daemon)
     finally:

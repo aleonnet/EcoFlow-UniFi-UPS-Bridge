@@ -487,7 +487,8 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 aparelho=cfg.river_nut_aparelho,
                 estado=os.environ.get("RUB_NUT_STATE") or ESTADO_DO_NUT,
                 log=_log, executor=executor,
-                comandos_do_river=comandos_do_river(cfg),
+                # Lida a cada volta: a trava é interruptor na tela e aplica a quente.
+                comandos_do_river=lambda: comandos_do_river(cfg),
                 comandos_do_dispositivo=lambda plugin: comandos_do_dispositivo(plugin, cfg),
                 ups_conf=os.path.join(
                     os.environ.get("RUB_NUT_ETC") or ETC_DO_NUT, "ups.conf"),
