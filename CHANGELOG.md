@@ -9,6 +9,37 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-05
+
+O App passa a preparar o acesso ao console sozinho, e a proteção só arma depois de
+**provar** que alcança o aparelho. Provando isso no console de verdade, dois defeitos
+apareceram — e eram os que tornavam o desligamento impossível na prática.
+
+### Adicionado
+- **"Conectar" e "Testar conexão" na folha do dispositivo.** O serviço cria a chave, confere a
+  identidade do aparelho (com a impressão digital na tela) e instala a chave usando a senha do
+  console **uma vez**. Nada de terminal, e a senha não é gravada, não é registrada e não volta
+  na resposta.
+- **A tela diz o que o console respondeu**: modelo e versão do firmware, lidos dele.
+- **Aviso de garantia** ao configurar um aparelho por SSH, com o texto do próprio fabricante.
+
+### Corrigido
+- **O desligamento do console nunca teria funcionado em macOS.** O `ssh` divide o valor de
+  `UserKnownHostsFile` por espaços, e o diretório de estado é `~/Library/Application
+  Support/…`; sem aspas ele procurava dois arquivos inexistentes e recusava a conexão. Medido
+  contra o console real.
+- **A identidade do console era lida pela metade.** O `ssh-keyscan` não trata `--` como fim de
+  opções: com ele voltava só a chave RSA (1 linha em vez de 3), e era isso que produzia a
+  recusa acima.
+
+### Mudado
+- **Armar exige prova de alcance recente (30 dias).** Antes, a proteção podia armar sem nunca
+  ter falado com o console — o primeiro contato real seria o comando de desligar, numa queda de
+  energia. É por isso que os dois defeitos acima sobreviveram meses sem aparecer. O estado
+  "armada — alcance não verificado" deixa de existir.
+- A chave que o serviço usa é **derivada do dispositivo**, não um campo digitado: o padrão de
+  caminho recusa espaços, e o diretório de estado do macOS tem espaços.
+
 ## [0.5.1] — 2026-09-04
 
 Três defeitos que só a máquina do dono mostrou, no primeiro uso da 0.5.0.

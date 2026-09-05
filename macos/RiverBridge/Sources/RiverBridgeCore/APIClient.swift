@@ -174,6 +174,39 @@ public struct APIClient: Sendable {
 
     /// Quem está com o cabo agora. A interface de no-break do River é exclusiva:
     /// um leitor por vez, e a tela precisa dizer qual é.
+    // --- acesso ao console (0.6.0) -------------------------------------------
+    /// Prepara o acesso: o SERVIÇO cria a chave e lê a identidade do console.
+    /// A chave privada nunca vem — só a pública e as impressões digitais.
+    public func acessoPreparar(id: String, aceitarIdentidade: Bool = false) async throws -> AcessoPreparado {
+        let body = try JSONSerialization.data(withJSONObject: ["aceitar_identidade": aceitarIdentidade])
+        return try JSONCoding.decoder().decode(
+            AcessoPreparado.self,
+            from: try await run(request("v1/devices/\(id)/acesso/preparar", method: "POST", body: body)))
+    }
+
+    /// Instala a chave no console usando a senha UMA vez. A senha vai no corpo,
+    /// para a máquina ao lado, e não é guardada em lugar nenhum.
+    public func acessoInstalar(id: String, senha: String) async throws -> AcessoTestado {
+        let body = try JSONSerialization.data(withJSONObject: ["senha": senha])
+        return try JSONCoding.decoder().decode(
+            AcessoTestado.self,
+            from: try await run(request("v1/devices/\(id)/acesso/instalar", method: "POST", body: body)))
+    }
+
+    /// Roda os comandos de leitura pelo mesmo caminho que executa o desligamento.
+    public func acessoTestar(id: String) async throws -> AcessoTestado {
+        try JSONCoding.decoder().decode(
+            AcessoTestado.self,
+            from: try await run(request("v1/devices/\(id)/acesso/testar", method: "POST",
+                                        body: Data("{}".utf8))))
+    }
+
+    /// Apaga chave, identidade e prova — o dispositivo volta ao ponto zero.
+    public func acessoEsquecer(id: String) async throws {
+        _ = try await run(request("v1/devices/\(id)/acesso/esquecer", method: "POST",
+                                  body: Data("{}".utf8)))
+    }
+
     public func riverCabo() async throws -> EstadoDoCabo {
         try JSONCoding.decoder().decode(EstadoDoCabo.self, from: try await run(request("v1/river/cabo")))
     }

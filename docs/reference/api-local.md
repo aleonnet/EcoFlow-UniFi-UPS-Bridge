@@ -9,7 +9,7 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/v1/version` | `{"version": "0.5.0"}` |
+| GET | `/v1/version` | `{"version": "0.6.0"}` |
 | GET | `/v1/state` | snapshot corrente (nunca valores inventados; `null` honesto) |
 | GET | `/v1/events` | SSE: `event: state` e `event: event` (bridge + eventos de dispositivo; estes levam `device` e `device_name` no payload). Desde a 0.4.0 cada evento leva `seq`, um número que só cresce: o servidor entrega a partir do último `seq` enviado, então a fila cheia (100) deixou de congelar a entrega no centésimo evento, e o app usa o `seq` como identidade da linha |
 | GET | `/v1/events/log?from=&to=&types=&limit=&device=` | histórico persistido; `device` filtra pelo id da instância; cada linha traz `device` (`null` para eventos do bridge e para os gravados antes da 0.3.0) |
@@ -24,6 +24,10 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 | GET | `/v1/devices/{id}` | `{"device": <instância>}` |
 | PUT | `/v1/devices/{id}` | `{name?, enabled?, dry_run?, fields?}` (tudo opcional; `type` e `id` imutáveis) → 200 `{"device": <instância>}` |
 | DELETE | `/v1/devices/{id}` | 204; apaga `<id>_armed.json` e `<id>_runtime.json`, mantém `<id>_known_hosts` |
+| POST | `/v1/devices/{id}/acesso/preparar` | o serviço cria a chave dele (se faltar) e registra a identidade do aparelho; devolve `chave_publica`, `impressao_da_chave` e `impressao_do_console`. **A chave privada não sai por rota nenhuma.** Identidade diferente da registrada → 409 `identidade_divergente`; para aceitar de propósito, `{"aceitar_identidade": true}` |
+| POST | `/v1/devices/{id}/acesso/instalar` | `{"senha": "…"}` — usa a senha do console **uma vez** para instalar a chave e já testa. A senha não é gravada, não é registrada e não volta na resposta |
+| POST | `/v1/devices/{id}/acesso/testar` | roda os comandos de leitura do tipo pelo **mesmo `ssh`** que executa o desligamento; devolve `{"alcance": bool, "resposta": {probe, model, firmware}}` e, quando alcança, grava a prova em `<id>_acesso.json` |
+| POST | `/v1/devices/{id}/acesso/esquecer` | apaga chave, identidade e prova |
 | GET | `/v1/river/cabo` | quem está com o River: `{"lendo": <bool\|null>, "pausado": <bool>, "motivo": <texto\|null>}`. `lendo: null` = este serviço não cuida do leitor |
 | POST | `/v1/river/cabo` | `{"acao": "liberar"\|"retomar"}` → o mesmo objeto. `liberar` para o leitor e o servidor do no-break, para que o aplicativo da EcoFlow consiga abrir o aparelho (a interface de no-break aceita **um** leitor por vez); `retomar` os traz de volta |
 | POST | `/v1/river/desligar` | desliga o **próprio River**, cortando a energia de tudo o que está nele. Três cercas: `RIVER_POWEROFF_ALLOWED` aberta no arquivo do serviço (a API nunca a abre), nenhuma proteção armada, e a confirmação da tela. A trava do próprio driver (`driver.flag.allow_killpower`) é aberta pelo tempo do comando e fechada num `finally` |
@@ -86,6 +90,9 @@ procura a porta e só aceita o aparelho cuja série bate com a que o no-break in
 | 409 | `nome_duplicado` | nome já usado (strip + casefold) |
 | 409 | `armado` | PUT em campo congelado com a instância armada; DELETE de armada; reinício com alguma armada |
 | 409 | `armamento_bloqueado` | armar com a trava fechada |
+| 409 | `alcance_nao_verificado` | armar sem prova recente (30 dias) de que o serviço alcança o aparelho. A prova é o "Testar conexão" da tela, que roda pelo mesmo caminho do comando que desliga |
+| 409 | `identidade_divergente` | o aparelho apresentou identidade diferente da registrada |
+| 502 | `senha_recusada` / `acesso_falhou` | o console recusou a senha, ou a preparação do acesso falhou |
 | 409 | `sem_snapshot` | armar sem leitura corrente do NUT |
 | 409 | `fonte_nao_real` | armar com fonte sintética ou serial ≠ esperado |
 | 501 | `sem_loja` | serviço rodando sem loja de instâncias (só em `--once`) |

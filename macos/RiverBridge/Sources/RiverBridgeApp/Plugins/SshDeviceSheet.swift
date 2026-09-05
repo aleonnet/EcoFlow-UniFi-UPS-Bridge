@@ -41,6 +41,12 @@ struct SshDeviceSheet: View {
     @State private var feedback: String?
     @State private var notice: String?
     @State private var showArmDialog = false
+    // Acesso ao console (0.6.0): o serviço cria a chave, confere a identidade e
+    // instala — o dono não abre terminal nenhum.
+    @State private var acesso: AcessoPreparado?
+    @State private var senhaDoConsole = ""
+    @State private var alcance: AcessoTestado?
+    @State private var ocupadoNoAcesso = false
 
     private var type: DeviceTypeDescriptor { variant == .udr7 ? .udr7 : .sshHost }
     private var instance: DeviceInstance? { mode.instance }
@@ -97,9 +103,16 @@ struct SshDeviceSheet: View {
             }
             if !mode.isNew {
                 SettingsRows.group(L10n.t("Armamento", "Arming")) {
-                    ArmingRow(dryRun: dryRun, enabled: enabled, armAllowed: armAllowed, estreito: estreito,
+                    ArmingRow(dryRun: dryRun, enabled: enabled,
+                              armAllowed: armAllowed && alcanceProvado, estreito: estreito,
                               onTurnOffRehearsal: { showArmDialog = true },
                               onTurnOnRehearsal: { Task { await setDryRun(true) } })
+                    if !alcanceProvado {
+                        Text(L10n.t("Para armar, prove primeiro que o serviço alcança este aparelho: use Conectar ou Testar conexão, logo abaixo.",
+                                    "To arm, first prove the service reaches this device: use Connect or Test connection, just below."))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             SettingsRows.group(variant == .udr7 ? L10n.t("Console e chave", "Console and key")
@@ -114,6 +127,11 @@ struct SshDeviceSheet: View {
                 SettingsRows.divider
                 SettingsRows.textRow("key.fill", L10n.t("Chave privada (caminho absoluto)", "Private key (absolute path)"),
                                      $sshKey, placeholder: "/Users/…/.ssh/river-bridge-\(instance?.id ?? type.id)", estreito: estreito)
+            }
+            if !mode.isNew {
+                SettingsRows.group(L10n.t("Acesso ao console", "Console access")) {
+                    grupoDeAcesso(estreito: estreito)
+                }
             }
             if variant == .sshHost {
                 SettingsRows.group(L10n.t("Desligamento", "Shutdown")) {
@@ -163,6 +181,92 @@ struct SshDeviceSheet: View {
     }
 
     // MARK: - Valores e diff (nomes de campo do serviço, sem prefixo)
+
+    /// O serviço já provou que fala com este aparelho? Vem do health, para a tela
+    /// saber ANTES do clique — e é confirmado na hora pelo botão de testar.
+    private var alcanceProvado: Bool {
+        if let alcance { return alcance.alcance }
+        return detail?.alcanceVerificado ?? false
+    }
+
+    // --- acesso ao console ---------------------------------------------------
+    @ViewBuilder
+    private func grupoDeAcesso(estreito: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let alcance, alcance.alcance, let r = alcance.resposta {
+                Label(L10n.t("Conexão provada: \(r.model ?? "") · \(r.firmware ?? "")",
+                             "Connection proven: \(r.model ?? "") · \(r.firmware ?? "")"),
+                      systemImage: "checkmark.seal.fill")
+                    .font(.callout).foregroundStyle(.green)
+            } else if let alcance, let motivo = alcance.motivo {
+                Label(motivo, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(L10n.t("O serviço precisa provar que alcança este aparelho antes de armar a proteção. Ele cria a chave sozinho; você só informa a senha do console uma vez.",
+                            "The service must prove it reaches this device before protection can be armed. It creates the key itself; you only give the console password once."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let acesso {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.t("Identidade do console: \(acesso.impressaoDoConsole)",
+                                "Console identity: \(acesso.impressaoDoConsole)"))
+                    Text(L10n.t("Chave do serviço: \(acesso.impressaoDaChave)",
+                                "Service key: \(acesso.impressaoDaChave)"))
+                }
+                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            }
+            SecureField(L10n.t("Senha do console (usada uma vez)", "Console password (used once)"),
+                        text: $senhaDoConsole)
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 8) {
+                Button(L10n.t("Conectar…", "Connect…")) { Task { await conectarAoConsole() } }
+                    .buttonStyle(.glassProminent).tint(accent)
+                    .disabled(senhaDoConsole.isEmpty || sshHost.isEmpty || ocupadoNoAcesso)
+                Button(L10n.t("Testar conexão", "Test connection")) { Task { await testarAcesso() } }
+                    .disabled(sshHost.isEmpty || ocupadoNoAcesso)
+                Spacer()
+                if ocupadoNoAcesso { ProgressView().controlSize(.small) }
+            }
+            Text(L10n.t("Para desligar este aparelho usamos SSH. Habilitar SSH em equipamentos Ubiquiti pode anular a garantia, segundo os termos do próprio fabricante.",
+                        "We use SSH to shut this device down. Enabling SSH on Ubiquiti equipment may void the warranty, per the manufacturer's own terms."))
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func conectarAoConsole() async {
+        guard let endpoint = ApiEndpoint.discover(), let id = instance?.id else { return }
+        ocupadoNoAcesso = true
+        defer { ocupadoNoAcesso = false }
+        let cliente = APIClient(endpoint: endpoint)
+        do {
+            acesso = try await cliente.acessoPreparar(id: id)
+            alcance = try await cliente.acessoInstalar(id: id, senha: senhaDoConsole)
+            senhaDoConsole = ""              // usada uma vez, e some da tela
+            feedback = nil
+        } catch let APIError.badStatus(_, body) {
+            feedback = ProtectionRefusal.text(body)
+        } catch {
+            feedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
+
+    private func testarAcesso() async {
+        guard let endpoint = ApiEndpoint.discover(), let id = instance?.id else { return }
+        ocupadoNoAcesso = true
+        defer { ocupadoNoAcesso = false }
+        do {
+            alcance = try await APIClient(endpoint: endpoint).acessoTestar(id: id)
+            feedback = nil
+        } catch let APIError.badStatus(_, body) {
+            feedback = ProtectionRefusal.text(body)
+        } catch {
+            feedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
 
     private func fieldValues() -> [String: String] {
         var porCampo: [String: String] = [

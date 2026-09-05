@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from dataclasses import replace
 import threading
 
 from aiohttp import web
@@ -206,6 +207,7 @@ class ApiServer:
         app.router.add_get("/v1/devices/{id}", self._h_devices_get)
         app.router.add_put("/v1/devices/{id}", self._h_devices_put)
         app.router.add_delete("/v1/devices/{id}", self._h_devices_delete)
+        app.router.add_post("/v1/devices/{id}/acesso/{acao}", self._h_device_acesso)
         app.router.add_get("/v1/river/cabo", self._h_river_cabo_get)
         app.router.add_post("/v1/river/cabo", self._h_river_cabo_post)
         app.router.add_post("/v1/river/desligar", self._h_river_desligar)
@@ -257,6 +259,85 @@ class ApiServer:
         return self._refuse(409, "sem_conta_do_aparelho",
                             "o serviço ainda não tem uma conta para mandar no River. "
                             "Rode a instalação de novo para criá-la.")
+
+    async def _h_device_acesso(self, request: web.Request) -> web.Response:
+        """Preparar, instalar, testar e esquecer o acesso ao console.
+
+        Quatro passos porque a tela precisa explicar cada um. Nenhum deles
+        devolve a chave privada, e a senha do console (quando vem) é usada uma
+        vez e descartada: não é gravada, não é registrada e não volta aqui.
+        """
+        from . import ssh_acesso as sa
+
+        plugin = self.plugins.get(request.match_info["id"])
+        if plugin is None or not hasattr(plugin, "chave_path") or not plugin.chave_path:
+            return self._refuse(404, "dispositivo_ausente",
+                                "não existe dispositivo com esse id, ou ele não usa console")
+        acao = request.match_info["acao"]
+        if acao not in ("preparar", "instalar", "testar", "esquecer"):
+            return self._refuse(404, "dispositivo_ausente", "ação desconhecida")
+        pc = plugin._holder.get()
+        if acao != "esquecer" and not pc.udr7_ssh_host:
+            return self._refuse(400, "validacao",
+                                "preencha o endereço do console antes de preparar o acesso")
+        corpo: dict = {}
+        if request.can_read_body:
+            try:
+                corpo = await request.json()
+            except Exception:
+                return self._refuse(400, "validacao", "corpo não é JSON")
+        try:
+            if acao == "preparar":
+                return web.json_response(await asyncio.to_thread(
+                    self._acesso_preparar, plugin, pc, sa,
+                    bool(corpo.get("aceitar_identidade"))))
+            if acao == "instalar":
+                senha = corpo.get("senha")
+                if not isinstance(senha, str) or not senha:
+                    return self._refuse(400, "validacao", "informe a senha do console")
+                return web.json_response(await asyncio.to_thread(
+                    self._acesso_instalar, plugin, pc, sa, senha))
+            if acao == "testar":
+                return web.json_response(await asyncio.to_thread(
+                    self._acesso_testar, plugin, pc, sa))
+            await asyncio.to_thread(plugin.esquecer_acesso)
+            return web.json_response({"esquecido": True})
+        except sa.IdentidadeDivergente as exc:
+            return self._refuse(409, "identidade_divergente", str(exc))
+        except sa.AcessoError as exc:
+            motivo = "senha_recusada" if "senha" in str(exc) else "acesso_falhou"
+            return self._refuse(502, motivo, str(exc))
+
+    # -- os quatro passos, fora do laço de eventos ---------------------------
+    def _acesso_preparar(self, plugin, pc, sa, aceitar_identidade: bool) -> dict:
+        chave = sa.garantir_chave(plugin.chave_path)
+        linhas, impressao = sa.identidade_do_host(pc.udr7_ssh_host, pc.udr7_ssh_port)
+        sa.gravar_identidade(plugin.known_hosts_path, pc.udr7_ssh_host, linhas,
+                             substituir=aceitar_identidade)
+        return {"chave_publica": chave.publica, "impressao_da_chave": chave.impressao,
+                "impressao_do_console": impressao}
+
+    def _acesso_instalar(self, plugin, pc, sa, senha: str) -> dict:
+        chave = sa.garantir_chave(plugin.chave_path)
+        sa.instalar_chave_com_senha(pc.udr7_ssh_host, pc.udr7_ssh_port, pc.udr7_ssh_user,
+                                    senha, chave.publica, plugin.known_hosts_path)
+        del senha                       # daqui para a frente ela não existe mais
+        return self._acesso_testar(plugin, pc, sa)
+
+    def _acesso_testar(self, plugin, pc, sa) -> dict:
+        from .protect import ssh_argv
+
+        comandos = plugin.comandos_de_leitura()
+        chave_gerida = os.path.exists(plugin.chave_path)
+        pc_teste = pc if not chave_gerida else replace(pc, udr7_ssh_key=plugin.chave_path)
+        saida = sa.testar_alcance(
+            lambda comando: ssh_argv(pc_teste, plugin.known_hosts_path, comando), comandos)
+        if not saida.get("model"):
+            return {"alcance": False, "resposta": saida,
+                    "motivo": "o console não respondeu — a chave ainda não foi aceita, "
+                              "ou o endereço não é este"}
+        return {"alcance": True, "resposta": saida,
+                "registro": plugin.registrar_alcance(saida)}
 
     async def _h_river_cabo_get(self, _req: web.Request) -> web.Response:
         if self.supervisor is None:

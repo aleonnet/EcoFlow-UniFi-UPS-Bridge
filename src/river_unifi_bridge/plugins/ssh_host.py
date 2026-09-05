@@ -62,6 +62,12 @@ class SshHostPlugin(SshMotorPlugin):
     event_prefix = "SSH_HOST_"
     fields = SSH_HOST_FIELDS
     legacy_keys = frozenset()          # tipos novos nunca ganham chave no .env
+
+    @classmethod
+    def comandos_de_leitura(cls) -> dict[str, str]:
+        """Num host POSIX qualquer não há `ubnt-device-info`: o que prova alcance
+        é o mesmo `true` do probe deste tipo, mais o nome da máquina."""
+        return {"probe": "true", "model": "uname -sm", "firmware": "uname -r"}
     frozen_keys = CORE_FROZEN_KEYS
 
     @classmethod

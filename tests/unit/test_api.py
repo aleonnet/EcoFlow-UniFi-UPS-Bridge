@@ -198,6 +198,7 @@ async def test_events_delete_requires_to_and_removes_range(client, server):
 import json as _json
 import re as _re
 import os as _os
+import sys as _sys
 
 from river_unifi_bridge.protect import (
     EV_ARMED, EV_DISARMED, ConfigHolder, ProtectionConfig, ProtectionPolicy,
@@ -257,7 +258,8 @@ def _prot_server(tmp_path, arm_allowed: bool, extra=()):
 
     acesso = Udr7SshPlugin.caminhos_do_acesso(instance.id, str(state))
     plugin = Udr7SshPlugin(instance, holder, policy, cfg,
-                           chave_path=acesso["chave"], acesso_path=acesso["acesso"])
+                           chave_path=acesso["chave"], acesso_path=acesso["acesso"],
+                           known_hosts_path=str(state / "kh"))
     # Alcance provado: desde a 0.6.0 armar exige que o serviço TENHA falado com o
     # console (Testar conexão na tela). Os testes que armam declaram essa prova,
     # como um usuário faria — quem exercita a ausência dela é a cerca própria.
@@ -273,6 +275,7 @@ def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     srv.holder = holder
     srv.policy = policy
     srv.armed_path = str(state / "udr7_armed.json")
+    srv.store_plugin = plugin
     srv.env = env
     return srv
 
@@ -1174,3 +1177,123 @@ async def test_a_stale_proof_of_reach_does_not_arm(unlocked):
                       quando=_time.time() - 400 * 86400)
     status, body = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
     assert status == 409 and body["motivo"] == "alcance_nao_verificado"
+
+
+# --- acesso ao console (0.6.0) ------------------------------------------------
+class _AcessoFalso:
+    """Um `ssh_acesso` de mentira: guarda o que recebeu, sem falar com máquina."""
+
+    class AcessoError(Exception): ...
+    class IdentidadeDivergente(AcessoError): ...
+
+    def __init__(self):
+        self.senhas: list[str] = []
+        self.instalou = False
+
+    class _Chave:
+        publica = "ssh-ed25519 AAAAPUBLICA river-bridge"
+        impressao = "SHA256:impressaoDaChave"
+
+    def garantir_chave(self, caminho):
+        with open(caminho, "w") as fh:
+            fh.write("PRIVADA — NUNCA PODE SAIR")
+        _os.chmod(caminho, 0o600)
+        return self._Chave()
+
+    def identidade_do_host(self, host, porta=22):
+        return ([f"{host} ssh-ed25519 AAAACONSOLE"], "SHA256:impressaoDoConsole")
+
+    def gravar_identidade(self, caminho, host, linhas, substituir=False):
+        with open(caminho, "w") as fh:
+            fh.write("\n".join(linhas) + "\n")
+
+    def instalar_chave_com_senha(self, host, porta, usuario, senha, publica, known_hosts):
+        self.senhas.append(senha)
+        self.instalou = True
+
+    def testar_alcance(self, argv_para, comandos, **_k):
+        if not self.instalou:
+            return {nome: None for nome in comandos}
+        return {"probe": "/sbin/ubnt-systool", "model": "UniFi Dream Router 7",
+                "firmware": "5.1.31"}
+
+
+@pytest.fixture
+def acesso(monkeypatch):
+    falso = _AcessoFalso()
+    import river_unifi_bridge
+    # os dois: `from . import ssh_acesso` resolve pelo atributo do pacote quando
+    # o módulo já foi importado por outro teste
+    monkeypatch.setitem(_sys.modules, "river_unifi_bridge.ssh_acesso", falso)
+    monkeypatch.setattr(river_unifi_bridge, "ssh_acesso", falso, raising=False)
+    return falso
+
+
+async def _acesso(c, acao, corpo=None):
+    resp = await c.post(f"/v1/devices/udr7/acesso/{acao}", json=corpo or {}, headers=c.auth)
+    return resp.status, await resp.json()
+
+
+async def test_the_private_key_never_leaves_the_service(unlocked, acesso):
+    """A chave privada não sai por rota nenhuma — nem inteira, nem em pedaço."""
+    srv, c = unlocked
+    await _put(c, {"UDR7_SSH_HOST": "192.168.1.1"})
+    respostas = []
+    for acao, corpo in (("preparar", None), ("instalar", {"senha": "s3nh4"}), ("testar", None)):
+        status, body = await _acesso(c, acao, corpo)
+        assert status == 200, body
+        respostas.append(_json.dumps(body))
+    assert not any("PRIVADA" in r for r in respostas)
+    assert "PRIVADA" in open(srv.store_plugin.chave_path).read()   # ela existe, mas fica
+
+
+async def test_the_console_password_is_used_once_and_never_stored(unlocked, acesso):
+    srv, c = unlocked
+    await _put(c, {"UDR7_SSH_HOST": "192.168.1.1"})
+    await _acesso(c, "preparar")
+    status, body = await _acesso(c, "instalar", {"senha": "s3nh4-do-console"})
+    assert status == 200 and body["alcance"] is True
+    assert acesso.senhas == ["s3nh4-do-console"]          # uma vez, e só
+    assert "s3nh4-do-console" not in _json.dumps(body)    # não volta na resposta
+    # não ficou em disco: nem no estado, nem no arquivo de configuração
+    for raiz, _dirs, arquivos in _os.walk(srv.state_dir):
+        for nome in arquivos:
+            with open(_os.path.join(raiz, nome), "rb") as fh:
+                assert b"s3nh4-do-console" not in fh.read(), nome
+    assert "s3nh4-do-console" not in open(srv.env).read()
+
+
+async def test_a_successful_test_records_the_proof_that_unlocks_arming(unlocked, acesso):
+    srv, c = unlocked
+    await _put(c, {"UDR7_SSH_HOST": "192.168.1.1"})
+    _os.remove(_os.path.join(srv.state_dir, "udr7_acesso.json"))
+    srv.state.update_snapshot(REAL)
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 409                                   # sem prova, não arma
+
+    await _acesso(c, "preparar")
+    status, body = await _acesso(c, "instalar", {"senha": "x"})
+    assert body["registro"]["modelo"] == "UniFi Dream Router 7"
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200                                   # com prova, arma
+
+
+async def test_a_console_that_does_not_answer_is_not_reported_as_reachable(unlocked, acesso):
+    srv, c = unlocked
+    await _put(c, {"UDR7_SSH_HOST": "192.168.1.1"})
+    await _acesso(c, "preparar")
+    status, body = await _acesso(c, "testar")              # sem instalar a chave
+    assert status == 200 and body["alcance"] is False
+    assert "chave ainda não foi aceita" in body["motivo"]
+
+
+async def test_forgetting_the_access_removes_key_identity_and_proof(unlocked, acesso):
+    srv, c = unlocked
+    await _put(c, {"UDR7_SSH_HOST": "192.168.1.1"})
+    await _acesso(c, "preparar")
+    plugin = srv.store_plugin
+    assert _os.path.exists(plugin.chave_path)
+    status, _ = await _acesso(c, "esquecer")
+    assert status == 200
+    assert not _os.path.exists(plugin.chave_path)
+    assert not _os.path.exists(_os.path.join(srv.state_dir, "udr7_acesso.json"))

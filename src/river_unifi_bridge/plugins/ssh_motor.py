@@ -21,7 +21,7 @@ from dataclasses import replace
 from ..config import CORE_FROZEN_KEYS
 from ..protect import (
     ConfigHolder, ProtectionConfig, ProtectionPolicy, _is_synthetic_driver,
-    _read_private_json,
+    _read_private_json, _write_private_json,
 )
 
 # Por quanto tempo uma prova de alcance vale. Endereço muda, chave é revogada,
@@ -47,7 +47,8 @@ class SshMotorPlugin(DevicePlugin):
     legacy_keys: frozenset[str] = frozenset()
 
     def __init__(self, instance, holder: ConfigHolder, policy: ProtectionPolicy, cfg=None,
-                 *, chave_path: str = "", acesso_path: str = "") -> None:
+                 *, chave_path: str = "", acesso_path: str = "",
+                 known_hosts_path: str = "") -> None:
         self.instance = instance
         self.id = instance.id
         self._holder = holder
@@ -55,6 +56,7 @@ class SshMotorPlugin(DevicePlugin):
         self._cfg = cfg
         self.chave_path = chave_path
         self._acesso_path = acesso_path
+        self.known_hosts_path = known_hosts_path
 
     # --- o que cada tipo define ------------------------------------------------
     @classmethod
@@ -68,6 +70,11 @@ class SshMotorPlugin(DevicePlugin):
             "armed_path": os.path.join(state_dir, f"{instance_id}_armed.json"),
             "runtime_path": os.path.join(state_dir, f"{instance_id}_runtime.json"),
         }
+
+    @classmethod
+    def comandos_de_leitura(cls) -> dict[str, str]:
+        """Os comandos que provam alcance sem tocar em nada. Cada tipo diz os seus."""
+        return {}
 
     @classmethod
     def caminhos_do_acesso(cls, instance_id: str, state_dir: str) -> dict:
@@ -93,12 +100,14 @@ class SshMotorPlugin(DevicePlugin):
         if os.path.exists(acesso["chave"]):
             pc = replace(pc, udr7_ssh_key=acesso["chave"])
         holder = ConfigHolder(pc)
+        caminhos = cls.state_paths(instance.id, state_dir)
         policy = ProtectionPolicy(
             holder, shutdown_command=command, default_name=cls.default_name,
-            **cls.state_paths(instance.id, state_dir),
+            **caminhos,
         )
         return cls(instance, holder, policy, cfg,
-                   chave_path=acesso["chave"], acesso_path=acesso["acesso"])
+                   chave_path=acesso["chave"], acesso_path=acesso["acesso"],
+                   known_hosts_path=caminhos["known_hosts_path"])
 
     # --- o que o laço chama --------------------------------------------------------
     @property
@@ -153,6 +162,12 @@ class SshMotorPlugin(DevicePlugin):
     def status(self) -> dict:
         st = self._policy.status()
         st["last_event"] = self._event_name(st.get("last_event"))   # o health fala a língua do tipo
+        # A tela precisa saber ANTES de tentar armar: sem isto, o botão convidava
+        # ao erro e a recusa só aparecia depois do clique.
+        registro = self.alcance_registrado() or {}
+        st["alcance_verificado"] = self.alcance_valido()
+        st["alcance_modelo"] = registro.get("modelo")
+        st["alcance_em"] = registro.get("verificado_em")
         return st
 
     def drain_transition(self) -> tuple[str | None, str] | None:
@@ -236,3 +251,20 @@ class SshMotorPlugin(DevicePlugin):
 
     def alcance_registrado(self) -> dict | None:
         return _read_private_json(self._acesso_path)
+
+    def registrar_alcance(self, saida: dict) -> dict:
+        """Grava a prova de que falamos com o console, com data e o que ele disse."""
+        registro = {"verificado_em": time.time(),
+                    "modelo": saida.get("model"), "firmware": saida.get("firmware"),
+                    "desligamento_disponivel": bool(saida.get("probe"))}
+        _write_private_json(self._acesso_path, registro)
+        return registro
+
+    def esquecer_acesso(self) -> None:
+        """Apaga chave, identidade e prova — o dispositivo volta ao ponto zero."""
+        for caminho in (self.chave_path, f"{self.chave_path}.pub",
+                        self.known_hosts_path, self._acesso_path):
+            try:
+                os.remove(caminho)
+            except OSError:
+                pass

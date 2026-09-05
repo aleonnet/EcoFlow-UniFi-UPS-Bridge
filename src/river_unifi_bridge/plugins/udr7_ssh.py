@@ -73,6 +73,10 @@ COMMANDS: dict[str, Cmd] = {
 # O que a política dispara quando decide agir. É `poweroff` por decisão, não por
 # acaso: ver a nota do `reboot` acima.
 POWEROFF = COMMANDS["poweroff"]
+# Os três que provam alcance sem tocar em nada — e que rodam pelo MESMO caminho
+# do comando que desliga, porque provar por outro caminho não diria nada sobre
+# este. Fonte de cada um na tabela acima.
+LEITURA = {nome: COMMANDS[nome].argv for nome in ("probe", "model", "firmware")}
 # O que prova alcance sem tocar em nada. Existe porque o estado
 # `armado_nao_verificado` denunciava que o daemon armava sem NUNCA ter falado
 # com o console.
@@ -179,6 +183,10 @@ class Udr7SshPlugin(SshMotorPlugin):
     default_name = "UDR7"
     event_prefix = "UDR7_"
     fields = UDR7_FIELDS
+
+    @classmethod
+    def comandos_de_leitura(cls) -> dict[str, str]:
+        return dict(LEITURA)
     # As 14 chaves legadas que este tipo ainda possui no .env (espelho da instância
     # `udr7`). Literal de propósito: o teste de partição compara com o conjunto
     # montado por prefixo, descontadas as três do núcleo (LEGACY_CORE_KEYS).

@@ -75,3 +75,25 @@ private func fixtureURL(_ name: String) -> URL {
     #expect(ConfigValue.string("0").boolValue == false)
     #expect(ConfigValue.string("talvez").boolValue == nil)
 }
+
+    @Test("o alcance provado chega do serviço para a tela")
+    func reachStateDecodes() throws {
+        let json = """
+        {"state":"dry_run","alcance_verificado":true,"alcance_modelo":"UniFi Dream Router 7"}
+        """
+        let d = try JSONCoding.decoder().decode(DeviceDetail.self, from: Data(json.utf8))
+        #expect(d.alcanceVerificado == true)
+        #expect(d.alcanceModelo == "UniFi Dream Router 7")
+    }
+
+    @Test("o resultado do teste de conexão decodifica, com e sem alcance")
+    func reachTestDecodes() throws {
+        let ok = """
+        {"alcance":true,"resposta":{"probe":"/sbin/ubnt-systool","model":"UDR7","firmware":"5.1.31"}}
+        """
+        let t = try JSONCoding.decoder().decode(AcessoTestado.self, from: Data(ok.utf8))
+        #expect(t.alcance && t.resposta?.model == "UDR7")
+        let nao = #"{"alcance":false,"resposta":{},"motivo":"o console não respondeu"}"#
+        let n = try JSONCoding.decoder().decode(AcessoTestado.self, from: Data(nao.utf8))
+        #expect(!n.alcance && n.motivo?.isEmpty == false)
+    }

@@ -41,6 +41,18 @@ enum ProtectionRefusal {
         // Rotas do River (0.5.0). Cada recusa tem MOTIVO próprio para caber numa
         // frase que diz o que fazer — "armado" das rotas de configuração fala de
         // campos e reinício, que não é o assunto aqui.
+        // Acesso ao console (0.6.0)
+        case "alcance_nao_verificado":
+            return L10n.t("Antes de armar, o serviço precisa provar que alcança este aparelho. Use Conectar ou Testar conexão na folha do dispositivo.",
+                          "Before arming, the service must prove it reaches this device. Use Connect or Test connection in the device sheet.")
+        case "identidade_divergente":
+            return L10n.t("Este aparelho está se apresentando com uma identidade diferente da registrada. Isso acontece quando ele é trocado ou reinstalado — e também quando alguém se coloca no meio do caminho. Confira a impressão digital antes de aceitar.",
+                          "This device is presenting a different identity than the one registered. That happens when it is replaced or reinstalled — and also when someone puts themselves in the middle. Check the fingerprint before accepting.")
+        case "senha_recusada":
+            return L10n.t("O aparelho recusou a senha. Confira a senha do console e tente de novo.",
+                          "The device refused the password. Check the console password and try again.")
+        case "acesso_falhou":
+            return L10n.t("Não consegui preparar o acesso: ", "Could not prepare access: ") + (parsed?.erro ?? "")
         case "cabo_emprestado":
             return L10n.t("O River está com o aplicativo da EcoFlow: sem ler a bateria não dá para armar. Retome o cabo primeiro.",
                           "The River is with the EcoFlow app: without reading the battery there is no arming. Take the cable back first.")

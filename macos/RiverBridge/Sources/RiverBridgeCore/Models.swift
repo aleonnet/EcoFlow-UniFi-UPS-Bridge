@@ -112,6 +112,10 @@ public struct DeviceDetail: Codable, Equatable, Sendable {
     public var outage: Bool?
     public var attempts: Int?
     public var sentPendingRestore: Bool?
+    /// O serviço já provou que fala com este aparelho? Desde a 0.6.0 armar exige
+    /// isso — e a tela mostra a razão antes do clique, não depois.
+    public var alcanceVerificado: Bool?
+    public var alcanceModelo: String?
     /// The name the user gave the device (`UDR7_NAME`). The daemon already puts
     /// its default here when the key is blank.
     public var name: String?
@@ -367,4 +371,26 @@ public struct EstadoDoCabo: Codable, Equatable, Sendable {
 
 public struct DeviceTypesResponse: Codable, Sendable {
     public var types: [DeviceTypeInfo]
+}
+
+
+/// O que a rota de preparar devolve. A chave PRIVADA não está aqui, e nunca
+/// estará: o serviço não a expõe por rota nenhuma.
+public struct AcessoPreparado: Decodable, Sendable {
+    public let chavePublica: String
+    public let impressaoDaChave: String
+    public let impressaoDoConsole: String
+}
+
+/// O resultado de "Testar conexão": o que o console respondeu, e a prova gravada.
+public struct AcessoTestado: Decodable, Sendable {
+    public struct Resposta: Decodable, Sendable {
+        public let probe: String?
+        public let model: String?
+        public let firmware: String?
+    }
+
+    public let alcance: Bool
+    public let resposta: Resposta?
+    public let motivo: String?
 }

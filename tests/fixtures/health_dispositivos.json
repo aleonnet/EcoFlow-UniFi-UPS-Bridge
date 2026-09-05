@@ -23,7 +23,10 @@
     "last_event_at": null,
     "outage": false,
     "attempts": 0,
-    "sent_pending_restore": false
+    "sent_pending_restore": false,
+    "alcance_verificado": false,
+    "alcance_modelo": null,
+    "alcance_em": null
   },
   "plugins": [
     {
@@ -50,7 +53,10 @@
         "last_event_at": null,
         "outage": false,
         "attempts": 0,
-        "sent_pending_restore": false
+        "sent_pending_restore": false,
+        "alcance_verificado": false,
+        "alcance_modelo": null,
+        "alcance_em": null
       }
     },
     {
@@ -77,7 +83,10 @@
         "last_event_at": null,
         "outage": false,
         "attempts": 0,
-        "sent_pending_restore": false
+        "sent_pending_restore": false,
+        "alcance_verificado": false,
+        "alcance_modelo": null,
+        "alcance_em": null
       }
     },
     {
@@ -104,7 +113,10 @@
         "last_event_at": null,
         "outage": false,
         "attempts": 0,
-        "sent_pending_restore": false
+        "sent_pending_restore": false,
+        "alcance_verificado": false,
+        "alcance_modelo": null,
+        "alcance_em": null
       }
     }
   ],

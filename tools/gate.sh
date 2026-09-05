@@ -471,6 +471,21 @@ cena_mutacao S4bb src/river_unifi_bridge/protect.py \
     $'f"UserKnownHostsFile={known_hosts_path}"' \
     tests/unit/test_protect.py::test_the_known_hosts_path_is_quoted_because_it_has_spaces
 
+# S4bc — a chave PRIVADA não sai por rota nenhuma. O mutante devolve a chave
+# inteira em vez da pública, que é o erro que um dia alguém comete achando que
+# "é tudo chave".
+cena_mutacao S4bc src/river_unifi_bridge/api.py \
+    'return {"chave_publica": chave.publica,' \
+    'return {"chave_publica": open(plugin.chave_path).read(),' \
+    tests/unit/test_api.py::test_the_private_key_never_leaves_the_service
+
+# S4bd — a senha do console é de passagem: usada uma vez e descartada. O mutante
+# a devolve na resposta da rota, que é o vazamento mais fácil de cometer.
+cena_mutacao S4bd src/river_unifi_bridge/api.py \
+    '        return self._acesso_testar(plugin, pc, sa)' \
+    '        return {**self._acesso_testar(plugin, pc, sa), "senha": senha}' \
+    tests/unit/test_api.py::test_the_console_password_is_used_once_and_never_stored
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys
