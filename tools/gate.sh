@@ -1016,7 +1016,7 @@ else
 fi
 # (2) o nosso daemon fora do launchd
 launchctl bootout "$G9_ALVO" 2>/dev/null || true; sleep 1
-( cd "$G9" && env RUB_STATE_DIR="$G9/state" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual.log" 2>&1 ) &
+( cd "$G9" && env RUB_STATE_DIR="$G9/state" RUB_NUT_ETC="$G9/nutetc" RUB_NUT_PREFIX="$G9/nut" RUB_NUT_STATE="$G9/nutstate" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual.log" 2>&1 ) &
 MANUAL_PID=$!
 for i in $(seq 1 15); do [ -n "$(g9_ouvinte)" ] && break; sleep 1; done
 O_ANTES="$(g9_ouvinte)"
@@ -1048,7 +1048,7 @@ launchctl bootout "$G9_ALVO" 2>/dev/null || true
 # está tudo no lugar, não "cópia antiga … seria encerrada" (revisão fria B-1:
 # o corte de 160 colunas no comando escondia o "--env" e o ramo nunca casava).
 sleep 2   # o job da S9g.3 acabou de sair; a porta pode levar um instante para ficar livre
-( cd "$G9" && env RUB_STATE_DIR="$G9/state" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual2.log" 2>&1 ) &
+( cd "$G9" && env RUB_STATE_DIR="$G9/state" RUB_NUT_ETC="$G9/nutetc" RUB_NUT_PREFIX="$G9/nut" RUB_NUT_STATE="$G9/nutstate" PYTHONPATH="$G9/prefix/src" HOME="$HOME" "$G9/prefix/venv/bin/python" -m river_unifi_bridge.service --env "$G9/prefix/etc/bridge.env" >"$G9/manual2.log" 2>&1 ) &
 MANUAL2_PID=$!
 # A cena só faz sentido COM o daemon manual na porta: se ele não abrir em 30 s,
 # a cena falha dizendo isso (no gate completo ele parte a frio; 15 s não bastaram
@@ -1484,6 +1484,25 @@ else
     diff "$SNAP_OUT" "$SNAP_DIR/abertura-80-utf8.txt" | head -6
 fi
 rm -f "$SNAP_OUT"
+
+# S54 — nenhum daemon lançado À MÃO por este portão sobe sem as costuras que o
+# prendem à pasta da cena. Sem elas ele escreve na instalação REAL de quem roda o
+# portão — foi o que a cena S9g.2 fez em 2026-09-05, criando ups.conf, upsd.conf,
+# nut.conf e upsd.users em /opt/homebrew/etc/nut. A S22 abaixo pega o RASTRO;
+# esta pega a FORMA, antes de o rastro existir.
+S54_FORA=0
+while IFS= read -r linha; do
+    for costura in RUB_STATE_DIR RUB_NUT_ETC RUB_NUT_PREFIX RUB_NUT_STATE; do
+        case "$linha" in *"$costura="*) ;; *) S54_FORA=$((S54_FORA + 1)) ;; esac
+    done
+done <<EOF
+$(grep -n -- '-m river_unifi_bridge.service' "$0" | grep -v cena_mutacao)
+EOF
+if [ "$S54_FORA" = "0" ]; then
+    ok "S54 todo daemon do portão sobe preso à pasta da cena (estado, config e soquetes do NUT)"
+else
+    erro "S54 daemon lançado sem costura: $S54_FORA ausência(s) — escreveria na instalação real"
+fi
 
 # S22 — o gate não pode deixar rastro na configuração REAL do NUT desta máquina.
 # Sem esta cena, uma cena nova sem o seam do NUT escreve em /opt/homebrew/etc/nut
