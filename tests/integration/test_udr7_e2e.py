@@ -122,6 +122,20 @@ def seed_known_hosts(tmp_path: pathlib.Path, state_dir: pathlib.Path) -> None:
     kh.chmod(0o600)
 
 
+def seed_alcance(state_dir: pathlib.Path, instance_id: str = "udr7") -> None:
+    """A prova de alcance que a tela grava ao passar em "Testar conexão".
+
+    Desde a 0.6.0 armar exige que o serviço TENHA falado com o console — sem
+    isso, o primeiro contato real seria o desligamento, numa queda de energia.
+    Aqui ela é semeada como um usuário faria; quem exercita a ausência é a cerca.
+    """
+    arquivo = state_dir / f"{instance_id}_acesso.json"
+    arquivo.write_text(json.dumps({"verificado_em": time.time(),
+                                   "modelo": "UniFi Dream Router 7",
+                                   "firmware": "5.1.31"}))
+    arquivo.chmod(0o600)
+
+
 def base_env(tmp_path, nut_port, api_port, *, expected_serial, dry_run="1", arm_allowed="1") -> str:
     key = tmp_path / "river-bridge-udr7"
     key.write_text("PRIVATE KEY (fake, never used: the ssh binary is a stub)\n")
@@ -142,6 +156,7 @@ def base_env(tmp_path, nut_port, api_port, *, expected_serial, dry_run="1", arm_
 def start_daemon(tmp_path, env_text, api_port, stub, stub_log):
     state_dir = tmp_path / "state"
     seed_known_hosts(tmp_path, state_dir)
+    seed_alcance(state_dir)
     env_file = tmp_path / "bridge.env"
     env_file.write_text(env_text, encoding="utf-8")
     env_file.chmod(0o600)
@@ -307,7 +322,7 @@ def test_e2e_real_looking_source_arms_fires_stub_once_and_disarms(tmp_path):
             argv = calls[0]
             assert argv[-1] == "ubnt-systool poweroff" and argv[-2] == "root@192.0.2.1" and argv[-3] == "--"
             assert "StrictHostKeyChecking=yes" in argv and "ProxyCommand=none" in argv
-            assert f"UserKnownHostsFile={state_dir / 'udr7_known_hosts'}" in argv
+            assert f'UserKnownHostsFile="{state_dir / "udr7_known_hosts"}"' in argv
             assert api.event_types().count("UDR7_SHUTDOWN_SENT") == 1
             assert api.get("/v1/health")[1]["udr7"] == "enviado"
             # (d) while armed: frozen keys and restart are refused
@@ -362,6 +377,7 @@ def test_e2e_ssh_host_instance_arms_and_fires_stub_once(tmp_path):
             pub = (tmp_path / "hostkey.pub").read_text().strip()
             kh = state_dir / f"{dev}_known_hosts"
             kh.write_text(f"192.0.2.5 {pub}\n"); kh.chmod(0o600)
+            seed_alcance(state_dir, dev)          # a prova que a tela grava
             health = api.wait(lambda h: len(h["plugins"]) == 2)
             assert health["plugins"][1]["type"] == "ssh_host"
             assert health["plugins"][1]["detail"]["ssh_binary"] == str(stub), "recusando armar: ssh não é o stub"
@@ -382,7 +398,7 @@ def test_e2e_ssh_host_instance_arms_and_fires_stub_once(tmp_path):
             assert len(calls) == 1, calls
             argv = calls[0]
             assert argv[-1] == "shutdown -h now" and argv[-2] == "admin@192.0.2.5" and argv[-3] == "--"
-            assert f"UserKnownHostsFile={kh}" in argv
+            assert f'UserKnownHostsFile="{kh}"' in argv
             # o histórico sabe de quem é cada evento
             _, log = api.get(f"/v1/events/log?device={dev}")
             assert [r["type"] for r in log["rows"]][:1] == ["SSH_HOST_SHUTDOWN_SENT"]

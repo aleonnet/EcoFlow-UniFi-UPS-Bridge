@@ -15,9 +15,18 @@ UDR7 ou o comando escolhido de uma lista fechada no host genérico.
 from __future__ import annotations
 
 import os
+import time
+from dataclasses import replace
 
 from ..config import CORE_FROZEN_KEYS
-from ..protect import ConfigHolder, ProtectionConfig, ProtectionPolicy, _is_synthetic_driver
+from ..protect import (
+    ConfigHolder, ProtectionConfig, ProtectionPolicy, _is_synthetic_driver,
+    _read_private_json,
+)
+
+# Por quanto tempo uma prova de alcance vale. Endereço muda, chave é revogada,
+# console é trocado: prova velha não diz nada sobre hoje.
+ALCANCE_VALIDADE_SEGUNDOS = 30 * 86400
 from .base import DevicePlugin
 
 # As duas chaves do patch que formam o predicado de armamento. Um PUT que só as
@@ -37,12 +46,15 @@ class SshMotorPlugin(DevicePlugin):
     frozen_keys = CORE_FROZEN_KEYS
     legacy_keys: frozenset[str] = frozenset()
 
-    def __init__(self, instance, holder: ConfigHolder, policy: ProtectionPolicy, cfg=None) -> None:
+    def __init__(self, instance, holder: ConfigHolder, policy: ProtectionPolicy, cfg=None,
+                 *, chave_path: str = "", acesso_path: str = "") -> None:
         self.instance = instance
         self.id = instance.id
         self._holder = holder
         self._policy = policy
         self._cfg = cfg
+        self.chave_path = chave_path
+        self._acesso_path = acesso_path
 
     # --- o que cada tipo define ------------------------------------------------
     @classmethod
@@ -58,14 +70,35 @@ class SshMotorPlugin(DevicePlugin):
         }
 
     @classmethod
+    def caminhos_do_acesso(cls, instance_id: str, state_dir: str) -> dict:
+        """A chave que o SERVIÇO cria e o registro da prova de alcance.
+
+        Não são campos digitáveis, e não podem ser: o padrão de caminho recusa
+        espaços (`config.KEY_PATH_PATTERN`) e o diretório de estado do macOS é
+        "~/Library/Application Support/…". Derivar do id resolve, do mesmo jeito
+        que já resolvemos para o arquivo de identidades do console.
+        """
+        return {
+            "chave": os.path.join(state_dir, f"{instance_id}_key"),
+            "acesso": os.path.join(state_dir, f"{instance_id}_acesso.json"),
+        }
+
+    @classmethod
     def build(cls, instance, cfg, state_dir: str) -> "SshMotorPlugin":
         command = cls.shutdown_command_for(instance)
-        holder = ConfigHolder(ProtectionConfig.from_instance(instance, cfg, shutdown_command=command))
+        pc = ProtectionConfig.from_instance(instance, cfg, shutdown_command=command)
+        # A chave que o SERVIÇO criou manda: ela é o que a tela instalou no
+        # console. O campo digitado continua valendo para quem trouxer a própria.
+        acesso = cls.caminhos_do_acesso(instance.id, state_dir)
+        if os.path.exists(acesso["chave"]):
+            pc = replace(pc, udr7_ssh_key=acesso["chave"])
+        holder = ConfigHolder(pc)
         policy = ProtectionPolicy(
             holder, shutdown_command=command, default_name=cls.default_name,
             **cls.state_paths(instance.id, state_dir),
         )
-        return cls(instance, holder, policy, cfg)
+        return cls(instance, holder, policy, cfg,
+                   chave_path=acesso["chave"], acesso_path=acesso["acesso"])
 
     # --- o que o laço chama --------------------------------------------------------
     @property
@@ -175,4 +208,31 @@ class SshMotorPlugin(DevicePlugin):
             if not expected or serial != expected:
                 return 409, "fonte_nao_real", (
                     "serial da leitura corrente não confere com o número de série esperado do River")
+            if not self.alcance_valido():
+                # O portão que faltava: até aqui a proteção podia armar sem NUNCA
+                # ter falado com o console, e o primeiro contato real seria o
+                # desligamento, numa queda. Provar alcance é rodar os comandos de
+                # leitura pelo MESMO caminho do comando que desliga.
+                return 409, "alcance_nao_verificado", (
+                    "ainda não foi provado que este serviço alcança o console: "
+                    "use Testar conexão na tela do dispositivo antes de armar")
         return None
+
+    # --- prova de alcance ------------------------------------------------------
+    def alcance_valido(self, *, agora: float | None = None) -> bool:
+        """Houve prova de alcance recente o bastante para armar?
+
+        Recente porque endereço muda, chave é revogada e console é trocado — uma
+        prova de um ano atrás não diz nada sobre hoje.
+        """
+        registro = self.alcance_registrado()
+        if not registro:
+            return False
+        quando = registro.get("verificado_em")
+        if not isinstance(quando, (int, float)):
+            return False
+        agora = time.time() if agora is None else agora
+        return (agora - quando) <= ALCANCE_VALIDADE_SEGUNDOS
+
+    def alcance_registrado(self) -> dict | None:
+        return _read_private_json(self._acesso_path)

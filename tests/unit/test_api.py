@@ -227,6 +227,17 @@ def _prot_env(tmp_path, arm_allowed: bool) -> str:
     return str(path)
 
 
+def _prova_de_alcance(caminho: str, *, quando: float | None = None) -> None:
+    """Escreve o registro de "o serviço falou com o console", como a rota faz."""
+    import json as _json
+    import time as _time
+    _os.makedirs(_os.path.dirname(caminho), exist_ok=True)
+    with open(caminho, "w", encoding="utf-8") as fh:
+        _json.dump({"verificado_em": quando if quando is not None else _time.time(),
+                    "modelo": "UniFi Dream Router 7", "firmware": "5.1.31"}, fh)
+    _os.chmod(caminho, 0o600)
+
+
 def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     from river_unifi_bridge.config import load_config
     env = _prot_env(tmp_path, arm_allowed)
@@ -244,7 +255,13 @@ def _prot_server(tmp_path, arm_allowed: bool, extra=()):
     )
     from river_unifi_bridge.plugins import Udr7SshPlugin
 
-    plugin = Udr7SshPlugin(instance, holder, policy, cfg)
+    acesso = Udr7SshPlugin.caminhos_do_acesso(instance.id, str(state))
+    plugin = Udr7SshPlugin(instance, holder, policy, cfg,
+                           chave_path=acesso["chave"], acesso_path=acesso["acesso"])
+    # Alcance provado: desde a 0.6.0 armar exige que o serviço TENHA falado com o
+    # console (Testar conexão na tela). Os testes que armam declaram essa prova,
+    # como um usuário faria — quem exercita a ausência dela é a cerca própria.
+    _prova_de_alcance(acesso["acesso"])
     store = DeviceStore(str(state / "devices.json"))
     store.save([plugin.instance, *[p.instance for p in extra if hasattr(p, "instance")]])
     srv = ApiServer(cfg=cfg, state=SharedState(), history=HistoryStore(str(tmp_path / "h.sqlite")),
@@ -635,6 +652,8 @@ async def test_devices_put_arming_rules_and_frozen_fields(tmp_path, aiohttp_clie
     c2 = await aiohttp_client(srv2.build_app()); c2.auth = c.auth
     srv2._loop = asyncio.get_running_loop()
     dev2 = (await _post(c2, HOST))[1]["device"]
+    # Alcance declarado, como a tela faz: quem exercita a ausência é a cerca própria.
+    _prova_de_alcance(str(tmp_path / "b" / "state" / f"{dev2['id']}_acesso.json"))
     status, body = await _put_dev(c2, dev2["id"], {"enabled": True, "dry_run": False})
     assert status == 409 and body["motivo"] == "sem_snapshot"
     srv2.state.update_snapshot(FAKE)
@@ -669,6 +688,7 @@ async def test_other_armed_instance_does_not_veto_disarm(unlocked):
     srv, c = unlocked
     srv.state.update_snapshot(REAL)
     dev = (await _post(c, HOST))[1]["device"]
+    _prova_de_alcance(_os.path.join(srv.state_dir, f"{dev['id']}_acesso.json"))
     assert (await _put_dev(c, dev["id"], {"enabled": True, "dry_run": False}))[0] == 200
     assert (await _put(c, {"PROTECT_DRY_RUN": "0"}))[0] == 200        # udr7 arma pela via legada
     assert (await _put_dev(c, "udr7", {"dry_run": True}))[0] == 200   # desarme do udr7 com o host armado
@@ -680,6 +700,7 @@ async def test_devices_delete_refused_while_armed(unlocked):
     srv, c = unlocked
     srv.state.update_snapshot(REAL)
     dev = (await _post(c, HOST))[1]["device"]
+    _prova_de_alcance(_os.path.join(srv.state_dir, f"{dev['id']}_acesso.json"))
     assert (await _put_dev(c, dev["id"], {"enabled": True, "dry_run": False}))[0] == 200
     resp = await c.delete(f"/v1/devices/{dev['id']}", headers=c.auth)
     assert resp.status == 409 and (await resp.json())["motivo"] == "armado"
@@ -1121,3 +1142,35 @@ async def test_disarming_is_never_refused_by_the_lent_cable(unlocked):
     srv.supervisor.pausar("empréstimo")
     status, _ = await _put(c, {"PROTECT_DRY_RUN": "1"})
     assert status == 200 and not _os.path.exists(srv.armed_path)
+
+
+async def test_arming_is_refused_without_proof_that_we_reach_the_console(unlocked):
+    """Armar sem nunca ter falado com o console é armar no escuro.
+
+    Até a 0.5.1 isto era possível: o primeiro contato real com o roteador seria
+    o comando de desligar, numa queda de energia — e foi assim que um defeito de
+    caminho (aspas no arquivo de identidades) sobreviveu meses sem aparecer.
+    """
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    prova = _os.path.join(srv.state_dir, "udr7_acesso.json")
+    _os.remove(prova)                                  # sem prova de alcance
+
+    status, body = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "alcance_nao_verificado"
+    assert not _os.path.exists(srv.armed_path)
+
+    _prova_de_alcance(prova)                           # "Testar conexão" passou
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200 and _os.path.exists(srv.armed_path)
+
+
+async def test_a_stale_proof_of_reach_does_not_arm(unlocked):
+    """Prova de um ano atrás não diz nada sobre hoje: endereço muda, chave é revogada."""
+    import time as _time
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    _prova_de_alcance(_os.path.join(srv.state_dir, "udr7_acesso.json"),
+                      quando=_time.time() - 400 * 86400)
+    status, body = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 409 and body["motivo"] == "alcance_nao_verificado"

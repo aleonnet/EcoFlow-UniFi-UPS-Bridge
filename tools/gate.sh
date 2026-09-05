@@ -440,6 +440,37 @@ cena_mutacao S4ax src/river_unifi_bridge/service.py \
     'resultado = None' \
     tests/unit/test_service_loop.py::test_one_failed_serial_read_does_not_blank_the_outlets
 
+# S4ay — armar exige prova de que o serviço ALCANÇA o console. Sem isto, o
+# primeiro contato real com o roteador seria o comando de desligar, numa queda —
+# e foi assim que um defeito de caminho sobreviveu meses sem aparecer.
+cena_mutacao S4ay src/river_unifi_bridge/plugins/ssh_motor.py \
+    'if not self.alcance_valido():' \
+    'if False:' \
+    tests/unit/test_api.py::test_arming_is_refused_without_proof_that_we_reach_the_console
+
+# S4az — prova de alcance velha não vale: endereço muda, chave é revogada,
+# console é trocado.
+cena_mutacao S4az src/river_unifi_bridge/plugins/ssh_motor.py \
+    'return (agora - quando) <= ALCANCE_VALIDADE_SEGUNDOS' \
+    'return True' \
+    tests/unit/test_api.py::test_a_stale_proof_of_reach_does_not_arm
+
+# S4ba — o `--` no `ssh-keyscan` NÃO é fim de opções: com ele, só a chave RSA é
+# gravada e o `ssh` recusa a conexão com "No ED25519 host key is known".
+cena_mutacao S4ba src/river_unifi_bridge/ssh_acesso.py \
+    '"ssh-keyscan", "-T", "5", "-p", str(porta), host' \
+    '"ssh-keyscan", "-T", "5", "-p", str(porta), "--", host' \
+    tests/unit/test_ssh_acesso.py::test_the_scan_keeps_every_key_type_the_console_offers
+
+# S4bb — o valor de UserKnownHostsFile vai ENTRE ASPAS: o `ssh` o divide por
+# espaços, e o estado do macOS mora em "Application Support". Sem as aspas, o
+# desligamento do console nunca teria funcionado numa instalação real.
+# (aspas simples dentro do texto: por isso as âncoras usam $'...' aqui)
+cena_mutacao S4bb src/river_unifi_bridge/protect.py \
+    $'f\'UserKnownHostsFile="{known_hosts_path}"\'' \
+    $'f"UserKnownHostsFile={known_hosts_path}"' \
+    tests/unit/test_protect.py::test_the_known_hosts_path_is_quoted_because_it_has_spaces
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

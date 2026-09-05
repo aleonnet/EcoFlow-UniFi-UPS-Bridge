@@ -212,7 +212,9 @@ def test_ssh_argv_is_isolated_and_terminated(paths, key_file):
         "PasswordAuthentication=no", "KbdInteractiveAuthentication=no",
         "ProxyCommand=none", "PermitLocalCommand=no", "ControlMaster=no",
         "ControlPath=none", "ForwardAgent=no", "ClearAllForwardings=yes",
-        f"UserKnownHostsFile={paths['known_hosts_path']}", "GlobalKnownHostsFile=/dev/null",
+        # entre aspas: o `ssh` divide este valor por espaços (ver a cerca do
+        # caminho com espaços, no fim deste arquivo)
+        f'UserKnownHostsFile="{paths["known_hosts_path"]}"', "GlobalKnownHostsFile=/dev/null",
     ):
         assert required in opts, required
     assert "-F" in argv and argv[argv.index("-F") + 1] == "/dev/null"
@@ -1045,3 +1047,19 @@ def test_every_state_a_gate_can_produce_is_in_the_vocabulary(paths, key_file):
         assert portao in protect.ESTADOS
     rig.tick()
     assert rig.policy.status()["state"] in protect.ESTADOS
+
+
+def test_the_known_hosts_path_is_quoted_because_it_has_spaces():
+    """O `ssh` divide o valor desta opção por espaços — ele aceita vários arquivos.
+
+    O diretório de estado do macOS é "~/Library/Application Support/…". Sem
+    aspas, o `ssh` procurava dois arquivos inexistentes e recusava a conexão com
+    "No ED25519 host key is known" — medido contra o console real do dono em
+    2026-09-04. Era o motivo de o desligamento nunca ter funcionado numa
+    instalação de verdade.
+    """
+    pc = make_pc(udr7_ssh_host="192.168.1.1")
+    caminho = "/Users/x/Library/Application Support/river-unifi-bridge/udr7_known_hosts"
+    argv = ssh_argv(pc, caminho, "ubnt-systool poweroff")
+    opcao = next(a for a in argv if a.startswith("UserKnownHostsFile"))
+    assert opcao == f'UserKnownHostsFile="{caminho}"'

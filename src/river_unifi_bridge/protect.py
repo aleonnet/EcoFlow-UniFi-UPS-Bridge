@@ -254,7 +254,13 @@ def ssh_argv(pc: ProtectionConfig, known_hosts_path: str, command: str) -> list[
         "-o", "PasswordAuthentication=no",
         "-o", "KbdInteractiveAuthentication=no",
         "-o", "StrictHostKeyChecking=yes",
-        "-o", f"UserKnownHostsFile={known_hosts_path}",
+        # O valor DESTA opção é dividido por espaços pelo próprio `ssh` (ele
+        # aceita vários arquivos aqui). O nosso caminho mora em
+        # "~/Library/Application Support/…", então sem aspas ele virava dois
+        # arquivos inexistentes e a conexão morria com "No ED25519 host key is
+        # known" — medido contra o console real em 2026-09-04, e é a razão de o
+        # desligamento nunca ter funcionado numa instalação de verdade.
+        "-o", f'UserKnownHostsFile="{known_hosts_path}"',
         "-o", "GlobalKnownHostsFile=/dev/null",
         "-o", "ProxyCommand=none",
         "-o", "PermitLocalCommand=no",
