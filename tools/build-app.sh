@@ -276,10 +276,14 @@ codesign --verify --deep --strict "$APP" 2>/dev/null \
 if [ "$IDENTIDADE" != "-" ]; then
   # Prova: o executável e um Mach-O aninhado saíram com o runtime endurecido e
   # a autoridade certa — é o que a notarização vai conferir, arquivo a arquivo.
+  # A saída é capturada ANTES de procurar: `grep -q` fecha o cano ao achar, o
+  # `codesign` morre de SIGPIPE e o `pipefail` acusava erro numa assinatura boa
+  # (medido em 2026-09-05, na primeira execução com o certificado de verdade).
   for prova in "$APP/Contents/MacOS/RiverBridge" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
-    codesign -dv --verbose=2 "$prova" 2>&1 | grep -q 'flags=.*runtime' \
+    LAUDO="$(codesign -dv --verbose=2 "$prova" 2>&1 || true)"
+    printf '%s\n' "$LAUDO" | grep -q 'flags=.*runtime' \
       || { echo "[ERRO] sem runtime endurecido: $prova"; exit 1; }
-    codesign -dv --verbose=2 "$prova" 2>&1 | grep -q 'Authority=Developer ID Application' \
+    printf '%s\n' "$LAUDO" | grep -q 'Authority=Developer ID Application' \
       || { echo "[ERRO] não é Developer ID: $prova"; exit 1; }
   done
 fi
