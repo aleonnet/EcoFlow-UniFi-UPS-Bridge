@@ -32,6 +32,16 @@ segredo entra no repositório.
 
 ## Instalar
 
+**Pelo disco (desde a 0.8.0, sem terminal):** baixe o `River-Bridge.dmg` da
+[release](https://github.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/releases/latest), arraste o
+programa para Aplicativos, abra-o (assinado com Developer ID e notarizado) e, em
+**Ajustes › Serviço**, instale o serviço e aprove nos Ajustes do Sistema. O NUT vai dentro
+do pacote (GPL-2.0, `Contents/Resources/nut/NOTICE-NUT.txt`); nada mais para instalar.
+Arrastar o programa para o Lixo remove tudo. Passo a passo no
+[runbook](docs/guides/2026-09-05-1930-runbook-instalar-usar-e-remover-pelo-app.md).
+
+**Pela linha de comando** (continua existindo; usa o NUT e o Python do Homebrew):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/main/river-bridge-install.sh | bash -s --
 ```
@@ -68,15 +78,14 @@ do usuário do serviço). O jeito normal de editar é pelo app → **Ajustes**; 
 | Alarmes | `POWER_LOSS_DELAY_SECONDS`, `RESTORE_DELAY_SECONDS`, `COMM_LOSS_DELAY_SECONDS`, `LOW_BATTERY_PERCENT` | quando os eventos disparam (defaults com fonte em [docs/PESQUISA_PARAMETROS_UPS_20260831.md](docs/PESQUISA_PARAMETROS_UPS_20260831.md)) |
 | API local | `UI_API_ENABLED`, `UI_API_PORT`, `HISTORY_RETENTION_DAYS` | porta da API (35493) e retenção do histórico |
 | River (núcleo da proteção) | `UDR7_EXPECTED_SERIAL`, `UDR7_CUTOFF_PERCENT` | número de série esperado do RIVER e corte físico da saída — valem para todos os dispositivos protegidos (Ajustes → River) |
-| Trava de armamento | `UDR7_ARM_ALLOWED` | global e somente arquivo: o app nunca a muda |
-| O River como aparelho | `RIVER_SERIAL_ENABLED`, `RIVER_SERIAL_PORT`, `RIVER_NUT_MANAGED` | consumo por tomada pela porta serial do mesmo cabo, e quem cuida do leitor do no-break (por padrão, o próprio serviço) |
-| Trava do desligamento do River | `RIVER_POWEROFF_ALLOWED` | somente arquivo, como a de armamento: sem ela aberta, o botão de desligar o aparelho recusa |
+| As três travas | `UDR7_ARM_ALLOWED`, `RIVER_POWEROFF_ALLOWED`, `DEVICE_CMD_ALLOWED` | interruptores em **Ajustes › Travas** (desde a 0.8.0), com confirmação ao ligar; aplicam a quente. Fechadas, o ato não existe — nem na tela, nem no Home Assistant |
+| O River como aparelho | `RIVER_SERIAL_ENABLED`, `RIVER_SERIAL_PORT`, `RIVER_NUT_MANAGED`, `RIVER_CABO_AUTOMATICO` | consumo por tomada pela porta serial do mesmo cabo; quem cuida do leitor do no-break (por padrão, o próprio serviço); o cabo indo e voltando sozinho quando o aplicativo da EcoFlow abre e fecha (ligado por padrão) |
 | Espelho da instância `udr7` | `PROTECT_UDR7`, `PROTECT_DRY_RUN`, `UDR7_*` restantes, `UDR7_NAME` | desde a 0.3.0 os dispositivos são instâncias em `devices.json`, editadas pelo app; este bloco é lido uma vez na migração e depois só espelha a instância `udr7` |
 
-Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige três passos seus
-(`UDR7_ARM_ALLOWED=1` no arquivo + reinício, desligar o ensaio na folha do dispositivo,
-`UDR7_ARM_ALLOWED=0` + reinício) e só é aceito com o RIVER real no NUT — o simulador nunca
-consegue armar. O instalador recusa atualizar o serviço enquanto houver um dispositivo armado.
+Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige ligar a trava
+"Permitir armar a proteção" (Ajustes › Travas, com confirmação), desligar o ensaio na folha do
+dispositivo e confirmar, e só é aceito com o RIVER real no NUT e a conexão provada — o simulador
+nunca consegue armar. O instalador recusa atualizar o serviço enquanto houver um dispositivo armado.
 O passo a passo, as medições que fazer antes e a recuperação estão nos runbooks
 ([UDR7](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md),
 [host SSH](docs/guides/2026-09-03-1720-runbook-host-ssh.md)).
@@ -96,6 +105,13 @@ O passo a passo, as medições que fazer antes e a recuperação estão nos runb
 - Diagnóstico de uma leitura só: `/usr/local/river-unifi-bridge/venv/bin/python -m river_unifi_bridge.service --env /usr/local/river-unifi-bridge/etc/bridge.env --once`.
 
 ## Desinstalar
+
+**Instalado pelo disco:** arraste o programa para o Lixo. O serviço percebe, apaga o que criou
+(chave do console, senhas, histórico, dispositivos, configuração do NUT), se desregistra e sai;
+fica só o diário em `/Library/Logs/river-unifi-bridge.log`. Mover para outra pasta ou atualizar
+não dispara nada.
+
+**Instalado pela linha de comando:**
 
 ```bash
 sudo /usr/local/river-unifi-bridge/scripts/uninstall.sh            # mostra o plano
@@ -126,6 +142,7 @@ snapshot.
 ## Documentos
 
 - [Especificação](RIVER3PLUS_UNIFI_BRIDGE_SPEC_20260831.md) — a fonte de verdade das decisões.
+- [Runbook: instalar, usar e remover pelo App](docs/guides/2026-09-05-1930-runbook-instalar-usar-e-remover-pelo-app.md) (travas, Home Assistant pela rede, cabo automático, Lixo).
 - [Runbook da proteção do UDR7 por instância](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md) e [do host SSH](docs/guides/2026-09-03-1720-runbook-host-ssh.md).
 - [Instalação em uma linha](docs/INSTALACAO_UMA_LINHA_20260901.md).
 - [API local](docs/reference/api-local.md).

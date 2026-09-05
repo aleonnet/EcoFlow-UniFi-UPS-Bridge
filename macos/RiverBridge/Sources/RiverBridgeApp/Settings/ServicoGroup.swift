@@ -45,7 +45,9 @@ struct ServicoGroup: View {
                 Aviso(tom: .atencao, texto: recado)
             }
             if estado.podeRemover {
-                Aviso(tom: .neutro, texto: RemocaoCompleta.avisoDoLixo, simbolo: "trash.slash")
+                // "trash", e não "trash.slash": o Lixo agora REMOVE (0.8.0) — a
+                // lixeira riscada contradizia a frase (visto na captura de 2026-09-05).
+                Aviso(tom: .neutro, texto: RemocaoCompleta.avisoDoLixo, simbolo: "trash")
             }
             SettingsRows.divider
             HStack(spacing: Espaco.medio) {

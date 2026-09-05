@@ -1,6 +1,6 @@
 # Runbook — o Home Assistant com tudo o que o aplicativo mostra
 
-status: aceito
+status: superado por 2026-09-05-1930-runbook-instalar-usar-e-remover-pelo-app.md
 data: 2026-09-05
 supera: 2026-09-05-1100-runbook-acesso-ao-console-e-haos.md
 
