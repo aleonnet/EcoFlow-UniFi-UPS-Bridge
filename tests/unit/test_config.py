@@ -97,9 +97,11 @@ def test_allowlist_matches_spec_keys():
         "RIVER_SERIAL_ENABLED", "RIVER_SERIAL_PORT",
         # Ações sobre o próprio River (0.5.0)
         "RIVER_POWEROFF_ALLOWED", "RIVER_NUT_MANAGED",
+        # A ponte publicando no NUT o que o app mostra (0.7.0)
+        "RIVER_NUT_PUBLICA", "RIVER_NUT_APARELHO",
     }
     assert set(_ALLOWLIST) == expected
-    assert len(expected) == 33
+    assert len(expected) == 35
 
 
 @pytest.mark.parametrize(

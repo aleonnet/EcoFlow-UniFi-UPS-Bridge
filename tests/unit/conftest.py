@@ -56,6 +56,20 @@ def _sem_porta_serial(monkeypatch):
             return EstadoDoCabo(lendo=False, pausado_pelo_dono=False, motivo="teste")
 
     monkeypatch.setattr(service, "NutSupervisor", _SupervisorDeTeste)
+
+    # E ninguém publica no NUT de verdade. A ponte cria soquetes em
+    # /opt/homebrew/var/state/ups — a instalação REAL de quem roda a suíte —, e um
+    # teste que subisse o laço deixaria lá um aparelho fantasma que o servidor do
+    # dono passaria a servir. Quem testa a publicação é tests/unit/test_nut_servico.py,
+    # com pasta própria.
+    class _PonteDeTeste:
+        def __init__(self, *_a, **_k): self.acoes = []
+        def iniciar(self): self.acoes.append("iniciar")
+        def atualizar(self, *_a, **_k): self.acoes.append("atualizar")
+        def marcar_sem_dados(self): self.acoes.append("sem_dados")
+        def encerrar(self): self.acoes.append("encerrar")
+
+    monkeypatch.setattr(service, "PonteDoNut", _PonteDeTeste)
     monkeypatch.setattr(service, "_porta_serial_lembrada", None, raising=False)
     monkeypatch.setattr(service, "_ultima_varredura", float("-inf"), raising=False)
     monkeypatch.setattr(service, "_ultima_leitura_serial", None, raising=False)

@@ -24,6 +24,7 @@ from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from . import river_serial
 from .nut_supervisor import NutSupervisor
+from .nut_servico import PonteDoNut
 from .nut import NutClient, NutError
 # Import no TOPO, não dentro da função: um monkeypatch de
 # `service.build_plugins` no teste só intercepta se o nome viver aqui.
@@ -37,6 +38,11 @@ LOW_BATTERY_HYSTERESIS_PERCENT = 5
 
 # De quanto em quanto tempo o histórico é limpo pela retenção configurada.
 PRUNE_INTERVAL_SECONDS = 3600
+
+# Onde ficam os soquetes pelos quais o servidor do no-break fala com os drivers.
+# É o mesmo seam do prefixo do NUT: sem ele, uma cena do portão criaria soquetes
+# na instalação REAL de quem roda a suíte.
+ESTADO_DO_NUT = "/opt/homebrew/var/state/ups"
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -360,6 +366,17 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     if not once and cfg.river_nut_managed:
         supervisor = NutSupervisor(cfg.nut_ups, log=_log)
         supervisor.iniciar()
+    # E a ponte passa a PUBLICAR no NUT: um aparelho com tudo o que ela sabe do
+    # River (watts por tomada inclusive) e um por dispositivo protegido. É por
+    # aqui que o Home Assistant recebe o mesmo que o app mostra — ver
+    # nut_servico.py. Falhar aqui não derruba o serviço: publicar é um extra, e a
+    # proteção, que é o motivo de ele existir, não depende disto.
+    ponte = None
+    if not once and cfg.river_nut_publica:
+        ponte = PonteDoNut(aparelho=cfg.river_nut_aparelho,
+                           estado=os.environ.get("RUB_NUT_STATE") or ESTADO_DO_NUT,
+                           log=_log)
+        ponte.iniciar()
     # O `finally` abaixo é o que impede leitor órfão: o launchd manda SIGTERM ao
     # atualizar ou ao desligar a máquina (o `main` converte o sinal em
     # interrupção), e sem ele os dois processos do no-break ficavam com o cabo.
@@ -410,6 +427,11 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 snap = poll_once(cfg)
             except NutError as exc:
                 _handle_poll_failure(exc, tracker, plugins, shared, history)
+                # O no-break calou: quem lê pelo NUT precisa saber que o número
+                # na tela dele envelheceu. Sem isto, o Home Assistant mostraria a
+                # última carga como se fosse a de agora.
+                if ponte is not None:
+                    ponte.marcar_sem_dados()
                 if once:
                     _log("ERROR", "poll_failed", reason=str(exc))
                     return EXIT_CONNECTION
@@ -424,6 +446,11 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                     shared.update_snapshot(snap.to_dict())
                     if history is not None:
                         history.record_sample(snap.to_dict())
+                # Publicar vem DEPOIS da proteção e da porta serial: antes, o
+                # Home Assistant receberia a leitura sem os watts por tomada, que
+                # é justamente o que ele não tinha antes desta versão.
+                if ponte is not None:
+                    ponte.atualizar(snap, plugins)
                 if once:
                     return EXIT_OK
             # "Manter histórico: N dias" era só um número na tela: a limpeza existia e
@@ -443,6 +470,8 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 _log("INFO", "restart_requested", exit_code=EXIT_RESTART_REQUESTED)
                 return EXIT_RESTART_REQUESTED
     finally:
+        if ponte is not None:
+            ponte.encerrar()
         if supervisor is not None:
             supervisor.encerrar()
 

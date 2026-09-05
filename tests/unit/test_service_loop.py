@@ -593,3 +593,122 @@ def test_one_failed_serial_read_does_not_blank_the_outlets(rig):
     service._completa_pela_serial(snap, cfg, ler=lambda *_a, **_k: None,
                                   clock=lambda: relogio["agora"])
     assert snap.outlets is None
+
+
+# -- a ponte publicando no NUT (0.7.0) ----------------------------------------
+
+class PonteEspia:
+    """Registra o que a ponte faria, na ordem em que o laço a chama."""
+
+    ultima = None
+
+    def __init__(self, **kw):
+        self.kw = kw
+        self.acoes: list[str] = []
+        PonteEspia.ultima = self
+
+    def iniciar(self):
+        self.acoes.append("iniciar")
+
+    def atualizar(self, _snap, _plugins=()):
+        self.acoes.append("publicar")
+
+    def marcar_sem_dados(self):
+        self.acoes.append("sem_dados")
+
+    def encerrar(self):
+        self.acoes.append("encerrar")
+
+
+def test_publishing_happens_after_the_serial_port_is_read(tmp_path, monkeypatch):
+    """Publicar antes da leitura serial mandaria a leitura SEM os watts por tomada.
+
+    E os watts por tomada são exatamente o que o Home Assistant não tinha antes
+    desta versão — publicar cedo demais entregaria o de sempre.
+    """
+    class Terminador(BaseException):
+        pass
+
+    ordem: list[str] = []
+
+    def uma_volta(_cfg):
+        if ordem:
+            raise Terminador()
+        return sim_snap("OL CHRG", "80")
+
+    monkeypatch.setattr(service, "poll_once", uma_volta)
+    monkeypatch.setattr(service, "_completa_pela_serial",
+                        lambda *a, **k: ordem.append("serial"))
+
+    class Ponte(PonteEspia):
+        def atualizar(self, _snap, _plugins=()):
+            ordem.append("publicar")
+
+    monkeypatch.setattr(service, "PonteDoNut", Ponte)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = False
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+    assert ordem == ["serial", "publicar"]
+
+
+def test_a_ups_that_goes_quiet_makes_the_published_data_old(tmp_path, monkeypatch):
+    """Sem isto, o Home Assistant mostraria a última carga como se fosse a de agora."""
+    class Terminador(BaseException):
+        pass
+
+    voltas = {"n": 0}
+
+    def cala(_cfg):
+        voltas["n"] += 1
+        if voltas["n"] >= 2:
+            raise Terminador()
+        raise NutError("upsd não respondeu")
+
+    monkeypatch.setattr(service, "poll_once", cala)
+    monkeypatch.setattr(service, "PonteDoNut", PonteEspia)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = False
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+    assert "sem_dados" in PonteEspia.ultima.acoes
+
+
+def test_leaving_takes_the_published_devices_with_it(tmp_path, monkeypatch):
+    """Soquete deixado para trás faz o servidor do no-break servir um fantasma."""
+    class Terminador(BaseException):
+        pass
+
+    monkeypatch.setattr(service, "poll_once", lambda _c: (_ for _ in ()).throw(Terminador()))
+    monkeypatch.setattr(service, "PonteDoNut", PonteEspia)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = False
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+    assert PonteEspia.ultima.acoes[-1] == "encerrar"
+
+
+def test_publishing_can_be_turned_off(tmp_path, monkeypatch):
+    """Quem não quer a ponte no NUT desliga a chave e nada é criado."""
+    class Terminador(BaseException):
+        pass
+
+    criadas = []
+
+    class Ponte(PonteEspia):
+        def __init__(self, **kw):
+            criadas.append(kw)
+            super().__init__(**kw)
+
+    monkeypatch.setattr(service, "poll_once", lambda _c: (_ for _ in ()).throw(Terminador()))
+    monkeypatch.setattr(service, "PonteDoNut", Ponte)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = False
+    cfg.river_nut_publica = False
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+    assert criadas == []

@@ -34,8 +34,15 @@ impressao_nut_real() {
     done
   } | shasum -a 256 | cut -d" " -f1
 }
+# E o diretório onde vivem os SOQUETES dos drivers do NUT. A ponte passou a
+# publicar aparelhos ali (0.7.0); uma cena sem o seam RUB_NUT_STATE deixaria na
+# instalação real de quem roda o portão um aparelho fantasma que o servidor do
+# dono passaria a servir.
+NUT_REAL_STATE="${RUB_NUT_STATE_REAL:-/opt/homebrew/var/state/ups}"
+impressao_nut_state() { ls -1 "$NUT_REAL_STATE" 2>/dev/null | sort | shasum -a 256 | cut -d" " -f1; }
 NUT_REAL_ANTES="$(impressao_nut_real)"
 ESTADO_REAL_ANTES="$(impressao_estado_real)"
+NUT_STATE_ANTES="$(impressao_nut_state)"
 erro() { printf '[ERRO] %s\n' "$1"; FALHAS=$((FALHAS + 1)); }
 
 # S0 — interpretador exigido pela spec (>= 3.13)
@@ -381,11 +388,9 @@ cena_mutacao S4aq src/river_unifi_bridge/nut_supervisor.py \
 # ao atualizar, o pai morre, e os dois processos do NUT ficam órfãos COM O CABO:
 # o serviço seguinte não consegue abrir o aparelho.
 cena_mutacao S4ar src/river_unifi_bridge/service.py \
-    '    finally:
-        if supervisor is not None:
+    '        if supervisor is not None:
             supervisor.encerrar()' \
-    '    finally:
-        if False:
+    '        if False:
             supervisor.encerrar()' \
     tests/unit/test_service_loop.py::test_the_reader_is_taken_along_when_the_service_stops
 
@@ -404,9 +409,9 @@ cena_mutacao S4as src/river_unifi_bridge/api.py \
 # deixar de valer para a saída normal — que é exatamente o defeito de origem.
 cena_mutacao S4at src/river_unifi_bridge/service.py \
     '    finally:
-        if supervisor is not None:' \
+        if ponte is not None:' \
     '    except BaseException:
-        if supervisor is not None:' \
+        if ponte is not None:' \
     tests/unit/test_service_loop.py::test_the_reader_is_taken_along_when_the_api_cannot_start
 
 # S4au — o recuo só zera quando o par SOBREVIVEU a uma volta inteira. Zerando no
@@ -516,6 +521,38 @@ cena_mutacao S4bh src/river_unifi_bridge/ssh_acesso.py \
     'return host if porta == 22 else f"[{host}]:{porta}"' \
     'return host' \
     tests/unit/test_ssh_acesso.py::test_identity_is_checked_on_any_port
+
+# S31 — o vigia não pode virar espelho: apontar a proteção para um aparelho que a
+# PRÓPRIA ponte publica fecharia o laço (ela decidiria desligar um roteador com
+# base em dados que ela mesma escreveu, e um erro de leitura viraria verdade).
+cena_mutacao S31 src/river_unifi_bridge/config.py \
+    "if cfg.river_nut_publica and cfg.nut_ups == cfg.river_nut_aparelho:" \
+    "if False:" \
+    tests/unit/test_nut_servico.py::test_the_protection_may_not_read_a_device_we_publish
+
+# S31b — dispositivo protegido só entra no NUT com alcance PROVADO. Sem a prova,
+# o Home Assistant mostraria uma ordem de desligar que não chega a lugar nenhum.
+cena_mutacao S31b src/river_unifi_bridge/nut_servico.py \
+    "return bool(alcance and alcance())" \
+    "return True" \
+    tests/unit/test_nut_servico.py::test_a_device_without_proven_reach_is_not_published \
+    tests/unit/test_nut_servico.py::test_a_device_that_loses_its_reach_proof_stops_being_published
+
+# S31c — publicar ANTES da leitura serial entregaria ao Home Assistant a leitura
+# sem os watts por tomada, que é justamente o que ele não tinha antes desta versão.
+cena_mutacao S31c src/river_unifi_bridge/service.py \
+    "ponte.atualizar(snap, plugins)" \
+    "pass" \
+    tests/unit/test_service_loop.py::test_publishing_happens_after_the_serial_port_is_read
+
+# S31d — sair sem recolher os aparelhos publicados deixa soquetes para trás, e o
+# servidor do no-break passa a servir um aparelho fantasma que ninguém alimenta.
+cena_mutacao S31d src/river_unifi_bridge/service.py \
+    '        if ponte is not None:
+            ponte.encerrar()' \
+    '        if False:
+            ponte.encerrar()' \
+    tests/unit/test_service_loop.py::test_leaving_takes_the_published_devices_with_it
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
@@ -1239,6 +1276,16 @@ if [ "$(impressao_estado_real)" = "$ESTADO_REAL_ANTES" ]; then
 else
     erro "S23 o gate MEXEU em $ESTADO_REAL — alguma cena está sem RUB_STATE_DIR:"
     ls -1 "$ESTADO_REAL" 2>/dev/null | head -5
+fi
+
+# S24 — e o mesmo para os soquetes dos drivers do NUT. Desde a 0.7.0 a ponte cria
+# aparelhos ali; uma cena sem o seam deixaria um aparelho fantasma na instalação
+# real de quem roda o portão, e o servidor do dono passaria a servi-lo.
+if [ "$(impressao_nut_state)" = "$NUT_STATE_ANTES" ]; then
+    ok "S24 soquetes reais do NUT desta máquina intocados pelo gate"
+else
+    erro "S24 o gate MEXEU em $NUT_REAL_STATE — alguma cena está sem RUB_NUT_STATE:"
+    ls -1 "$NUT_REAL_STATE" 2>/dev/null | head -5
 fi
 
 # S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.

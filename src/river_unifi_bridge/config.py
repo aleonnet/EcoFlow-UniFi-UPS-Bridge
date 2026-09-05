@@ -75,6 +75,11 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     # O serviço cuida do driver e do servidor do NUT como filhos (ver
     # nut_supervisor.py). Desligado, quem cuida é você, por fora.
     "RIVER_NUT_MANAGED": (bool, False, True, None),
+    # A ponte também PUBLICA no NUT: um aparelho com tudo o que ela sabe do River
+    # (watts por tomada inclusive) e um por dispositivo protegido, para o Home
+    # Assistant receber o mesmo que o app mostra. Ver nut_servico.py.
+    "RIVER_NUT_PUBLICA": (bool, False, True, None),
+    "RIVER_NUT_APARELHO": (str, False, "river-bridge", None),
 }
 
 
@@ -94,12 +99,16 @@ KEY_PATH_PATTERN = re.compile(r"/[^\s~]+")
 SERIAL_PATTERN = re.compile(r"[A-Za-z0-9-]{1,64}")
 MAC_PATTERN = re.compile(r"[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}")
 NAME_PATTERN = re.compile(_NAME_PATTERN)
+UPS_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 _PATTERNS: dict[str, re.Pattern[str]] = {
     "UDR7_SSH_HOST": HOST_PATTERN,
     "UDR7_SSH_USER": USER_PATTERN,
     "UDR7_SSH_KEY": KEY_PATH_PATTERN,
     "UDR7_EXPECTED_SERIAL": SERIAL_PATTERN,
     "UDR7_WOL_MAC": MAC_PATTERN,
+    # O nome de um aparelho no NUT vira metade do nome de um arquivo de soquete e
+    # entra inteiro no `ups.conf`: forma fechada, sem espaço nem barra.
+    "RIVER_NUT_APARELHO": UPS_NAME_PATTERN,
     # UDR7_NAME é texto que o usuário escolhe, então a regra é de FORMA, não de
     # conteúdo: 1 a 32 caracteres (o lookahead conta o total — sem ele o {0,30}
     # limitaria só os não-brancos e "aaa…" com 61 passaria), espaço apenas U+0020 e
@@ -165,6 +174,8 @@ class BridgeConfig:
     river_serial_port: str = "auto"
     river_poweroff_allowed: bool = False
     river_nut_managed: bool = True
+    river_nut_publica: bool = True
+    river_nut_aparelho: str = "river-bridge"
     # Diagnostics for the caller (never fatal): "<line>: <message>"
     warnings: list[str] = field(default_factory=list)
 
@@ -233,8 +244,26 @@ def load_config(path: str) -> BridgeConfig:
     for key, (_typ, required, default, _bounds) in _ALLOWLIST.items():
         kwargs[key.lower()] = values.get(key, default)
     cfg = BridgeConfig(**kwargs)  # type: ignore[arg-type]
+    _recusa_o_vigia_espelho(cfg, path)
     cfg.warnings = warnings
     return cfg
+
+
+def _recusa_o_vigia_espelho(cfg: "BridgeConfig", onde: str) -> None:
+    """A proteção não pode ler um aparelho publicado por NÓS.
+
+    A ponte passou a publicar no NUT um aparelho com tudo o que ela sabe do
+    River. Se a política de proteção fosse apontada para ESSE aparelho, ela
+    decidiria desligar um roteador com base em dados que ela mesma escreveu — um
+    laço fechado, em que um erro de leitura vira verdade e se confirma sozinho a
+    cada volta. É recusa de partida, não aviso: um serviço que sobe assim parece
+    saudável e não vigia nada.
+    """
+    if cfg.river_nut_publica and cfg.nut_ups == cfg.river_nut_aparelho:
+        raise ConfigError(
+            f"{onde}: NUT_UPS={cfg.nut_ups} é o aparelho que a própria ponte publica. "
+            "A proteção tem de ler o leitor de fábrica (por exemplo river-office); "
+            "lendo o nosso, ela decidiria com dados que ela mesma escreveu.")
 
 
 # §7A.5 — which changed keys apply live vs. require a service restart.
@@ -248,6 +277,7 @@ HOT_RELOAD_KEYS = frozenset(
         "HISTORY_RETENTION_DAYS",
         "RIVER_SERIAL_ENABLED",
         "RIVER_SERIAL_PORT",
+        "RIVER_NUT_PUBLICA",
         # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
         "PROTECT_UDR7",
         "PROTECT_DRY_RUN",
