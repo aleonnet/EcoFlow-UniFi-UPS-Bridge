@@ -67,14 +67,17 @@ struct DeviceSheetFrame<Content: View>: View {
         // que transbordou: foi essa medida errada que fez a folha vazar antes.
         .frame(width: size.width, height: size.height)
         .interactiveDismissDisabled(hasChanges)
-        .confirmationDialog(L10n.t("Remover \(currentName)?", "Remove \(currentName)?"),
-                            isPresented: $showRemoveDialog, titleVisibility: .visible) {
-            Button(L10n.t("Remover", "Remove"), role: .destructive) { onRemove?() }
-            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: {
-            Text(L10n.t("Os eventos gravados continuam no histórico. A chave e a identidade registrada do aparelho, que você mesmo criou, não são apagadas.",
-                        "Recorded events stay in the history. The key and the device's registered identity, which you created yourself, are not deleted."))
-        }
+        .confirmacao(Binding(
+            get: {
+                guard showRemoveDialog else { return nil }
+                return PedidoDeConfirmacao(
+                    titulo: L10n.t("Remover \(currentName)?", "Remove \(currentName)?"),
+                    detalhe: L10n.t("Os eventos gravados continuam no histórico. A chave e a identidade registrada do aparelho, que você mesmo criou, não são apagadas.",
+                                    "Recorded events stay in the history. The key and the device's registered identity, which you created yourself, are not deleted."),
+                    rotuloDaAcao: L10n.t("Remover", "Remove"), destrutivo: true
+                ) { onRemove?() }
+            },
+            set: { if $0 == nil { showRemoveDialog = false } }))
     }
 
     private var header: some View {

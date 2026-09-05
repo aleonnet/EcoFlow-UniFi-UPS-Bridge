@@ -24,6 +24,11 @@ def cfg(**over):
 
 
 class PluginFalso:
+    event_prefix = "UDR7_"
+
+    def nome_de_evento(self, sufixo):
+        return self.event_prefix + sufixo
+
     def __init__(self, identificador="udr7", *, armado=False, acoes=None, erro=""):
         self.id = identificador
         self.armed = armado

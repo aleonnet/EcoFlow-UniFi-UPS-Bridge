@@ -202,6 +202,9 @@ struct SettingsView: View {
                 // ninguém está vigiando a energia, e nenhum outro ajuste desta
                 // tela tem efeito nenhum.
                 ServicoGroup()
+                // Logo depois do serviço: é a conta que ele criou, e o dono só
+                // precisa dela quando o serviço já está no ar.
+                HomeAssistantGroup()
                 SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
                     HStack(spacing: 10) {
                         Image(systemName: "circle.lefthalf.filled")
@@ -521,25 +524,24 @@ struct SettingsView: View {
         }
         // Os dois atos que mexem na energia dos equipamentos pedem confirmação,
         // no mesmo molde do armamento da proteção.
-        .confirmationDialog(
-            confirmacaoRiver.map { RiverConfirmation(ato: $0).title } ?? "",
-            isPresented: Binding(get: { confirmacaoRiver != nil },
-                                 set: { if !$0 { confirmacaoRiver = nil } }),
-            titleVisibility: .visible, presenting: confirmacaoRiver
-        ) { ato in
-            let confirmacao = RiverConfirmation(ato: ato)
-            Button(confirmacao.confirmLabel, role: .destructive) {
-                Task {
-                    switch ato {
-                    case .liberarCabo: await mudarCabo("liberar")
-                    case .desligarRiver: await desligarRiver()
+        .confirmacao(Binding(
+            get: {
+                confirmacaoRiver.map { ato in
+                    let texto = RiverConfirmation(ato: ato)
+                    return PedidoDeConfirmacao(
+                        titulo: texto.title, detalhe: texto.message,
+                        rotuloDaAcao: texto.confirmLabel, destrutivo: true
+                    ) {
+                        Task {
+                            switch ato {
+                            case .liberarCabo: await mudarCabo("liberar")
+                            case .desligarRiver: await desligarRiver()
+                            }
+                        }
                     }
                 }
-            }
-            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: { ato in
-            Text(RiverConfirmation(ato: ato).message)
-        }
+            },
+            set: { if $0 == nil { confirmacaoRiver = nil } }))
         .onChange(of: store.devices) { applySeamSheet() }
         .sheet(item: $openSheet) { item in
             if let type = item.type, let ui = DevicePluginUIRegistry.plugin(typeID: type.id) {
@@ -555,20 +557,18 @@ struct SettingsView: View {
         }
         // `isPresented` DERIVADO de pendingArm: cancelar ou Esc zera o estado
         // pelo próprio binding, sem sobrar um booleano fantasma ligado.
-        .confirmationDialog(
-            pendingArm.map { ArmConfirmation(name: deviceName($0), mode: .enableWithRehearsalOff).title } ?? "",
-            isPresented: Binding(get: { pendingArm != nil },
-                                 set: { if !$0 { pendingArm = nil } }),
-            titleVisibility: .visible, presenting: pendingArm
-        ) { item in
-            let arming = ArmConfirmation(name: deviceName(item), mode: .enableWithRehearsalOff)
-            Button(arming.confirmLabel, role: .destructive) {
-                Task { await putEnable(item, on: true) }
-            }
-            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: { item in
-            Text(ArmConfirmation(name: deviceName(item), mode: .enableWithRehearsalOff).message)
-        }
+        .confirmacao(Binding(
+            get: {
+                pendingArm.map { item in
+                    let arming = ArmConfirmation(name: deviceName(item),
+                                                 mode: .enableWithRehearsalOff)
+                    return PedidoDeConfirmacao(
+                        titulo: arming.title, detalhe: arming.message,
+                        rotuloDaAcao: arming.confirmLabel, destrutivo: true
+                    ) { Task { await putEnable(item, on: true) } }
+                }
+            },
+            set: { if $0 == nil { pendingArm = nil } }))
         // Auto-save (owner 2026-08-31): every change PUTs after a short
         // debounce — no save button, like System Settings. All keys on this
         // screen are hot-reload; the daemon still validates every value.
@@ -577,24 +577,29 @@ struct SettingsView: View {
         // Clearing follows the owner's ask ("anteriores a uma data"): scoped,
         // destructive, always confirmed; a bare "delete all" needs the
         // explicit Tudo choice. The daemon refuses DELETE without `to`.
-        .confirmationDialog(L10n.t("Limpar eventos gravados?", "Clear stored events?"),
-                            isPresented: $showClearDialog,
-                            titleVisibility: .visible) {
-            Button(L10n.t("Anteriores a 7 dias", "Older than 7 days"), role: .destructive) {
-                Task { await clearEvents(to: Int(Date.now.addingTimeInterval(-7 * 86400).timeIntervalSince1970)) }
-            }
-            Button(L10n.t("Anteriores a 30 dias", "Older than 30 days"), role: .destructive) {
-                Task { await clearEvents(to: Int(Date.now.addingTimeInterval(-30 * 86400).timeIntervalSince1970)) }
-            }
-            Button(L10n.t("Anteriores a uma data…", "Older than a date…")) { showClearDatePick = true }
-            Button(L10n.t("Tudo", "Everything"), role: .destructive) {
-                Task { await clearEvents(to: Int(Date.now.timeIntervalSince1970)) }
-            }
-            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: {
-            Text(L10n.t("Remove eventos do log do serviço. As métricas do gráfico não são afetadas.",
-                        "Removes events from the service log. Chart metrics are not affected."))
-        }
+        .escolha(Binding(
+            get: {
+                guard showClearDialog else { return nil }
+                return EscolhaDeConfirmacao(
+                    titulo: L10n.t("Limpar eventos gravados?", "Clear stored events?"),
+                    detalhe: L10n.t("Remove eventos do log do serviço. As métricas do gráfico não são afetadas.",
+                                    "Removes events from the service log. Chart metrics are not affected."),
+                    saidas: [
+                        .init(rotulo: L10n.t("Anteriores a 7 dias", "Older than 7 days"), destrutivo: true) {
+                            Task { await clearEvents(to: Int(Date.now.addingTimeInterval(-7 * 86400).timeIntervalSince1970)) }
+                        },
+                        .init(rotulo: L10n.t("Anteriores a 30 dias", "Older than 30 days"), destrutivo: true) {
+                            Task { await clearEvents(to: Int(Date.now.addingTimeInterval(-30 * 86400).timeIntervalSince1970)) }
+                        },
+                        .init(rotulo: L10n.t("Anteriores a uma data…", "Older than a date…")) {
+                            showClearDatePick = true
+                        },
+                        .init(rotulo: L10n.t("Tudo", "Everything"), destrutivo: true) {
+                            Task { await clearEvents(to: Int(Date.now.timeIntervalSince1970)) }
+                        },
+                    ])
+            },
+            set: { if $0 == nil { showClearDialog = false } }))
         .sheet(isPresented: $showClearDatePick) {
             VStack(spacing: 14) {
                 Text(L10n.t("Apagar eventos anteriores a…", "Delete events older than…"))

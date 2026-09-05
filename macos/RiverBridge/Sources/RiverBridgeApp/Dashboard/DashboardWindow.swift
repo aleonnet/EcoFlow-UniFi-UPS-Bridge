@@ -193,6 +193,13 @@ struct EnergiaSection: View {
                     if case .serviceDown(let reason) = store.phase {
                         ConnectionBanner(reason: reason)
                     }
+                    // O cabo pode ter ido para o aplicativo da EcoFlow sozinho.
+                    // Sem este aviso, a tela ficava parada e o dono não tinha
+                    // como saber por quê — a troca não tem botão, por decisão
+                    // dele.
+                    if store.health?.cabo?.pausado == true {
+                        CaboEmprestadoBanner(motivo: store.health?.cabo?.motivo)
+                    }
                     FlowScene(store: store)
                     ChartsView(store: store, chips: selectedChips)
                 }
@@ -247,16 +254,28 @@ struct ConnectionBanner: View {
     let reason: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L10n.t("Serviço parado", "Service down")).font(.headline)
-                Text(reason).font(.callout).foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        Aviso(tom: .atencao, texto: L10n.t("Serviço parado", "Service down"),
+              detalhe: reason)
+    }
+}
+
+/// O cabo do River está com o aplicativo da EcoFlow.
+///
+/// Este aviso é a única coisa que o dono vê da troca automática — não há botão,
+/// por decisão dele. Ele fica na tela o TEMPO TODO em que o cabo está fora, e
+/// não só no instante da troca: um aviso que passa não explica por que a tela
+/// está parada cinco minutos depois.
+struct CaboEmprestadoBanner: View {
+    let motivo: String?
+
+    var body: some View {
+        Aviso(
+            tom: .atencao,
+            texto: L10n.t("O cabo do River está com o aplicativo da EcoFlow",
+                          "The River's cable is with the EcoFlow app"),
+            detalhe: motivo ?? L10n.t(
+                "Enquanto ele estiver lá, a energia não está sendo vigiada. Assim que aquele aplicativo fechar, o cabo volta sozinho.",
+                "While it is there, power is not being watched. As soon as that app closes, the cable comes back on its own."),
+            simbolo: "cable.connector.horizontal")
     }
 }

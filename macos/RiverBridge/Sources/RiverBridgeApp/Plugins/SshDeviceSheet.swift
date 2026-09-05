@@ -163,12 +163,15 @@ struct SshDeviceSheet: View {
             }
         }
         .task { await load() }
-        .confirmationDialog(arming.title, isPresented: $showArmDialog, titleVisibility: .visible) {
-            Button(arming.confirmLabel, role: .destructive) { Task { await setDryRun(false) } }
-            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: {
-            Text(arming.message)
-        }
+        .confirmacao(Binding(
+            get: {
+                guard showArmDialog else { return nil }
+                return PedidoDeConfirmacao(
+                    titulo: arming.title, detalhe: arming.message,
+                    rotuloDaAcao: arming.confirmLabel, destrutivo: true
+                ) { Task { await setDryRun(false) } }
+            },
+            set: { if $0 == nil { showArmDialog = false } }))
     }
 
     private var arming: ArmConfirmation {

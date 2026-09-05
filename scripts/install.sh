@@ -401,15 +401,6 @@ nut_ups_do_env() {   # o nome do aparelho é o que o serviço já espera
   sed -n 's/^NUT_UPS=\(.*\)$/\1/p' "$PREFIX/etc/bridge.env" 2>/dev/null | head -1
 }
 
-escreve_se_faltar() {   # 1=caminho 2=modo 3=conteúdo
-  [ -e "$1" ] && return 1
-  man_set "file:$1" pending
-  printf '%s' "$3" > "$1"
-  chmod "$2" "$1"
-  [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$1" || true
-  man_set "file:$1" created
-  return 0
-}
 
 # A conta com que o NOSSO serviço manda no River (mudar o lembrete de bateria
 # baixa, desligar o aparelho). É diferente da conta de leitura: aquela é
@@ -419,75 +410,41 @@ escreve_se_faltar() {   # 1=caminho 2=modo 3=conteúdo
 # conta no `upsd.users` e um arquivo 0600 do diretório de estado, que só o
 # serviço lê. Fora do `.env` de propósito — a rota de configuração devolve o
 # `.env` inteiro para o aplicativo.
-garantir_conta_do_upsd() {   # 1=seção 2=ficha 3=linhas de permissão 4=para que serve
-  local secao="$1" ficha="$2" permissoes="$3" proposito="$4"
-  local arquivo="$NUT_ETC/upsd.users" senha=""
-  # Conta já existente manda: a senha dela é a verdade, e a ficha é reescrita a
-  # partir dela. Gerar outra deixaria os dois lados divergentes, e o serviço
-  # ouviria "acesso negado" sem ninguém entender por quê.
-  if [ -f "$arquivo" ] && grep -q "^\[$secao\]" "$arquivo" 2>/dev/null; then
-    senha="$(awk -v s="[$secao]" '$0==s{d=1;next} /^\[/{d=0}
-                  d && tolower($0) ~ /^[[:space:]]*password[[:space:]]*=/ {
-                    sub(/^[^=]*=[[:space:]]*/, "", $0); gsub(/^"|"$/, "", $0); print; exit }' "$arquivo")"
-    if [ -z "$senha" ]; then
-      # Seção existe e a senha não é legível: acrescentar outra deixaria duas
-      # contas com o mesmo nome e a ficha guardando a que o servidor não usa.
-      nota "conta $secao: a seção existe em $arquivo mas não consegui ler a senha; ajuste-a à mão"
-      return 1
-    fi
-  fi
-  if [ -z "$senha" ]; then
-    senha="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
-    man_set "file:$arquivo#$secao" pending
-    cat >> "$arquivo" <<EOF
-
-# $proposito
-# Senha gerada na instalação; ela também está em $ficha.
-[$secao]
-    password = $senha
-$permissoes
-EOF
-    chmod 0640 "$arquivo"
-    [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$arquivo" || true
-    man_set "file:$arquivo#$secao" created
-  fi
-  # ESTE é o primeiro ponto do instalador que cria o diretório de estado — e ele
-  # roda como root. Criado sem dono, o serviço (que roda como o usuário) não
-  # conseguia escrever nada lá e morria no primeiro ciclo, em máquina nova
-  # (revisão fria da 0.5.0, 2.ª rodada). 0700 porque guarda senha e estado.
-  if [ ! -d "$STATE_DIR" ]; then
-    mkdir -p "$STATE_DIR"
+# A configuração do NUT tem UMA fonte: `src/river_unifi_bridge/nut_bootstrap.py`.
+# Antes eram duas — os textos aqui em `heredoc` e nada do outro lado —, e a
+# consequência apareceu em 2026-09-05: quem instalasse ARRASTANDO o programa não
+# ganhava configuração nenhuma, porque este arquivo não roda nesse caminho. Duas
+# cópias divergem; uma só não tem como.
+#
+# A promessa continua a mesma, e agora ela mora lá: só se escreve o que falta.
+configurar_o_nut() {   # 1=aparelho
+  local ups="$1" py="$PREFIX/venv/bin/python3"
+  [ -x "$py" ] || py="$(command -v python3 2>/dev/null)"
+  [ -n "$py" ] || { nota "sem python para configurar o NUT"; return 1; }
+  local saida
+  saida="$(RUB_NUT_ETC="$NUT_ETC" PYTHONPATH="$PREFIX/src" "$py" \
+            -m river_unifi_bridge.nut_bootstrap "$ups" "$STATE_DIR" "$SERVICE_USER" 2>&1)" \
+    || { nota "não consegui configurar o NUT: $saida"; return 1; }
+  # O que o módulo criou entra no MANIFESTO — é ele que o desinstalador lê, e
+  # sem estas linhas o que a instalação escreveu ficava no disco para sempre
+  # (a cena S10 do portão pega exatamente isso).
+  local item
+  for item in ups.conf upsd.conf nut.conf upsd.users; do
+    case "$saida" in *"\"$item\""*) man_set "file:$NUT_ETC/$item" created ;; esac
+  done
+  case "$saida" in *"conta riverbridge"*)
+    man_set "file:$STATE_DIR/nut-admin.token" created ;; esac
+  case "$saida" in *"conta homeassistant"*)
+    man_set "file:$STATE_DIR/nut-homeassistant.token" created ;; esac
+  # O diretório de estado nasce aqui, e este é o único ponto do instalador que
+  # roda como root antes de o serviço subir: sem dono, o serviço (que roda como
+  # o usuário) não escreveria nada lá e morria no primeiro ciclo.
+  if [ -d "$STATE_DIR" ]; then
     chmod 0700 "$STATE_DIR"
-    [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$STATE_DIR" || true
+    [ "$(id -u)" = "0" ] && chown -R "$SERVICE_USER" "$STATE_DIR" || true
   fi
-  # A ficha é reescrita sempre que divergir: é ela que o serviço (e a tela) leem.
-  if [ ! -f "$ficha" ] || [ "$(cat "$ficha" 2>/dev/null)" != "$senha" ]; then
-    man_set "file:$ficha" pending
-    printf '%s' "$senha" > "$ficha"
-    chmod 0600 "$ficha"
-    [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$ficha" || true
-    man_set "file:$ficha" created
-    return 0
-  fi
-  return 1
-}
-
-garantir_conta_do_aparelho() {
-  garantir_conta_do_upsd riverbridge "$STATE_DIR/nut-admin.token" \
-    "    actions = SET
-    instcmds = ALL" \
-    "Conta com que o SERVIÇO manda no aparelho (lembrete de bateria baixa, desligamento). Não a use noutro programa."
-}
-
-# A conta do Home Assistant. Ela precisa de instcmds porque é o que faz a
-# integração NUT dele oferecer as ordens: medido no código do Home Assistant em
-# 2026-09-05, sem usuário e senha ele nem chega a perguntar quais comandos
-# existem. É diferente da conta do aplicativo da EcoFlow, que é só de leitura, e
-# da nossa, que manda no leitor de fábrica.
-garantir_conta_do_home_assistant() {
-  garantir_conta_do_upsd homeassistant "$STATE_DIR/nut-homeassistant.token" \
-    "    instcmds = ALL" \
-    "Conta do Home Assistant: acompanha o River e pode mandar as ordens que a ponte publica (desligar o River, desligar/reiniciar um dispositivo protegido). Cada ordem passa pelas mesmas travas da tela do aplicativo."
+  case "$saida" in *'"criados": []'*) return 1 ;; esac
+  return 0
 }
 
 instalar_leitura_river() {
@@ -507,32 +464,7 @@ instalar_leitura_river() {
 
   mkdir -p "$NUT_ETC"
   local mudou=0
-  escreve_se_faltar "$NUT_ETC/ups.conf" 0644 "maxretry = 3
-
-[$ups]
-    driver = usbhid-ups
-    port = auto
-    vendorid = 3746
-    productid = ffff
-    ignorelb
-    override.battery.runtime.low = -1
-    pollfreq = 1
-    pollinterval = 2
-    desc = \"EcoFlow RIVER 3 Plus\"
-" && mudou=1
-  escreve_se_faltar "$NUT_ETC/upsd.conf" 0640 "LISTEN 127.0.0.1 3493
-" && mudou=1
-  escreve_se_faltar "$NUT_ETC/nut.conf" 0644 "MODE=standalone
-" && mudou=1
-  escreve_se_faltar "$NUT_ETC/upsd.users" 0640 "# Conta de LEITURA para outros programas desta máquina (o Power Manager da
-# EcoFlow aceita apontar para um servidor NUT: Communication mode -> Remote).
-# 'secondary' de propósito: acompanha e NÃO pode mandar o River desligar.
-[powermanager]
-    password = river-local
-    upsmon secondary
-" && mudou=1
-  garantir_conta_do_aparelho && mudou=1
-  garantir_conta_do_home_assistant && mudou=1
+  configurar_o_nut "$ups" && mudou=1
 
   # Quem sobe, vigia e para o driver e o servidor do NUT é o NOSSO SERVIÇO
   # (src/river_unifi_bridge/nut_supervisor.py), não o launchd. Três motivos

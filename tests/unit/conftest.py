@@ -82,6 +82,23 @@ def _sem_porta_serial(monkeypatch):
         def vigiar(self): self.acoes.append("vigiar")
 
     monkeypatch.setattr(service, "CaboAutomatico", _CaboDeTeste)
+
+    # E ninguém configura o NUT de verdade. O serviço passou a escrever
+    # `ups.conf`, `upsd.conf`, `nut.conf` e `upsd.users` quando eles faltam —
+    # é o que faz a instalação por arrastar funcionar —, e sem esta linha a
+    # suíte escrevia em /opt/homebrew/etc/nut, a configuração REAL de quem a
+    # roda. Aconteceu comigo em 2026-09-05: quatro arquivos criados na máquina
+    # do dono por um `pytest`. Quem testa a escrita é
+    # tests/unit/test_nut_bootstrap.py, com pasta própria.
+    class _SemConfigurarONut:
+        criados: list = []
+
+        @classmethod
+        def garantir_configuracao(cls, **kw):
+            cls.criados.append(kw)
+            return []
+
+    monkeypatch.setattr(service, "nut_bootstrap", _SemConfigurarONut)
     monkeypatch.setattr(service, "_porta_serial_lembrada", None, raising=False)
     monkeypatch.setattr(service, "_ultima_varredura", float("-inf"), raising=False)
     monkeypatch.setattr(service, "_ultima_leitura_serial", None, raising=False)

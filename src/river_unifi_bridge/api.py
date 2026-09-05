@@ -20,7 +20,7 @@ import threading
 
 from aiohttp import web
 
-from . import __version__
+from . import __version__, eventos
 from .config import (
     BridgeConfig,
     ConfigError,
@@ -477,12 +477,12 @@ class ApiServer:
             # aparelho ficou desligável por qualquer programa desta máquina e o
             # dono precisa saber para reiniciar o leitor.
             log_json("ERROR", "killpower_flag_aberta", reason=str(exc)[:200])
-            self.state.add_event("RIVER_KILLPOWER_FLAG_ABERTA", {
+            self.state.add_event(eventos.RIVER_TRAVA_ABERTA, {
                 "detail": "não consegui fechar a trava de desligamento do "
                           "leitor; reinicie o serviço"})
             if self.history is not None:
                 self.history.record_event(
-                    "RIVER_KILLPOWER_FLAG_ABERTA",
+                    eventos.RIVER_TRAVA_ABERTA,
                     "não consegui fechar a trava de desligamento do leitor")
 
         def conversa_com_o_aparelho() -> None:
@@ -500,10 +500,10 @@ class ApiServer:
             return self._refuse(502, "aparelho_recusou", str(exc))
         except OSError as exc:
             return self._refuse(502, "sem_servidor", _sem_servidor_humano(exc))
-        self.state.add_event("RIVER_POWEROFF_SENT", {"detail": "enviado pelo app"})
+        self.state.add_event(eventos.RIVER_DESLIGADO, {"detail": "enviado pelo app"})
         if self.history is not None:
-            self.history.record_event("RIVER_POWEROFF_SENT", "enviado pelo app")
-        log_json("WARN", "RIVER_POWEROFF_SENT", ups=self.cfg.nut_ups)
+            self.history.record_event(eventos.RIVER_DESLIGADO, "enviado pelo app")
+        log_json("WARN", eventos.RIVER_DESLIGADO, ups=self.cfg.nut_ups)
         return web.json_response({"status": "desligamento enviado ao River"})
 
     async def _h_river_aparelho(self, request: web.Request) -> web.Response:

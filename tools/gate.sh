@@ -1538,6 +1538,20 @@ else
     erro "S44 empacotador: $S44_FALHOU"
 fi
 
+# S53 — os elementos comuns da tela têm UMA forma. Diálogo escrito à mão diverge
+# sozinho: um destrutivo ganha confirmação e outro não, um aviso é laranja aqui e
+# amarelo ali, e ninguém percebe porque não há com o que comparar. Medido em
+# 2026-09-05: eram 6 diálogos à mão em 4 arquivos e nenhum componente de aviso.
+S53_FONTES="$RAIZ/macos/RiverBridge/Sources"
+S53_FORA="$(grep -rln 'confirmationDialog(\|\.alert(' "$S53_FONTES" 2>/dev/null \
+            | grep -v 'DesignSystem.swift' \
+            | xargs -I{} sh -c 'grep -q "^[^/]*confirmationDialog(\|^[^/]*\.alert(" "{}" && echo "{}"' 2>/dev/null)"
+if [ -z "$S53_FORA" ] && [ -f "$S53_FONTES/RiverBridgeApp/DesignSystem.swift" ]; then
+    ok "S53 telas: diálogo e aviso só na forma canônica (DesignSystem.swift)"
+else
+    erro "S53 telas: diálogo escrito fora da forma canônica em: $S53_FORA"
+fi
+
 # S15 — o bloco GERADO no instalador é byte a byte o que tools/gera-logo.py produz.
 # Sem isto, uma LG_MASK editada à mão passaria por todas as outras cenas (o quadro
 # final é derivado da própria máscara — ver S14).

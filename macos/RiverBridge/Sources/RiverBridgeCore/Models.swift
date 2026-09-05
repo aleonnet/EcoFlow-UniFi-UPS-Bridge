@@ -83,6 +83,12 @@ public struct HealthChain: Codable, Equatable, Sendable {
     /// `udr7Detail` above stay as an alias of the entry with id "udr7".
     /// Optional: daemons that predate the plugin phase publish nothing here.
     public var plugins: [HealthPlugin]?
+    /// Quem está com o cabo do River. `nil` em serviço que não cuida do leitor.
+    ///
+    /// Está no health porque o cabo passou a ir e voltar SOZINHO (o aplicativo
+    /// da EcoFlow abriu, o serviço larga): sem isto, quem abrisse o programa
+    /// depois da troca via tudo parado, sem nenhuma explicação de por quê.
+    public var cabo: EstadoDoCabo?
     public var ha: String?
     public var lastError: String?
     public var hasSnapshot: Bool?

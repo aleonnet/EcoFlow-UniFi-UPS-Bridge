@@ -180,37 +180,21 @@ struct EventsTimeline: View {
         if let kind = DeviceTypeRegistry.eventKind(event) {
             return kind.long(name: names.name(forEvent: event, device: device, devices: devices))
         }
-        switch event {
-        case "POWER_LOSS": return L10n.t("Queda de energia — na bateria", "Power loss — on battery")
-        case "POWER_RESTORED": return L10n.t("Energia restaurada", "Power restored")
-        case "LOW_BATTERY": return L10n.t("Bateria baixa", "Low battery")
-        case "COMM_LOST": return L10n.t("Comunicação perdida com o RIVER", "Communication with the RIVER lost")
-        case "COMM_RESTORED": return L10n.t("Comunicação restabelecida", "Communication restored")
-        default: return event
-        }
+        if let kind = DeviceTypeRegistry.qualquerEvento(event) { return kind.long() }
+        // Não existe caminho que mostre o nome cru. Um evento que a tela não
+        // conheça é um defeito NOSSO — o vocabulário é fechado e conferido
+        // contra o do serviço (tests/fixtures/eventos.json) —, e o dono lê uma
+        // frase, não `CABO_LARGADO_AUTOMATICO` em maiúsculas com sublinhados.
+        return L10n.t("Evento que este aplicativo ainda não sabe explicar",
+                      "An event this app cannot explain yet")
     }
 
     static func symbol(for event: String) -> String {
-        if let kind = DeviceTypeRegistry.eventKind(event) { return kind.symbol }
-        switch event {
-        case "POWER_LOSS": return "bolt.slash.fill"
-        case "POWER_RESTORED": return "bolt.badge.checkmark.fill"
-        case "LOW_BATTERY": return "battery.25percent"
-        case "COMM_LOST": return "antenna.radiowaves.left.and.right.slash"
-        case "COMM_RESTORED": return "antenna.radiowaves.left.and.right"
-        default: return "circle.fill"
-        }
+        DeviceTypeRegistry.qualquerEvento(event)?.symbol ?? "questionmark.circle"
     }
 
     static func color(for event: String) -> Color {
-        if let kind = DeviceTypeRegistry.eventKind(event) { return kind.tone.color }
-        switch event {
-        case "POWER_LOSS": return .orange
-        case "LOW_BATTERY": return .yellow   // matches the chart legend
-        case "COMM_LOST": return .red
-        case "POWER_RESTORED", "COMM_RESTORED": return .green
-        default: return .secondary
-        }
+        DeviceTypeRegistry.qualquerEvento(event)?.tone.color ?? .secondary
     }
 }
 

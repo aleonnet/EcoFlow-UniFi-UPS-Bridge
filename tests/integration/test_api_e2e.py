@@ -15,6 +15,8 @@ import urllib.request
 
 import pytest
 
+from conftest import ambiente_do_daemon
+
 REPO = pathlib.Path(__file__).parents[2]
 SIMULATOR = REPO / "tools" / "fake-nut-ups"
 
@@ -45,8 +47,7 @@ def stack(tmp_path):
     daemon = subprocess.Popen(
         [sys.executable, "-m", "river_unifi_bridge.service", "--env", str(env_file)],
         cwd=str(REPO),
-        env={"PATH": "/usr/bin:/bin", "RUB_STATE_DIR": str(state_dir),
-             "PYTHONPATH": str(REPO / "src")},
+        env=ambiente_do_daemon(tmp_path, RUB_STATE_DIR=str(state_dir)),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
     # Wait for the API port to open.

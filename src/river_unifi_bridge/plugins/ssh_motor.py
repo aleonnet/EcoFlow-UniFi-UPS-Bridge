@@ -171,6 +171,18 @@ class SshMotorPlugin(DevicePlugin):
             return self.event_prefix + event[len("UDR7_"):]
         return event
 
+    def nome_de_evento(self, sufixo: str) -> str:
+        """O nome de um evento deste TIPO — `UDR7_ORDEM_ENVIADA`, `SSH_HOST_…`.
+
+        Existe porque o nome de evento é **vocabulário fechado**: a tela traduz
+        cada um para uma frase em português, e um nome que ela não conheça
+        aparece cru, em maiúsculas com sublinhados, na linha do tempo do dono.
+        Montar o nome a partir do ID da instância (`f"{id.upper()}_…"`) parecia
+        funcionar e criava um nome novo por dispositivo — impossível de traduzir.
+        O prefixo é do TIPO, e é só isso que a tela precisa conhecer.
+        """
+        return f"{self.event_prefix}{sufixo}"
+
     def _tag(self, actions: list) -> list:
         """Toda ação sai com o dono e com o prefixo de evento do tipo."""
         name = self._holder.get().udr7_name or self.default_name

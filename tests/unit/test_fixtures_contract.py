@@ -132,3 +132,45 @@ def test_the_cable_seal_says_what_it_measured():
 
     st.record_failure("sem resposta do NUT")
     assert st.health()["usb"] == "falha"
+
+
+# -- o vocabulário de eventos (2026-09-05) ------------------------------------
+
+def test_o_arquivo_de_eventos_e_o_que_o_codigo_declara():
+    """A MESMA lista é lida pelo Swift, que prova ter frase para cada nome.
+
+    Sem este arquivo no meio, o serviço inventava um evento, a tela não o
+    conhecia, e ele aparecia CRU na linha do tempo do dono — em maiúsculas com
+    sublinhados. Aconteceu com oito dos quinze nomes (medido em 2026-09-05).
+    """
+    from river_unifi_bridge import eventos
+
+    fixture = load("eventos")
+    assert fixture["do_servico"] == list(eventos.DO_SERVICO)
+    assert fixture["de_dispositivo"] == list(eventos.DE_DISPOSITIVO)
+    assert fixture["por_tipo"] == eventos.por_tipo()
+    assert fixture["todos"] == eventos.todos()
+
+
+def test_todo_evento_do_servico_esta_no_vocabulario():
+    """Nenhum nome de evento escrito à mão fora da lista.
+
+    Esta é a cerca de verdade: ela varre o código-fonte atrás de qualquer nome
+    de evento em maiúsculas que chegue à linha do tempo, e reprova o que não
+    estiver no vocabulário — que é o que a tela sabe traduzir.
+    """
+    import re
+
+    from river_unifi_bridge import eventos
+
+    raiz = pathlib.Path(__file__).parents[2] / "src" / "river_unifi_bridge"
+    conhecidos = set(eventos.DO_SERVICO) | {
+        f"UDR7_{s}" for s in eventos.DE_DISPOSITIVO}
+    padrao = re.compile(r'(?:add_event|record_event|_registrar|_avisar)\(\s*"([A-Z][A-Z0-9_]+)"')
+    achados: dict[str, str] = {}
+    for arquivo in sorted(raiz.rglob("*.py")):
+        for nome in padrao.findall(arquivo.read_text(encoding="utf-8")):
+            achados.setdefault(nome, arquivo.name)
+    forasteiros = {n: onde for n, onde in achados.items() if n not in conhecidos}
+    assert not forasteiros, (
+        f"evento fora do vocabulário (apareceria CRU na tela): {forasteiros}")

@@ -92,6 +92,78 @@ public struct DeviceEventKind: Equatable, Sendable {
     public func long(name: String) -> String {
         "\(name) — \(L10n.t(longPT, longEN))"
     }
+
+    /// Timeline row de um evento que NÃO é de dispositivo: sem nome de aparelho
+    /// na frente, porque o dono do evento é o próprio serviço.
+    public func long() -> String { L10n.t(longPT, longEN) }
+}
+
+// MARK: - O vocabulário de eventos do SERVIÇO
+
+extension DeviceEventKind {
+    /// Os eventos que o serviço emite por conta própria — energia, o River como
+    /// aparelho, o cabo indo e voltando.
+    ///
+    /// Esta lista existe porque a tela **não pode** ter um caminho que mostre o
+    /// nome cru. Antes dela, `EventsTimeline` tinha um `switch` que terminava em
+    /// "devolve o nome" — e oito dos quinze eventos do serviço apareciam assim,
+    /// em maiúsculas com sublinhados, na linha do tempo (medido em 2026-09-05).
+    ///
+    /// A lista é conferida contra `tests/fixtures/eventos.json`, que o serviço
+    /// gera do vocabulário dele: nome novo lá sem frase aqui reprova o teste.
+    public static let doServico: [DeviceEventKind] = [
+        DeviceEventKind(type: "POWER_LOSS", symbol: "bolt.slash.fill",
+                        tone: .warning, shortPT: "queda", shortEN: "loss",
+                        longPT: "Queda de energia — na bateria",
+                        longEN: "Power loss — on battery"),
+        DeviceEventKind(type: "POWER_RESTORED", symbol: "bolt.badge.checkmark.fill",
+                        tone: .family, shortPT: "voltou", shortEN: "restored",
+                        longPT: "Energia restaurada", longEN: "Power restored"),
+        DeviceEventKind(type: "LOW_BATTERY", symbol: "battery.25percent",
+                        tone: .warning, shortPT: "bateria baixa", shortEN: "low battery",
+                        longPT: "Bateria baixa", longEN: "Low battery"),
+        DeviceEventKind(type: "COMM_LOST", symbol: "antenna.radiowaves.left.and.right.slash",
+                        tone: .danger, shortPT: "sem sinal", shortEN: "no signal",
+                        longPT: "Comunicação perdida com o RIVER",
+                        longEN: "Communication with the RIVER lost"),
+        DeviceEventKind(type: "COMM_RESTORED", symbol: "antenna.radiowaves.left.and.right",
+                        tone: .family, shortPT: "sinal de volta", shortEN: "signal back",
+                        longPT: "Comunicação restabelecida", longEN: "Communication restored"),
+        // O River como aparelho
+        DeviceEventKind(type: "RIVER_DESLIGANDO", symbol: "power.circle.fill",
+                        tone: .danger, shortPT: "desligando", shortEN: "powering off",
+                        longPT: "Desligando o River — ordem recebida",
+                        longEN: "Powering the River off — order received"),
+        DeviceEventKind(type: "RIVER_POWEROFF_SENT", symbol: "power.circle.fill",
+                        tone: .danger, shortPT: "desligado", shortEN: "powered off",
+                        longPT: "Ordem de desligar o River enviada",
+                        longEN: "River power-off order sent"),
+        DeviceEventKind(type: "RIVER_DESLIGAR_FALHOU", symbol: "exclamationmark.triangle.fill",
+                        tone: .danger, shortPT: "falhou", shortEN: "failed",
+                        longPT: "Não consegui desligar o River",
+                        longEN: "Could not power the River off"),
+        DeviceEventKind(type: "RIVER_DESLIGAR_RECUSADO", symbol: "hand.raised.fill",
+                        tone: .warning, shortPT: "recusado", shortEN: "refused",
+                        longPT: "Desligar o River foi recusado por uma trava",
+                        longEN: "Powering the River off was refused by a lock"),
+        DeviceEventKind(type: "RIVER_KILLPOWER_FLAG_ABERTA", symbol: "lock.open.trianglebadge.exclamationmark.fill",
+                        tone: .danger, shortPT: "trava aberta", shortEN: "lock open",
+                        longPT: "A trava de desligamento do leitor ficou aberta — reinicie o serviço",
+                        longEN: "The reader's power-off lock stayed open — restart the service"),
+        // O cabo indo e voltando sozinho
+        DeviceEventKind(type: "CABO_LARGADO_AUTOMATICO", symbol: "cable.connector.horizontal",
+                        tone: .toggle, shortPT: "cabo emprestado", shortEN: "cable lent",
+                        longPT: "Cabo passado para o aplicativo da EcoFlow",
+                        longEN: "Cable handed over to the EcoFlow app"),
+        DeviceEventKind(type: "CABO_RETOMADO_AUTOMATICO", symbol: "cable.connector",
+                        tone: .family, shortPT: "cabo de volta", shortEN: "cable back",
+                        longPT: "Cabo de volta com o serviço",
+                        longEN: "Cable back with the service"),
+        DeviceEventKind(type: "CABO_MANTIDO_PROTECAO_ARMADA", symbol: "shield.lefthalf.filled",
+                        tone: .warning, shortPT: "cabo mantido", shortEN: "cable kept",
+                        longPT: "Cabo mantido: há proteção armada",
+                        longEN: "Cable kept: a protection is armed"),
+    ]
 }
 
 // MARK: - The SSH engine's event vocabulary
@@ -127,6 +199,20 @@ extension DeviceEventKind {
             DeviceEventKind(type: "UDR7_WOL_SENT", symbol: "wake",
                             tone: .wake, shortPT: "WoL", shortEN: "WoL",
                             longPT: "pacote de religamento enviado", longEN: "wake packet sent"),
+            // As ordens que o DONO dá à mão — pela tela ou pelo Home Assistant
+            // (0.7.0). São diferentes do que a proteção faz sozinha numa queda:
+            // aqui alguém apertou agora.
+            DeviceEventKind(type: "UDR7_ORDEM_ENVIADA", symbol: "hand.tap.fill",
+                            tone: .danger, shortPT: "ordem", shortEN: "order",
+                            longPT: "ordem enviada à mão", longEN: "order sent by hand"),
+            DeviceEventKind(type: "UDR7_ORDEM_FALHOU", symbol: "exclamationmark.triangle.fill",
+                            tone: .danger, shortPT: "ordem falhou", shortEN: "order failed",
+                            longPT: "a ordem dada à mão não chegou",
+                            longEN: "the order sent by hand did not arrive"),
+            DeviceEventKind(type: "UDR7_ORDEM_RECUSADA", symbol: "hand.raised.fill",
+                            tone: .warning, shortPT: "ordem recusada", shortEN: "order refused",
+                            longPT: "ordem recusada por uma trava do serviço",
+                            longEN: "order refused by a service lock"),
             DeviceEventKind(type: "UDR7_WOL_DRYRUN", symbol: "wake",
                             tone: .wake, shortPT: "WoL ensaio", shortEN: "WoL rehearsal",
                             longPT: "ensaio: religaria agora", longEN: "rehearsal: would wake now"),
@@ -291,6 +377,14 @@ public enum DeviceTypeRegistry {
             if let kind = descriptor.events.first(where: { $0.type == type }) { return kind }
         }
         return nil
+    }
+
+    /// O evento, seja ele de dispositivo ou do próprio serviço.
+    ///
+    /// Um só ponto de entrada de propósito: com dois, a tela consultava um e
+    /// caía no "devolve o nome cru" para os do outro.
+    public static func qualquerEvento(_ type: String) -> DeviceEventKind? {
+        eventKind(type) ?? DeviceEventKind.doServico.first { $0.type == type }
     }
 
     public static var allEventTypes: [String] {

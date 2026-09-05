@@ -42,10 +42,7 @@ struct ServicoGroup: View {
                 Spacer(minLength: 8)
             }
             if let recado {
-                Text(recado)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
+                Aviso(tom: .atencao, texto: recado)
             }
             SettingsRows.divider
             HStack(spacing: 10) {
@@ -69,15 +66,15 @@ struct ServicoGroup: View {
             }
         }
         .task { conferir() }
-        .onChange(of: perguntandoSeRemove) { _, _ in }
-        .confirmationDialog(remocao.pergunta, isPresented: $perguntandoSeRemove,
-                            titleVisibility: .visible) {
-            Button(L10n.t("Remover completamente", "Remove completely"),
-                   role: .destructive, action: remover)
-            Button(L10n.t("Cancelar", "Cancel"), role: .cancel) {}
-        } message: {
-            Text(remocao.aviso)
-        }
+        .confirmacao(Binding(
+            get: {
+                guard perguntandoSeRemove else { return nil }
+                return PedidoDeConfirmacao(
+                    titulo: remocao.pergunta, detalhe: remocao.aviso,
+                    rotuloDaAcao: L10n.t("Remover completamente", "Remove completely"),
+                    destrutivo: true, acao: remover)
+            },
+            set: { if $0 == nil { perguntandoSeRemove = false } }))
     }
 
     private var remocao: RemocaoCompleta {

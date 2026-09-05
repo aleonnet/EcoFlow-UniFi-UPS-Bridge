@@ -29,6 +29,8 @@ import urllib.request
 
 import pytest
 
+from conftest import ambiente_do_daemon
+
 REPO = pathlib.Path(__file__).parents[2]
 SIMULATOR = REPO / "tools" / "fake-nut-ups"
 REAL_SERIAL = "R3P-TEST"
@@ -163,9 +165,8 @@ def start_daemon(tmp_path, env_text, api_port, stub, stub_log):
     daemon = subprocess.Popen(
         [sys.executable, "-m", "river_unifi_bridge.service", "--env", str(env_file)],
         cwd=str(REPO),
-        env={"PATH": "/usr/bin:/bin", "RUB_STATE_DIR": str(state_dir),
-             "PYTHONPATH": str(REPO / "src"), "RUB_SSH_BINARY": str(stub),
-             "RUB_STUB_LOG": str(stub_log)},
+        env=ambiente_do_daemon(tmp_path, RUB_STATE_DIR=str(state_dir),
+                               RUB_SSH_BINARY=str(stub), RUB_STUB_LOG=str(stub_log)),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
     deadline = time.time() + 10

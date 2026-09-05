@@ -81,8 +81,8 @@ private let tres = [
     #expect(DeviceTypeRegistry.type(forEventType: "SSH_HOST_SHUTDOWN_SENT")?.id == "ssh_host")
     #expect(DeviceTypeRegistry.type(forEventType: "POWER_LOSS") == nil)
     #expect(DeviceTypeRegistry.eventKind("SSH_HOST_ARMED")?.tone == .toggle)
-    #expect(DeviceTypeDescriptor.sshHost.events.count == 8)          // sem WoL
-    #expect(DeviceTypeDescriptor.udr7.events.count == 10)
+    #expect(DeviceTypeDescriptor.sshHost.events.count == 11)          // sem WoL
+    #expect(DeviceTypeDescriptor.udr7.events.count == 13)
     let types = DeviceTypeRegistry.allEventTypes
     #expect(Set(types).count == types.count)
 }

@@ -65,6 +65,7 @@ class SharedState:
         self._comm_ok = False
         self._last_error: str | None = None
         self._plugins: list[dict] = []         # última leitura de plugin_statuses()
+        self._cabo: dict | None = None         # quem está com o cabo do River
         # Erro de SOFTWARE no ciclo (um plugin que levantou), separado do erro do
         # UPS: confundir os dois faria a tela dizer "NUT com falha" quando o NUT
         # está bem e quem quebrou fomos nós.
@@ -132,6 +133,17 @@ class SharedState:
         with self._lock:
             return [e for e in self._events if e["seq"] > after]
 
+    def set_cabo(self, estado: dict | None) -> None:
+        """Quem está com o cabo do River, para a TELA saber sem perguntar.
+
+        O cabo agora vai e volta sozinho (o aplicativo da EcoFlow abriu, o
+        serviço larga). Sem isto no health, a única pista era uma linha na lista
+        de eventos — e quem abrisse o programa depois da troca via tudo parado,
+        sem nenhuma explicação de por quê.
+        """
+        with self._lock:
+            self._cabo = dict(estado) if estado else None
+
     def health(self) -> dict:
         """Chain view (§7A.3): honest 'não observável' for links we can't see yet."""
         with self._lock:
@@ -141,6 +153,7 @@ class SharedState:
             last_error = self._last_error
             last_tick_error = self._last_tick_error
             plugins = [dict(p) for p in self._plugins]
+            cabo = dict(self._cabo) if self._cabo else None
         # O alias udr7/udr7_detail continua sendo a entrada deste id. É PERMANENTE
         # enquanto o instalador o ler com sed (river-bridge-install.sh): a regex
         # casa `"udr7": "..."` no topo e não casaria `"id": "udr7"` dentro da lista.
@@ -163,6 +176,9 @@ class SharedState:
             "udr7_detail": protection,
             # Todo dispositivo protegido, do registro do daemon.
             "plugins": plugins,
+            # Quem está com o cabo: `None` enquanto ninguém informou (o serviço o
+            # publica a cada volta do laço).
+            "cabo": cabo,
             "ha": "nao_observavel",
             "last_error": last_error,
             "last_tick_error": last_tick_error,

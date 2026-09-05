@@ -23,6 +23,7 @@ from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
 from . import river_serial
+from . import nut_bootstrap
 from .cabo_automatico import CaboAutomatico
 from .nut_supervisor import NutSupervisor
 from .nut_comandos import (
@@ -397,6 +398,20 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
     # root. Ver nut_supervisor.py para as três medições que levaram a isto.
     supervisor = None
     if not once and cfg.river_nut_managed:
+        # A configuração do NUT, escrita uma vez por quem chegar primeiro. Pelo
+        # caminho novo — arrastar o programa para Aplicativos — o instalador de
+        # linha de comando NUNCA roda, e sem isto o serviço subia, tentava abrir
+        # o leitor do no-break e não conseguia: não havia `ups.conf` dizendo qual
+        # é o aparelho nem conta nenhuma no `upsd.users` (medido em 2026-09-05).
+        # Só escreve o que falta: quem configurou à mão continua com o dele.
+        try:
+            criados = nut_bootstrap.garantir_configuracao(
+                etc=os.environ.get("RUB_NUT_ETC") or ETC_DO_NUT,
+                aparelho=cfg.nut_ups, state_dir=state_dir(), log=_log)
+            if criados:
+                _log("INFO", "nut_configurado", criados=criados)
+        except OSError as exc:              # sem permissão: o serviço segue e diz
+            _log("WARN", "nut_nao_configurado", reason=str(exc)[:200])
         supervisor = NutSupervisor(cfg.nut_ups, log=_log)
         supervisor.iniciar()
     # A ponte também PUBLICA no NUT (ver nut_servico.py); ela nasce lá dentro do
@@ -529,6 +544,11 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 cabo.vigiar()
             if supervisor is not None:
                 supervisor.vigiar()
+                # Quem está com o cabo vai para a tela. Sem isto, a troca
+                # automática só existia como linha na lista de eventos, e quem
+                # abrisse o programa depois dela via tudo parado sem explicação.
+                if shared is not None:
+                    shared.set_cabo(supervisor.estado().to_dict())
             if history is not None and clock() - last_prune >= PRUNE_INTERVAL_SECONDS:
                 last_prune = clock()
                 history.retention_days = cfg.history_retention_days

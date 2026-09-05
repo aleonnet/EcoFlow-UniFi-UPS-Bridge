@@ -42,7 +42,23 @@ de prazo). Ele não fica parado esperando driver nenhum.
 
 from __future__ import annotations
 
+from . import eventos
 from .nut_driver import CMD_DESCONHECIDO, CMD_FALHOU, CMD_FEITO, CMD_INVALIDO
+
+def _evento(plugin, sufixo: str) -> str:
+    """O nome do evento deste dispositivo, com o prefixo do TIPO dele.
+
+    Nome de evento é vocabulário FECHADO: a tela traduz cada um para uma frase
+    em português, e o que ela não conhece aparece cru na linha do tempo do dono.
+    A primeira versão disto montava o nome a partir do id da instância
+    (`f"{id.upper()}_ORDEM_ENVIADA"`), o que criava um nome novo por dispositivo
+    — impossível de traduzir, e por isso impossível de mostrar.
+    """
+    nomear = getattr(plugin, "nome_de_evento", None)
+    if nomear is not None:
+        return nomear(sufixo)
+    return f"{getattr(plugin, 'type_id', 'DEVICE').upper()}_{sufixo}"
+
 
 # Os dois nomes da lista fechada do Home Assistant que sabemos honrar.
 DESLIGAR = "load.off"
@@ -109,15 +125,16 @@ class ExecutorDeComandos:
             return CMD_DESCONHECIDO
         recusa = self._por_que_nao_desligar_o_river()
         if recusa is not None:
-            self._recusou("RIVER_DESLIGAR_RECUSADO", comando, recusa)
+            self._recusou(eventos.RIVER_DESLIGAR_RECUSADO, comando, recusa)
             return CMD_INVALIDO
         self._log("WARN", "nut_river_desligando", origem="NUT")
-        self._registrar("RIVER_DESLIGANDO", "ordem recebida pelo NUT (Home Assistant)")
+        self._registrar(eventos.RIVER_DESLIGANDO,
+                        "ordem recebida pelo NUT (Home Assistant)")
         try:
             self._desligar_river()
         except Exception as exc:
             self._log("ERROR", "nut_river_desligar_falhou", reason=str(exc)[:200])
-            self._registrar("RIVER_DESLIGAR_FALHOU", str(exc)[:200])
+            self._registrar(eventos.RIVER_DESLIGAR_FALHOU, str(exc)[:200])
             return CMD_FALHOU
         return CMD_FEITO
 
@@ -147,7 +164,7 @@ class ExecutorDeComandos:
         Não é só registro: o dono precisa saber para reiniciar o serviço.
         """
         self._log("ERROR", "killpower_flag_aberta", reason=str(exc)[:200])
-        self._registrar("RIVER_KILLPOWER_FLAG_ABERTA",
+        self._registrar(eventos.RIVER_TRAVA_ABERTA,
                         "não consegui fechar a trava de desligamento do leitor; "
                         "reinicie o serviço")
 
@@ -161,7 +178,7 @@ class ExecutorDeComandos:
             # A trava é conferida de novo AQUI, e não só no que se anuncia: quem
             # fala com o soquete não é obrigado a perguntar o que existe antes de
             # mandar. Anunciar de menos é cortesia; recusar é a cerca.
-            self._recusou(f"{aparelho.upper()}_ORDEM_RECUSADA", comando,
+            self._recusou(_evento(plugin, "ORDEM_RECUSADA"), comando,
                           "mandar neste dispositivo à mão está bloqueado no arquivo "
                           "do serviço; abra a trava e reinicie para poder usar esta ordem")
             return CMD_INVALIDO
@@ -175,9 +192,9 @@ class ExecutorDeComandos:
         if motivo:
             self._log("ERROR", "nut_dispositivo_ordem_falhou", aparelho=aparelho,
                       acao=acao, reason=motivo)
-            self._registrar(f"{aparelho.upper()}_ORDEM_FALHOU", f"{acao}: {motivo}")
+            self._registrar(_evento(plugin, "ORDEM_FALHOU"), f"{acao}: {motivo}")
             return CMD_FALHOU
-        self._registrar(f"{aparelho.upper()}_ORDEM_ENVIADA",
+        self._registrar(_evento(plugin, "ORDEM_ENVIADA"),
                         f"{acao} — ordem recebida pelo NUT (Home Assistant)")
         return CMD_FEITO
 

@@ -48,6 +48,10 @@ _SYNTHETIC_DRIVERS = ("fake-nut-ups", "dummy-ups", "dummy", "clone", "clone-outl
 _SYNTHETIC_SUBSTRINGS = ("fake", "sim", "dummy")
 
 # Events (persisted in history, shown in the timeline)
+# O motor fala no prefixo do UDR7; cada tipo publica com o SEU (ssh_motor.
+# `_event_name`). Os sufixos são o vocabulário fechado de `eventos.py`, e o teste
+# `test_todo_evento_do_servico_esta_no_vocabulario` reprova quem inventar um novo
+# sem pôr a frase em português na tela.
 EV_DRYRUN = "UDR7_SHUTDOWN_DRYRUN"
 EV_SENT = "UDR7_SHUTDOWN_SENT"
 EV_FAILED = "UDR7_SHUTDOWN_FAILED"

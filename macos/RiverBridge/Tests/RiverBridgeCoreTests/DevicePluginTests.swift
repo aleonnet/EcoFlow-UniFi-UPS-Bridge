@@ -92,8 +92,8 @@ private func decode(_ json: String) throws -> HealthChain {
         #expect(DeviceTypeRegistry.type(forEventType: kind.type)?.id == "udr7_ssh")
         #expect(DeviceTypeRegistry.eventKind(kind.type)?.type == kind.type)
     }
-    #expect(DeviceTypeDescriptor.udr7.events.count == 10)
-    #expect(DeviceEventKind.sshEngine.count == 10)
+    #expect(DeviceTypeDescriptor.udr7.events.count == 13)
+    #expect(DeviceEventKind.sshEngine.count == 13)
 }
 
 @Test func registryNeverAttributesCoreEventsToADevice() {

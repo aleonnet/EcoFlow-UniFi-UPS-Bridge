@@ -420,14 +420,11 @@ struct ChartsView: View {
                 ?? store.deviceNames.name(forEvent: type, device: device, devices: store.devices)
             return kind.short(name: dono)
         }
-        return switch type {
-        case "POWER_LOSS": L10n.t("Queda", "Loss")
-        case "POWER_RESTORED": L10n.t("Restaurada", "Restored")
-        case "LOW_BATTERY": L10n.t("Bateria baixa", "Low battery")
-        case "COMM_LOST": L10n.t("Sem comunicação", "Comm lost")
-        case "COMM_RESTORED": L10n.t("Comunicação de volta", "Comm back")
-        default: type
-        }
+        // Um só vocabulário, o mesmo da linha do tempo: sem isto, cada tela
+        // tinha a sua lista e a que faltasse mostrava o nome cru na legenda.
+        return DeviceTypeRegistry.qualquerEvento(type)?.short(name: "")
+            .trimmingCharacters(in: .whitespaces)
+            ?? L10n.t("Outro", "Other")
     }
 
     // Events over time (owner 2026-08-31): stacked histogram — color = type,
@@ -464,15 +461,7 @@ struct ChartsView: View {
     /// Protection events share one family (purple, with red/orange for the
     /// outcomes that matter) instead of falling into the teal default.
     private func legendColor(_ type: String) -> Color {
-        if let kind = DeviceTypeRegistry.eventKind(type) { return kind.tone.color }
-        return switch type {
-        case "POWER_LOSS": .orange
-        case "POWER_RESTORED": .green
-        case "LOW_BATTERY": .yellow
-        case "COMM_LOST": .red
-        case "COMM_RESTORED": .teal
-        default: .purple
-        }
+        DeviceTypeRegistry.qualquerEvento(type)?.tone.color ?? .purple
     }
 
     /// One-line legend (the automatic one wrapped — owner's print): dots +
