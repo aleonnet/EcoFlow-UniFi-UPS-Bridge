@@ -207,3 +207,43 @@ enum SettingsRows {
         }
     }
 }
+
+/// Uma explicação que funciona no toque, não só no ponteiro.
+///
+/// `.help` do macOS só aparece ao passar o mouse — num iPhone ele não existe. O
+/// ⓘ ao lado da linha abre a mesma frase num balão, com clique OU toque, que é o
+/// padrão da Apple para isto. (Pedido do dono, 2026-09-04: "como ver a tooltip
+/// sem ponteiro".)
+struct Dica: View {
+    let texto: String
+    @State private var aberta = false
+
+    var body: some View {
+        Button { aberta = true } label: {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(texto)                       // no Mac, o ponteiro continua servindo
+        .popover(isPresented: $aberta, arrowEdge: .bottom) {
+            Text(texto)
+                .font(.callout)
+                .padding(12)
+                .frame(maxWidth: 320)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityLabel(L10n.t("O que é isto", "What this is"))
+    }
+}
+
+extension View {
+    /// A linha com o ⓘ à direita. Substitui o `.help` solto, que some no toque.
+    func comDica(_ texto: String) -> some View {
+        HStack(spacing: 6) {
+            self
+            Dica(texto: texto)
+        }
+        .help(texto)
+    }
+}

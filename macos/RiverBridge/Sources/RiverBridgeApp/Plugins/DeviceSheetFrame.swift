@@ -150,6 +150,10 @@ struct ArmingRow: View {
     let dryRun: Bool
     let enabled: Bool
     let armAllowed: Bool
+    /// Falso quando o serviço ainda não provou que alcança o aparelho. É outra
+    /// coisa que a trava: misturar os dois fazia a tela dizer "a trava está
+    /// fechada" com a trava aberta (revisão fria da 0.6.0).
+    var alcanceProvado: Bool = true
     var estreito: Bool = false
     let onTurnOffRehearsal: () -> Void
     let onTurnOnRehearsal: () -> Void
@@ -190,13 +194,16 @@ struct ArmingRow: View {
                         : L10n.t("ARMADA — desliga o aparelho de verdade", "ARMED — really shuts the device down"))
                 .font(.system(.body, design: .rounded))
                 .fixedSize(horizontal: false, vertical: true)
-            Text(armAllowed
+            Text(!alcanceProvado
+                 ? L10n.t("Falta provar que o serviço alcança este aparelho: use Conectar ou Testar conexão, logo abaixo.",
+                          "The service still has to prove it reaches this device: use Connect or Test connection, just below.")
+                 : armAllowed
                  ? L10n.t("A trava de armamento está aberta. Feche-a no arquivo do serviço depois de armar (veja o guia).",
                           "The arming lock is open. Close it in the service file after arming (see the guide).")
                  : L10n.t("A trava de armamento está fechada. Para armar, abra-a no arquivo do serviço e reinicie (veja o guia).",
                           "The arming lock is closed. To arm, open it in the service file and restart (see the guide)."))
                 .font(.caption)
-                .foregroundStyle(armAllowed ? Color.orange : Color.secondary)
+                .foregroundStyle(armAllowed && alcanceProvado ? Color.orange : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -207,12 +214,12 @@ struct ArmingRow: View {
             Button(role: .destructive) { onTurnOffRehearsal() } label: {
                 Text(L10n.t("Desligar modo ensaio…", "Turn rehearsal off…"))
                     .fixedSize()
-                    .foregroundStyle(armAllowed && enabled ? Color.red : Color.secondary)
+                    .foregroundStyle(armAllowed && enabled && alcanceProvado ? Color.red : Color.secondary)
                     .frame(minHeight: 28)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .disabled(!armAllowed || !enabled)
+            .disabled(!armAllowed || !enabled || !alcanceProvado)
         } else {
             Button(L10n.t("Ligar modo ensaio", "Turn rehearsal on")) { onTurnOnRehearsal() }
                 .buttonStyle(.glass)

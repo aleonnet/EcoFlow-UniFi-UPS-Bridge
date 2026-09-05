@@ -1185,6 +1185,7 @@ class _AcessoFalso:
 
     class AcessoError(Exception): ...
     class IdentidadeDivergente(AcessoError): ...
+    class SenhaRecusada(AcessoError): ...
 
     def __init__(self):
         self.senhas: list[str] = []
@@ -1203,7 +1204,7 @@ class _AcessoFalso:
     def identidade_do_host(self, host, porta=22):
         return ([f"{host} ssh-ed25519 AAAACONSOLE"], "SHA256:impressaoDoConsole")
 
-    def gravar_identidade(self, caminho, host, linhas, substituir=False):
+    def gravar_identidade(self, caminho, host, linhas, porta=22, substituir=False):
         with open(caminho, "w") as fh:
             fh.write("\n".join(linhas) + "\n")
 
@@ -1297,3 +1298,20 @@ async def test_forgetting_the_access_removes_key_identity_and_proof(unlocked, ac
     assert status == 200
     assert not _os.path.exists(plugin.chave_path)
     assert not _os.path.exists(_os.path.join(srv.state_dir, "udr7_acesso.json"))
+
+
+async def test_touching_the_console_access_is_refused_while_armed(unlocked, acesso):
+    """Trocar a chave ou apagar a identidade com a proteção armada é desarmá-la
+    sem dizer — a tela continuaria mostrando "armada"."""
+    srv, c = unlocked
+    srv.state.update_snapshot(REAL)
+    await _put(c, {"UDR7_SSH_HOST": "192.168.1.1"})
+    status, _ = await _put(c, {"PROTECT_UDR7": "1", "PROTECT_DRY_RUN": "0"})
+    assert status == 200 and _os.path.exists(srv.armed_path)
+
+    for acao in ("preparar", "instalar", "esquecer"):
+        status, body = await _acesso(c, acao, {"senha": "x"})
+        assert status == 409 and body["motivo"] == "armado", acao
+    # testar continua valendo: é leitura, e é o que confirma que o armamento vale
+    status, _ = await _acesso(c, "testar")
+    assert status == 200

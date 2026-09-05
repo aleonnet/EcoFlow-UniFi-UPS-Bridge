@@ -35,6 +35,7 @@ import os
 import pty
 import re
 import select
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -46,10 +47,25 @@ TEMPO_LIMITE_CURTO = 10.0
 # Tipo de chave: ed25519 é curta, rápida e aceita por qualquer OpenSSH moderno.
 TIPO_DE_CHAVE = "ed25519"
 COMENTARIO = "river-bridge"
+# Caminho absoluto, como no resto do projeto (`protect.SSH_BINARY`) e como o
+# instalador exige em letras maiúsculas: este é justamente o trecho que carrega a
+# senha do console — confiar no PATH de quem chamou seria o pior lugar para isso.
+SSH = "/usr/bin/ssh"
+SSH_KEYGEN = "/usr/bin/ssh-keygen"
+SSH_KEYSCAN = "/usr/bin/ssh-keyscan"
 
 
 class AcessoError(Exception):
     """Falha ao preparar o acesso, já em português."""
+
+
+class SenhaRecusada(AcessoError):
+    """O console recusou a senha — e só isso.
+
+    Classe própria porque a tela dá conselhos diferentes: trocar a senha não
+    resolve console inalcançável, e mandar o dono trocar a senha por causa de um
+    endereço errado foi o que a classificação por texto produzia (revisão fria).
+    """
 
 
 class IdentidadeDivergente(AcessoError):
@@ -82,7 +98,7 @@ def _rodar(argv: list[str], *, tempo: float = TEMPO_LIMITE_CURTO,
 def _impressao_de(texto: str, *, rodar=None) -> str:
     """A impressão digital de uma chave pública, como o OpenSSH a mostra."""
     executor = rodar or _rodar
-    saida = executor(["ssh-keygen", "-l", "-f", "-"], entrada=texto.encode())
+    saida = executor([SSH_KEYGEN, "-l", "-f", "-"], entrada=texto.encode())
     if saida.returncode != 0:
         raise AcessoError("não consegui calcular a impressão digital da chave")
     partes = saida.stdout.decode("utf-8", "replace").split()
@@ -97,12 +113,20 @@ def garantir_chave(caminho: str, *, rodar=_rodar) -> Chave:
     console, e o acesso morreria em silêncio.
     """
     publica = f"{caminho}.pub"
-    if not os.path.exists(caminho) or not os.path.exists(publica):
+    if os.path.exists(caminho) and not os.path.exists(publica):
+        # A privada existe e só a pública sumiu: a pública se DERIVA dela. Apagar
+        # as duas e gerar outra tiraria o acesso que já está instalado no console
+        # — e a prova de alcance continuaria valendo por 30 dias, mentindo.
+        saida = rodar([SSH_KEYGEN, "-y", "-f", caminho])
+        if saida.returncode != 0:
+            raise AcessoError("a chave de acesso ao console está ilegível")
+        with open(publica, "w", encoding="utf-8") as fh:
+            fh.write(saida.stdout.decode("utf-8", "replace").strip() + f" {COMENTARIO}\n")
+    if not os.path.exists(caminho):
         os.makedirs(os.path.dirname(caminho) or ".", exist_ok=True)
-        for sobra in (caminho, publica):        # meia chave é pior que nenhuma
-            if os.path.exists(sobra):
-                os.remove(sobra)
-        saida = rodar(["ssh-keygen", "-q", "-t", TIPO_DE_CHAVE, "-N", "",
+        if os.path.exists(publica):             # meia chave é pior que nenhuma
+            os.remove(publica)
+        saida = rodar([SSH_KEYGEN, "-q", "-t", TIPO_DE_CHAVE, "-N", "",
                        "-C", COMENTARIO, "-f", caminho])
         if saida.returncode != 0:
             raise AcessoError("não consegui criar a chave de acesso ao console")
@@ -115,18 +139,22 @@ def garantir_chave(caminho: str, *, rodar=_rodar) -> Chave:
 def identidade_do_host(host: str, porta: int = 22, *, rodar=_rodar) -> tuple[list[str], str]:
     """As linhas de identidade do console e a impressão digital para conferência.
 
-    Sem `--` antes do endereço, e a razão é medida, não estética: o
-    `ssh-keyscan` NÃO o trata como fim de opções — com ele, a varredura devolve
-    apenas a chave RSA e some com as demais (medido no Mac mini em 2026-09-04,
-    contra o console real: com `--`, uma linha; sem, três). Gravar só a RSA fazia
-    o `ssh` recusar a conexão com "No ED25519 host key is known".
+    **Todas** as linhas que a varredura devolver são gravadas, e isso importa: o
+    `ssh` escolhe o tipo de chave na negociação, e um arquivo com só uma delas o
+    faz recusar a conexão com "No ED25519 host key is known" — foi o que
+    aconteceu no console do dono em 2026-09-04.
 
-    A proteção que o `--` daria vem explícita: endereço que comece com `-` é
-    recusado aqui, antes de virar argumento.
+    A varredura é feita em paralelo por tipo, com tempo limite: ela PODE voltar
+    incompleta (medido: a mesma máquina devolveu 1 linha numa rodada e 3 noutra).
+    Incompleta não é silêncio — o passo seguinte falha na cara, com o que o `ssh`
+    respondeu na mensagem.
+
+    Endereço que comece com `-` é recusado aqui, antes de virar argumento (é o que
+    o `--` daria, e assim não depende de como cada versão do `ssh-keyscan` o trata).
     """
     if host.startswith("-"):
         raise AcessoError("endereço de console inválido")
-    saida = rodar(["ssh-keyscan", "-T", "5", "-p", str(porta), host],
+    saida = rodar([SSH_KEYSCAN, "-T", "5", "-p", str(porta), host],
                   tempo=TEMPO_LIMITE_CURTO)
     linhas = [l for l in saida.stdout.decode("utf-8", "replace").splitlines()
               if l and not l.startswith("#")]
@@ -137,14 +165,25 @@ def identidade_do_host(host: str, porta: int = 22, *, rodar=_rodar) -> tuple[lis
     return linhas, _impressao_de(preferida.split(" ", 1)[1], rodar=rodar)
 
 
+def marcador(host: str, porta: int = 22) -> str:
+    """Como o OpenSSH nomeia o host no arquivo de identidades.
+
+    Porta diferente de 22 vira `[host]:porta` — a mesma forma que `protect.py`
+    já usa ao conferir. Comparar com o endereço puro fazia a recusa de identidade
+    divergente **não existir** em porta não padrão (revisão fria da 0.6.0).
+    """
+    return host if porta == 22 else f"[{host}]:{porta}"
+
+
 def gravar_identidade(caminho: str, host: str, linhas: list[str], *,
-                      substituir: bool = False) -> None:
+                      porta: int = 22, substituir: bool = False) -> None:
     """Grava a identidade do console. Divergência é recusa, não substituição."""
     existentes: list[str] = []
     if os.path.exists(caminho):
         with open(caminho, encoding="utf-8") as fh:
             existentes = [l.strip() for l in fh if l.strip()]
-    do_host = [l for l in existentes if l.split(" ", 1)[0].split(",")[0] == host]
+    alvo = marcador(host, porta)
+    do_host = [l for l in existentes if l.split(" ", 1)[0].split(",")[0] == alvo]
     novas = [l.strip() for l in linhas]
     if do_host and sorted(do_host) != sorted(novas) and not substituir:
         raise IdentidadeDivergente(
@@ -152,10 +191,35 @@ def gravar_identidade(caminho: str, host: str, linhas: list[str], *,
             "que foi registrada aqui. Isso acontece quando o aparelho é trocado "
             "ou reinstalado — e também quando alguém se coloca no meio do "
             "caminho. Confira a impressão digital antes de aceitar.")
-    outros = [l for l in existentes if l.split(" ", 1)[0].split(",")[0] != host]
-    with open(caminho, "w", encoding="utf-8") as fh:
+    outros = [l for l in existentes if l.split(" ", 1)[0].split(",")[0] != alvo]
+    # Troca ATÔMICA: um desligamento em curso não pode ler este arquivo pela
+    # metade — leitura vazia aqui vira conexão recusada.
+    temporario = f"{caminho}.novo"
+    with open(temporario, "w", encoding="utf-8") as fh:
         fh.write("\n".join(outros + novas) + "\n")
-    os.chmod(caminho, 0o600)
+    os.chmod(temporario, 0o600)
+    os.replace(temporario, caminho)
+
+
+def _colher(pid: int, limite: float) -> int | None:
+    """Espera o filho terminar até o limite; passado ele, mata e colhe.
+
+    Sem colher, o processo vira zumbi preso ao serviço; sem matar, um `ssh`
+    travado ficaria vivo para sempre segurando o terminal.
+    """
+    while time.monotonic() < limite:
+        pego, estado = os.waitpid(pid, os.WNOHANG)
+        if pego == pid:
+            return estado
+        time.sleep(0.05)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    try:
+        return os.waitpid(pid, 0)[1]
+    except OSError:                          # pragma: no cover — já colhido
+        return None
 
 
 def _resumo(bruto: bytes, limite: int = 300) -> str:
@@ -192,7 +256,7 @@ def instalar_chave_com_senha(host: str, porta: int, usuario: str, senha: str,
         "chmod 600 ~/.ssh/authorized_keys"
     )
     argv = [
-        "ssh", "-T", "-F", "/dev/null",
+        SSH, "-T", "-F", "/dev/null",
         "-o", "BatchMode=no",
         "-o", "PubkeyAuthentication=no",    # é a senha que estamos usando agora
         "-o", "PreferredAuthentications=password,keyboard-interactive",
@@ -227,12 +291,20 @@ def instalar_chave_com_senha(host: str, porta: int, usuario: str, senha: str,
                     mandou_senha = True
                     visto = b""             # não guardamos o eco da senha
             if _RECUSOU.search(visto):
-                raise AcessoError("o console recusou a senha")
-        _, estado = os.waitpid(pid, os.WNOHANG)
+                raise SenhaRecusada("o console recusou a senha")
+        estado = _colher(pid, limite)
     finally:
         os.close(fd)
     if _RECUSOU.search(visto):
-        raise AcessoError("o console recusou a senha")
+        raise SenhaRecusada("o console recusou a senha")
+    if estado is None:
+        raise AcessoError("o console não terminou a conversa a tempo")
+    if os.WIFEXITED(estado) and os.WEXITSTATUS(estado) != 0:
+        # Sem isto, um `ssh` que sai com erro DEPOIS da senha (uma segunda
+        # pergunta, um comando remoto que falhou) era relatado como sucesso, e só
+        # o teste de alcance seguinte denunciava (revisão fria da 0.6.0).
+        raise AcessoError("o console não aceitou a instalação da chave: "
+                          + (_resumo(visto) or "sem resposta"))
     if not mandou_senha:
         # A resposta do console ENTRA na mensagem: sem ela, "não pediu senha" é
         # um beco sem saída para quem está na frente da tela (e para quem está

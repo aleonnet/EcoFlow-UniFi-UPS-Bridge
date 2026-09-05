@@ -47,6 +47,7 @@ struct SshDeviceSheet: View {
     @State private var senhaDoConsole = ""
     @State private var alcance: AcessoTestado?
     @State private var ocupadoNoAcesso = false
+    @State private var identidadeDivergente = false
 
     private var type: DeviceTypeDescriptor { variant == .udr7 ? .udr7 : .sshHost }
     private var instance: DeviceInstance? { mode.instance }
@@ -103,16 +104,10 @@ struct SshDeviceSheet: View {
             }
             if !mode.isNew {
                 SettingsRows.group(L10n.t("Armamento", "Arming")) {
-                    ArmingRow(dryRun: dryRun, enabled: enabled,
-                              armAllowed: armAllowed && alcanceProvado, estreito: estreito,
+                    ArmingRow(dryRun: dryRun, enabled: enabled, armAllowed: armAllowed,
+                              alcanceProvado: alcanceProvado, estreito: estreito,
                               onTurnOffRehearsal: { showArmDialog = true },
                               onTurnOnRehearsal: { Task { await setDryRun(true) } })
-                    if !alcanceProvado {
-                        Text(L10n.t("Para armar, prove primeiro que o serviço alcança este aparelho: use Conectar ou Testar conexão, logo abaixo.",
-                                    "To arm, first prove the service reaches this device: use Connect or Test connection, just below."))
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
             }
             SettingsRows.group(variant == .udr7 ? L10n.t("Console e chave", "Console and key")
@@ -218,17 +213,53 @@ struct SshDeviceSheet: View {
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .textSelection(.enabled)
             }
-            SecureField(L10n.t("Senha do console (usada uma vez)", "Console password (used once)"),
-                        text: $senhaDoConsole)
-                .textFieldStyle(.roundedBorder)
-            HStack(spacing: 8) {
-                Button(L10n.t("Conectar…", "Connect…")) { Task { await conectarAoConsole() } }
+            // Dois passos, nesta ordem, de propósito: a identidade do aparelho
+            // aparece ANTES de a senha ir para ele. Mandar a senha para um
+            // console visto pela primeira vez e conferir depois seria conferir
+            // tarde (revisão fria da 0.6.0).
+            if acesso == nil {
+                HStack(spacing: 8) {
+                    Button(L10n.t("Conferir o aparelho…", "Check the device…")) {
+                        Task { await prepararAcesso(aceitandoIdentidade: false) }
+                    }
                     .buttonStyle(.glassProminent).tint(accent)
-                    .disabled(senhaDoConsole.isEmpty || sshHost.isEmpty || ocupadoNoAcesso)
-                Button(L10n.t("Testar conexão", "Test connection")) { Task { await testarAcesso() } }
                     .disabled(sshHost.isEmpty || ocupadoNoAcesso)
-                Spacer()
-                if ocupadoNoAcesso { ProgressView().controlSize(.small) }
+                    Button(L10n.t("Testar conexão", "Test connection")) { Task { await testarAcesso() } }
+                        .disabled(sshHost.isEmpty || ocupadoNoAcesso)
+                    Spacer()
+                    if ocupadoNoAcesso { ProgressView().controlSize(.small) }
+                }
+            } else {
+                SecureField(L10n.t("Senha do console (usada uma vez)", "Console password (used once)"),
+                            text: $senhaDoConsole)
+                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 8) {
+                    Button(L10n.t("Instalar a chave", "Install the key")) {
+                        Task { await instalarChave() }
+                    }
+                    .buttonStyle(.glassProminent).tint(accent)
+                    .disabled(senhaDoConsole.isEmpty || ocupadoNoAcesso)
+                    Button(L10n.t("Testar conexão", "Test connection")) { Task { await testarAcesso() } }
+                        .disabled(ocupadoNoAcesso)
+                    Spacer()
+                    if ocupadoNoAcesso { ProgressView().controlSize(.small) }
+                }
+            }
+            if identidadeDivergente {
+                // Só aparece quando o aparelho se apresentou diferente: aceitar
+                // é ato consciente, com a impressão digital à vista.
+                Button(L10n.t("Aceitar a identidade nova…", "Accept the new identity…")) {
+                    Task { await prepararAcesso(aceitandoIdentidade: true) }
+                }
+                .buttonStyle(.glass).tint(.orange)
+                .disabled(ocupadoNoAcesso)
+            }
+            if acesso != nil || alcance != nil {
+                Button(L10n.t("Esquecer este acesso", "Forget this access")) {
+                    Task { await esquecerAcesso() }
+                }
+                .buttonStyle(.borderless).foregroundStyle(.secondary).font(.caption)
+                .disabled(ocupadoNoAcesso)
             }
             Text(L10n.t("Para desligar este aparelho usamos SSH. Habilitar SSH em equipamentos Ubiquiti pode anular a garantia, segundo os termos do próprio fabricante.",
                         "We use SSH to shut this device down. Enabling SSH on Ubiquiti equipment may void the warranty, per the manufacturer's own terms."))
@@ -237,15 +268,46 @@ struct SshDeviceSheet: View {
         }
     }
 
-    private func conectarAoConsole() async {
+    private func prepararAcesso(aceitandoIdentidade: Bool) async {
         guard let endpoint = ApiEndpoint.discover(), let id = instance?.id else { return }
         ocupadoNoAcesso = true
         defer { ocupadoNoAcesso = false }
-        let cliente = APIClient(endpoint: endpoint)
         do {
-            acesso = try await cliente.acessoPreparar(id: id)
-            alcance = try await cliente.acessoInstalar(id: id, senha: senhaDoConsole)
+            acesso = try await APIClient(endpoint: endpoint)
+                .acessoPreparar(id: id, aceitarIdentidade: aceitandoIdentidade)
+            identidadeDivergente = false
+            feedback = nil
+        } catch let APIError.badStatus(_, body) {
+            identidadeDivergente = ProtectionRefusal.motivo(body) == "identidade_divergente"
+            feedback = ProtectionRefusal.text(body)
+        } catch {
+            feedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
+
+    private func instalarChave() async {
+        guard let endpoint = ApiEndpoint.discover(), let id = instance?.id else { return }
+        ocupadoNoAcesso = true
+        defer { ocupadoNoAcesso = false }
+        do {
+            alcance = try await APIClient(endpoint: endpoint)
+                .acessoInstalar(id: id, senha: senhaDoConsole)
             senhaDoConsole = ""              // usada uma vez, e some da tela
+            feedback = nil
+        } catch let APIError.badStatus(_, body) {
+            feedback = ProtectionRefusal.text(body)
+        } catch {
+            feedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
+        }
+    }
+
+    private func esquecerAcesso() async {
+        guard let endpoint = ApiEndpoint.discover(), let id = instance?.id else { return }
+        ocupadoNoAcesso = true
+        defer { ocupadoNoAcesso = false }
+        do {
+            try await APIClient(endpoint: endpoint).acessoEsquecer(id: id)
+            acesso = nil; alcance = nil; identidadeDivergente = false
             feedback = nil
         } catch let APIError.badStatus(_, body) {
             feedback = ProtectionRefusal.text(body)

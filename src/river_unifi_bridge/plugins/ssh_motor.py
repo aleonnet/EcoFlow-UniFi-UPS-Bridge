@@ -24,6 +24,17 @@ from ..protect import (
     _read_private_json, _write_private_json,
 )
 
+def _com_chave_gerida(pc: ProtectionConfig, chave_path: str) -> ProtectionConfig:
+    """A chave que o SERVIÇO criou manda sobre o campo digitado.
+
+    Ela é a que a tela instalou no console; o campo continua valendo para quem
+    trouxer a própria chave, e para quem não usa o fluxo da tela.
+    """
+    if chave_path and os.path.exists(chave_path):
+        return replace(pc, udr7_ssh_key=chave_path)
+    return pc
+
+
 # Por quanto tempo uma prova de alcance vale. Endereço muda, chave é revogada,
 # console é trocado: prova velha não diz nada sobre hoje.
 ALCANCE_VALIDADE_SEGUNDOS = 30 * 86400
@@ -93,12 +104,10 @@ class SshMotorPlugin(DevicePlugin):
     @classmethod
     def build(cls, instance, cfg, state_dir: str) -> "SshMotorPlugin":
         command = cls.shutdown_command_for(instance)
-        pc = ProtectionConfig.from_instance(instance, cfg, shutdown_command=command)
-        # A chave que o SERVIÇO criou manda: ela é o que a tela instalou no
-        # console. O campo digitado continua valendo para quem trouxer a própria.
         acesso = cls.caminhos_do_acesso(instance.id, state_dir)
-        if os.path.exists(acesso["chave"]):
-            pc = replace(pc, udr7_ssh_key=acesso["chave"])
+        pc = _com_chave_gerida(
+            ProtectionConfig.from_instance(instance, cfg, shutdown_command=command),
+            acesso["chave"])
         holder = ConfigHolder(pc)
         caminhos = cls.state_paths(instance.id, state_dir)
         policy = ProtectionPolicy(
@@ -142,8 +151,17 @@ class SshMotorPlugin(DevicePlugin):
         a política só é avisada quando algo mudou — é ela que grava/apaga o
         `<id>_armed.json` e emite ARMED/DISARMED.
         """
-        new = ProtectionConfig.from_instance(
-            self.instance, self._cfg, shutdown_command=self.shutdown_command_for(self.instance))
+        # A chave gerida entra AQUI também, e não só no boot. Sem isto, o
+        # primeiro salvamento (ou qualquer mudança do núcleo) remontava a
+        # configuração a partir dos campos digitados — onde o caminho da chave
+        # está vazio, porque no fluxo novo o dono não digita caminho nenhum. A
+        # proteção armava e ficava em "configuração incompleta": na queda de
+        # energia, nada seria enviado (revisão fria da 0.6.0, medido).
+        new = _com_chave_gerida(
+            ProtectionConfig.from_instance(
+                self.instance, self._cfg,
+                shutdown_command=self.shutdown_command_for(self.instance)),
+            self.chave_path)
         old = self._holder.get()
         self._holder.replace(new)
         if new == old:

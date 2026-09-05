@@ -174,6 +174,8 @@ class ApiServer:
         # fixtures que não os exercitam — o espelho legado então não grava a loja.
         self.store = store
         self.state_dir = state_dir
+        # Uma trava por dispositivo para as rotas de acesso ao console.
+        self._travas_de_acesso: dict[str, asyncio.Lock] = {}
         self.token = token if token is not None else get_or_create_token()
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -276,10 +278,21 @@ class ApiServer:
         acao = request.match_info["acao"]
         if acao not in ("preparar", "instalar", "testar", "esquecer"):
             return self._refuse(404, "dispositivo_ausente", "ação desconhecida")
+        # Trocar a chave ou apagar a identidade com a proteção ARMADA deixaria o
+        # dispositivo armado e sem como falar com o aparelho — e a tela
+        # continuaria dizendo "armada". Testar continua permitido: é leitura, e é
+        # justamente o que confirma que o armamento ainda vale.
+        if acao != "testar" and plugin.armed:
+            return self._refuse(409, "armado",
+                                "esta proteção está armada: ligue o modo ensaio antes de "
+                                "mexer no acesso ao console")
         pc = plugin._holder.get()
         if acao != "esquecer" and not pc.udr7_ssh_host:
             return self._refuse(400, "validacao",
                                 "preencha o endereço do console antes de preparar o acesso")
+        # Uma de cada vez POR DISPOSITIVO: duas preparações simultâneas viam a
+        # chave faltando e rodavam `ssh-keygen` no mesmo caminho.
+        trava = self._travas_de_acesso.setdefault(plugin.id, asyncio.Lock())
         corpo: dict = {}
         if request.can_read_body:
             try:
@@ -287,33 +300,38 @@ class ApiServer:
             except Exception:
                 return self._refuse(400, "validacao", "corpo não é JSON")
         try:
-            if acao == "preparar":
-                return web.json_response(await asyncio.to_thread(
-                    self._acesso_preparar, plugin, pc, sa,
-                    bool(corpo.get("aceitar_identidade"))))
-            if acao == "instalar":
-                senha = corpo.get("senha")
-                if not isinstance(senha, str) or not senha:
-                    return self._refuse(400, "validacao", "informe a senha do console")
-                return web.json_response(await asyncio.to_thread(
-                    self._acesso_instalar, plugin, pc, sa, senha))
-            if acao == "testar":
-                return web.json_response(await asyncio.to_thread(
-                    self._acesso_testar, plugin, pc, sa))
-            await asyncio.to_thread(plugin.esquecer_acesso)
-            return web.json_response({"esquecido": True})
+          async with trava:
+              if acao == "preparar":
+                  return web.json_response(await asyncio.to_thread(
+                      self._acesso_preparar, plugin, pc, sa,
+                      bool(corpo.get("aceitar_identidade"))))
+              if acao == "instalar":
+                  senha = corpo.get("senha")
+                  if not isinstance(senha, str) or not senha:
+                      return self._refuse(400, "validacao", "informe a senha do console")
+                  return web.json_response(await asyncio.to_thread(
+                      self._acesso_instalar, plugin, pc, sa, senha))
+              if acao == "testar":
+                  return web.json_response(await asyncio.to_thread(
+                      self._acesso_testar, plugin, pc, sa))
+              await asyncio.to_thread(plugin.esquecer_acesso)
+              return web.json_response({"esquecido": True})
         except sa.IdentidadeDivergente as exc:
             return self._refuse(409, "identidade_divergente", str(exc))
+        except sa.SenhaRecusada as exc:
+            return self._refuse(502, "senha_recusada", str(exc))
         except sa.AcessoError as exc:
-            motivo = "senha_recusada" if "senha" in str(exc) else "acesso_falhou"
-            return self._refuse(502, motivo, str(exc))
+            # Classificar por TEXTO mandava o dono trocar a senha do console por
+            # causa de um endereço errado: "o console não pediu senha" contém a
+            # palavra "senha" (revisão fria da 0.6.0).
+            return self._refuse(502, "acesso_falhou", str(exc))
 
     # -- os quatro passos, fora do laço de eventos ---------------------------
     def _acesso_preparar(self, plugin, pc, sa, aceitar_identidade: bool) -> dict:
         chave = sa.garantir_chave(plugin.chave_path)
         linhas, impressao = sa.identidade_do_host(pc.udr7_ssh_host, pc.udr7_ssh_port)
         sa.gravar_identidade(plugin.known_hosts_path, pc.udr7_ssh_host, linhas,
-                             substituir=aceitar_identidade)
+                             porta=pc.udr7_ssh_port, substituir=aceitar_identidade)
         return {"chave_publica": chave.publica, "impressao_da_chave": chave.impressao,
                 "impressao_do_console": impressao}
 
@@ -321,8 +339,9 @@ class ApiServer:
         chave = sa.garantir_chave(plugin.chave_path)
         sa.instalar_chave_com_senha(pc.udr7_ssh_host, pc.udr7_ssh_port, pc.udr7_ssh_user,
                                     senha, chave.publica, plugin.known_hosts_path)
+        resultado = self._acesso_testar(plugin, pc, sa)
         del senha                       # daqui para a frente ela não existe mais
-        return self._acesso_testar(plugin, pc, sa)
+        return resultado
 
     def _acesso_testar(self, plugin, pc, sa) -> dict:
         from .protect import ssh_argv
@@ -849,7 +868,12 @@ class ApiServer:
             self.store.save([i for i in self._instances() if i.id != plugin.id])
         self.plugins.remove(plugin.id)
         if self.state_dir is not None:
-            for suffix in ("_armed.json", "_runtime.json"):
+            # A chave e a prova de alcance saem junto: elas foram criadas por
+            # NÓS para este dispositivo, e deixá-las no disco é deixar uma chave
+            # privada órfã que ninguém sabe que existe. O `known_hosts` continua
+            # ficando (pode ter sido semeado à mão).
+            for suffix in ("_armed.json", "_runtime.json",
+                           "_key", "_key.pub", "_acesso.json"):
                 caminho = os.path.join(self.state_dir, f"{plugin.id}{suffix}")
                 try:
                     os.unlink(caminho)

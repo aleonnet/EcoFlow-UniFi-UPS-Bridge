@@ -1,5 +1,5 @@
 ---
-status: aceito
+status: superado por 2026-09-05-1100-runbook-acesso-ao-console-e-haos.md
 ---
 
 # Runbook — Proteção do UDR7 como instância (0.3.0) — 2026-09-03

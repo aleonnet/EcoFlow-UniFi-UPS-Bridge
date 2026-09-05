@@ -455,11 +455,12 @@ cena_mutacao S4az src/river_unifi_bridge/plugins/ssh_motor.py \
     'return True' \
     tests/unit/test_api.py::test_a_stale_proof_of_reach_does_not_arm
 
-# S4ba — o `--` no `ssh-keyscan` NÃO é fim de opções: com ele, só a chave RSA é
-# gravada e o `ssh` recusa a conexão com "No ED25519 host key is known".
+# S4ba — TODAS as identidades que o console oferece são gravadas. Guardar só a
+# primeira faz o `ssh` recusar a conexão com "No ED25519 host key is known" (foi
+# o que aconteceu no console do dono, com um arquivo que só tinha a RSA).
 cena_mutacao S4ba src/river_unifi_bridge/ssh_acesso.py \
-    '"ssh-keyscan", "-T", "5", "-p", str(porta), host' \
-    '"ssh-keyscan", "-T", "5", "-p", str(porta), "--", host' \
+    'linhas = [l for l in saida.stdout.decode("utf-8", "replace").splitlines()' \
+    'linhas = [l for l in saida.stdout.decode("utf-8", "replace").splitlines()[:2]' \
     tests/unit/test_ssh_acesso.py::test_the_scan_keeps_every_key_type_the_console_offers
 
 # S4bb — o valor de UserKnownHostsFile vai ENTRE ASPAS: o `ssh` o divide por
@@ -482,9 +483,39 @@ cena_mutacao S4bc src/river_unifi_bridge/api.py \
 # S4bd — a senha do console é de passagem: usada uma vez e descartada. O mutante
 # a devolve na resposta da rota, que é o vazamento mais fácil de cometer.
 cena_mutacao S4bd src/river_unifi_bridge/api.py \
-    '        return self._acesso_testar(plugin, pc, sa)' \
-    '        return {**self._acesso_testar(plugin, pc, sa), "senha": senha}' \
+    '        resultado = self._acesso_testar(plugin, pc, sa)' \
+    '        resultado = {**self._acesso_testar(plugin, pc, sa), "senha": senha}' \
     tests/unit/test_api.py::test_the_console_password_is_used_once_and_never_stored
+
+# S4be — o selo do cabo tem de MEDIR. Até a 0.5.1 era uma constante: dizia "não
+# observável" acontecesse o que acontecesse, inclusive com o simulador no ar.
+cena_mutacao S4be src/river_unifi_bridge/state.py \
+    'usb = _selo_do_cabo(snapshot, comm_ok, last_error)' \
+    'usb = "nao_observavel"' \
+    tests/unit/test_fixtures_contract.py::test_the_cable_seal_says_what_it_measured
+
+# S4bf — a chave que o serviço instalou tem de sobreviver a um salvamento. Sem
+# isto a proteção armava e ficava em "configuração incompleta": na queda de
+# energia, nada seria enviado.
+cena_mutacao S4bf src/river_unifi_bridge/plugins/ssh_motor.py \
+    'new = _com_chave_gerida(' \
+    'new = (lambda pc, _c: pc)(' \
+    tests/unit/test_plugin_contract.py::test_the_installed_key_survives_saving_and_arming
+
+# S4bg — mexer no acesso ao console com a proteção ARMADA deixaria o dispositivo
+# armado e sem como falar com o aparelho, e a tela continuaria dizendo "armada".
+cena_mutacao S4bg src/river_unifi_bridge/api.py \
+    'if acao != "testar" and plugin.armed:' \
+    'if False:' \
+    tests/unit/test_api.py::test_touching_the_console_access_is_refused_while_armed
+
+# S4bh — a recusa de identidade divergente vale em QUALQUER porta: o OpenSSH
+# marca `[host]:porta` fora da 22, e comparar com o endereço puro fazia a cerca
+# não existir ali.
+cena_mutacao S4bh src/river_unifi_bridge/ssh_acesso.py \
+    'return host if porta == 22 else f"[{host}]:{porta}"' \
+    'return host' \
+    tests/unit/test_ssh_acesso.py::test_identity_is_checked_on_any_port
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1

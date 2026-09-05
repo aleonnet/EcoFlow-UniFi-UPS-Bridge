@@ -37,6 +37,7 @@ STATE_DIR="${RUB_STATE_DIR:-$USER_HOME/Library/Application Support/river-unifi-b
 avisar_estado_daemon() {
   local item achou=0
   for item in "$STATE_DIR"/*_armed.json "$STATE_DIR"/*_runtime.json "$STATE_DIR"/*_known_hosts \
+              "$STATE_DIR"/*_key "$STATE_DIR"/*_key.pub "$STATE_DIR"/*_acesso.json \
               "$STATE_DIR/devices.json" "$STATE_DIR/ui-api.token" "$STATE_DIR/history.sqlite" \
               "$USER_HOME"/.ssh/river-bridge-*; do
     [ -e "$item" ] || continue

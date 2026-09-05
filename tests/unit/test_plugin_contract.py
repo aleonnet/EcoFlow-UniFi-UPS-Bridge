@@ -7,6 +7,8 @@ pass for a contract shaped exactly like the UDR7.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from fake_plugin import FakePlugin
@@ -389,3 +391,32 @@ def test_type_catalog_lists_every_type_with_its_fields():
     # série esperada e corte NÃO são campos de instância de tipo nenhum (D16)
     for t in catalog:
         assert not {"expected_serial", "cutoff_percent"} & {f["name"] for f in t["fields"]}
+
+
+def test_the_installed_key_survives_saving_and_arming(tmp_path, cfg):
+    """A chave que o serviço instalou tem de continuar valendo depois de salvar.
+
+    Defeito medido pela revisão fria da 0.6.0: a chave gerida entrava só na
+    partida. Qualquer salvamento (ou mudança do núcleo) remontava a configuração
+    a partir dos campos digitados — onde o caminho está vazio, porque no fluxo da
+    tela o dono não digita caminho nenhum. A proteção armava e ficava em
+    "configuração incompleta": numa queda de energia, nada seria enviado.
+    """
+    from river_unifi_bridge.plugins import Udr7SshPlugin
+    from river_unifi_bridge.plugins.udr7_ssh import legacy_instance
+
+    estado = tmp_path / "state"
+    estado.mkdir()
+    instancia = legacy_instance(cfg)
+    chave = estado / f"{instancia.id}_key"
+    chave.write_text("PRIVADA")
+    chave.chmod(0o600)
+
+    plugin = Udr7SshPlugin.build(instancia, cfg, str(estado))
+    assert plugin._holder.get().udr7_ssh_key == str(chave)
+
+    # o mesmo caminho de um salvamento pela tela e de uma mudança do núcleo
+    plugin.apply_patch(replace(instancia, name="UDR7 da sala"))
+    assert plugin._holder.get().udr7_ssh_key == str(chave), "a chave se perdeu ao salvar"
+    plugin.on_config_applied(cfg)
+    assert plugin._holder.get().udr7_ssh_key == str(chave), "a chave se perdeu com o núcleo"

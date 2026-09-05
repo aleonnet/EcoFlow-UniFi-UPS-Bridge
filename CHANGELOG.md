@@ -23,20 +23,40 @@ apareceram — e eram os que tornavam o desligamento impossível na prática.
 - **A tela diz o que o console respondeu**: modelo e versão do firmware, lidos dele.
 - **Aviso de garantia** ao configurar um aparelho por SSH, com o texto do próprio fabricante.
 
+- **Número de série do River num toque.** O aparelho diz o próprio número; agora a tela oferece
+  "Usar este" em vez de pedir dezesseis caracteres digitados à mão. O registro continua sendo um
+  ato do dono — é ele que a proteção exige para armar.
+- **As dicas de Ajustes funcionam no toque.** Cada linha tem um ⓘ que abre a explicação num
+  balão; passar o ponteiro continua valendo no Mac.
+
 ### Corrigido
+- **A chave instalada sobrevive a um salvamento.** Ela entrava na configuração só na partida do
+  serviço: qualquer salvamento (ou mudança do núcleo) a descartava, e a proteção armava para
+  ficar em "configuração incompleta" — numa queda de energia, nada seria enviado.
+- **Mexer no acesso ao console com a proteção armada é recusado.** Trocar a chave ou apagar a
+  identidade ali deixava o dispositivo armado e sem como falar com o aparelho, com a tela
+  continuando a dizer "armada".
+- **A recusa de identidade divergente passa a valer em qualquer porta.** Fora da 22 o OpenSSH
+  marca o host de outra forma, e a comparação não pegava — o aparelho trocado era aceito calado.
+- **Console inalcançável não é mais reportado como senha errada.** O motivo vinha de procurar a
+  palavra "senha" no texto do erro; agora vem do tipo da falha.
+- **O selo do cabo, na tela de saúde, passa a medir.** Era uma constante: dizia "não observável"
+  acontecesse o que acontecesse, inclusive com o simulador no ar.
 - **O desligamento do console nunca teria funcionado em macOS.** O `ssh` divide o valor de
   `UserKnownHostsFile` por espaços, e o diretório de estado é `~/Library/Application
   Support/…`; sem aspas ele procurava dois arquivos inexistentes e recusava a conexão. Medido
   contra o console real.
-- **A identidade do console era lida pela metade.** O `ssh-keyscan` não trata `--` como fim de
-  opções: com ele voltava só a chave RSA (1 linha em vez de 3), e era isso que produzia a
-  recusa acima.
+- **A identidade do console podia ser gravada pela metade.** A varredura de identidades roda um
+  tipo de chave por vez, em paralelo e com tempo limite, e **pode voltar incompleta** (medido: a
+  mesma máquina devolveu uma linha numa rodada e três noutra). Um arquivo com só a chave RSA faz
+  o `ssh` recusar a conexão, porque ele negocia ed25519. Agora todas as linhas que a varredura
+  devolve são gravadas, e uma varredura incompleta falha na cara — com o que o `ssh` respondeu
+  na mensagem — em vez de virar recusa silenciosa depois.
 
 ### Mudado
 - **Armar exige prova de alcance recente (30 dias).** Antes, a proteção podia armar sem nunca
   ter falado com o console — o primeiro contato real seria o comando de desligar, numa queda de
-  energia. É por isso que os dois defeitos acima sobreviveram meses sem aparecer. O estado
-  "armada — alcance não verificado" deixa de existir.
+  energia. É por isso que os dois defeitos acima sobreviveram meses sem aparecer.
 - A chave que o serviço usa é **derivada do dispositivo**, não um campo digitado: o padrão de
   caminho recusa espaços, e o diretório de estado do macOS tem espaços.
 

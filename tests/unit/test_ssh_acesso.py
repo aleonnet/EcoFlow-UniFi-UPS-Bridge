@@ -39,7 +39,7 @@ def test_the_key_is_created_once_and_only_the_public_half_comes_out(tmp_path):
     caminho = str(tmp_path / "udr7_key")
 
     def rodar(argv, *, tempo=None, entrada=None):
-        if argv[0] == "ssh-keygen" and "-t" in argv:
+        if argv[0] == sa.SSH_KEYGEN and "-t" in argv:
             open(caminho, "w").write("PRIVADA")
             open(caminho + ".pub", "w").write(PUB)
             return subprocess.CompletedProcess(argv, 0, b"", b"")
@@ -60,7 +60,7 @@ def test_an_existing_key_is_never_recreated(tmp_path):
     rodar = executor([(0, f"256 {IMPRESSAO} x (ED25519)")])
     sa.garantir_chave(caminho, rodar=rodar)
     assert open(caminho).read() == "PRIVADA ANTIGA"
-    assert all(a[0] != "ssh-keygen" or "-t" not in a for a in rodar.vistos)
+    assert all(a[0] != sa.SSH_KEYGEN or "-t" not in a for a in rodar.vistos)
 
 
 def test_a_console_that_changes_identity_is_refused_not_overwritten(tmp_path):
@@ -186,11 +186,11 @@ def test_a_public_key_with_a_quote_is_refused_before_any_command_is_built(tmp_pa
 
 
 def test_the_scan_keeps_every_key_type_the_console_offers():
-    """`--` no `ssh-keyscan` NÃO é fim de opções: com ele, só a RSA volta.
+    """Todas as identidades que o console oferece são guardadas.
 
-    Medido no console do dono em 2026-09-04: com `--`, uma linha; sem, três
-    (rsa, ecdsa, ed25519). Gravar só a RSA fazia o `ssh` recusar a conexão com
-    "No ED25519 host key is known" — que foi exatamente o que aconteceu.
+    O `ssh` escolhe o tipo na negociação: um arquivo com só uma delas o faz
+    recusar a conexão com "No ED25519 host key is known" — foi o que aconteceu no
+    console do dono em 2026-09-04, com um arquivo que só tinha a RSA.
     """
     linhas_do_console = (
         "# 192.168.1.1:22 SSH-2.0-OpenSSH_8.4p1\n"
@@ -202,13 +202,12 @@ def test_the_scan_keeps_every_key_type_the_console_offers():
 
     def rodar(argv, *, tempo=None, entrada=None):
         vistos.append(list(argv))
-        if argv[0] == "ssh-keyscan":
+        if argv[0] == sa.SSH_KEYSCAN:
             return subprocess.CompletedProcess(argv, 0, linhas_do_console.encode(), b"")
         return subprocess.CompletedProcess(argv, 0, f"256 {IMPRESSAO} x (ED25519)".encode(), b"")
 
     linhas, impressao = sa.identidade_do_host("192.168.1.1", rodar=rodar)
-    assert "--" not in vistos[0], "o `--` faz o keyscan devolver só a chave RSA"
-    assert len(linhas) == 3
+    assert len(linhas) == 3, "as três identidades do console têm de ser guardadas"
     assert impressao == IMPRESSAO           # a impressão mostrada é a da ed25519
 
 
@@ -216,3 +215,41 @@ def test_an_address_starting_with_a_dash_is_refused():
     """O que o `--` protegia continua protegido, de forma explícita."""
     with pytest.raises(sa.AcessoError, match="endereço de console inválido"):
         sa.identidade_do_host("-oProxyCommand=rm -rf /")
+
+
+def test_identity_is_checked_on_any_port(tmp_path):
+    """Porta diferente de 22 também tem identidade — e também tem recusa.
+
+    O OpenSSH marca o host como `[endereço]:porta` fora da 22. Comparando com o
+    endereço puro, a recusa de identidade divergente simplesmente NÃO EXISTIA em
+    porta não padrão: o aparelho trocado era aceito em silêncio (revisão fria).
+    """
+    arquivo = str(tmp_path / "known_hosts")
+    sa.gravar_identidade(arquivo, "192.168.1.1", ["[192.168.1.1]:2222 ssh-ed25519 AAAAUM"],
+                         porta=2222)
+    with pytest.raises(sa.IdentidadeDivergente):
+        sa.gravar_identidade(arquivo, "192.168.1.1", ["[192.168.1.1]:2222 ssh-ed25519 AAAAOUTRA"],
+                             porta=2222)
+    assert "AAAAUM" in open(arquivo).read()
+
+
+def test_a_missing_public_half_is_derived_not_regenerated(tmp_path):
+    """Se só a metade pública sumir, ela se deriva da privada.
+
+    Apagar as duas e gerar outra chave tiraria o acesso que já está instalado no
+    console — e a prova de alcance continuaria valendo por 30 dias, mentindo
+    (revisão fria da 0.6.0).
+    """
+    caminho = str(tmp_path / "udr7_key")
+    open(caminho, "w").write("PRIVADA ORIGINAL")
+
+    def rodar(argv, *, tempo=None, entrada=None):
+        if "-y" in argv:                       # derivar a pública da privada
+            return subprocess.CompletedProcess(argv, 0, b"ssh-ed25519 AAAADERIVADA", b"")
+        if "-t" in argv:
+            raise AssertionError("não pode gerar chave nova")
+        return subprocess.CompletedProcess(argv, 0, f"256 {IMPRESSAO} x (ED25519)".encode(), b"")
+
+    chave = sa.garantir_chave(caminho, rodar=rodar)
+    assert open(caminho).read() == "PRIVADA ORIGINAL"
+    assert "AAAADERIVADA" in chave.publica

@@ -2,8 +2,7 @@
 
 status: aceito
 data: 2026-09-05
-substitui, para o passo do acesso: `2026-09-03-1710-runbook-protecao-udr7-por-instancia.md`
-(o runbook antigo continua valendo para os limiares e para a trava de armamento)
+supera: 2026-09-03-1710-runbook-protecao-udr7-por-instancia.md
 
 ## 1. Conectar o console pelo App (0.6.0)
 
@@ -34,10 +33,11 @@ com uma senha definida (é só sua; o App a usa uma vez e não a guarda).
 `<estado>/udr7_known_hosts`, e a prova em `<estado>/udr7_acesso.json` com data, modelo e
 firmware. A prova vale **30 dias** — depois disso, armar pede um teste novo.
 
-## 2. Armar a proteção (o que não mudou)
+## 2. Armar a proteção
 
-Continuam valendo os três passos do runbook anterior — a trava `UDR7_ARM_ALLOWED` no arquivo do
-serviço, desligar o ensaio na folha, fechar a trava. **O que mudou é que agora existe um quarto
+São três passos, e eles não mudaram desde a 0.3.0 — a trava `UDR7_ARM_ALLOWED` no arquivo do
+serviço (`$PREFIX/etc/bridge.env`) com reinício, desligar o modo ensaio na folha do
+dispositivo, e fechar a trava com outro reinício. **O que mudou é que agora existe um quarto
 requisito, e ele é automático:** sem a conexão provada, o serviço recusa armar com
 `alcance_nao_verificado`.
 

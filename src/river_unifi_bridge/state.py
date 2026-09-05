@@ -27,6 +27,30 @@ def _epoca(ts: str | None) -> float:
         return float("inf")
 
 
+def _selo_do_cabo(snapshot: dict | None, comm_ok: bool, last_error: str | None) -> str:
+    """O que dá para afirmar sobre o cabo, sem inventar.
+
+    Quem enxerga o USB é o driver do no-break; o que sabemos é se a leitura
+    corrente veio dele (e não de um simulador). Só isso, e é o bastante.
+    """
+    # Import local de propósito: `state.py` é folha da árvore de imports (ver a
+    # nota do alias, acima) e amarrá-la a `protect` no topo trocaria um selo
+    # honesto por um ciclo.
+    from .protect import _is_synthetic_driver
+
+    if snapshot is None:
+        return "falha" if last_error else "sem_dados"
+    if not comm_ok:
+        return "falha"
+    fonte = snapshot.get("source") or {}
+    nome, versao = fonte.get("driver_name"), fonte.get("driver_version")
+    if not nome or not versao:
+        return "sem_dados"
+    if _is_synthetic_driver(nome, versao):
+        return "simulado"
+    return "ok"
+
+
 class SharedState:
     def __init__(self, events_maxlen: int = 100) -> None:
         self._lock = threading.Lock()
@@ -122,7 +146,11 @@ class SharedState:
         # casa `"udr7": "..."` no topo e não casaria `"id": "udr7"` dentro da lista.
         alias = next((p for p in plugins if p["id"] == UDR7_ALIAS_ID), None)
         protection = alias["detail"] if alias else None
-        usb = "nao_observavel"  # only the NUT driver sees USB; Fase 1+ may refine
+        # O cabo: até a 0.5.1 este selo era uma constante — dizia "não observável"
+        # acontecesse o que acontecesse, e o dono chamou o que era: um selo que
+        # não mede nada. Hoje temos resposta: se a leitura corrente veio do driver
+        # de verdade, o cabo está entregando dados.
+        usb = _selo_do_cabo(snapshot, comm_ok, last_error)
         return {
             "usb": usb,
             "nut": "ok" if comm_ok else ("falha" if last_error else "sem_dados"),

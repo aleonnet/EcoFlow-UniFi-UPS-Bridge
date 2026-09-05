@@ -1,5 +1,5 @@
 {
-  "usb": "nao_observavel",
+  "usb": "sem_dados",
   "nut": "sem_dados",
   "bridge": "ok",
   "unifi": "sem_caminho_nativo_documentado",

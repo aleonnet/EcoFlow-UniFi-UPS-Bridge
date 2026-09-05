@@ -114,3 +114,21 @@ def test_health_dispositivos_fixture_matches_code():
     assert fixture == state.health()
     assert [p["id"] for p in fixture["plugins"]] == ["udr7", "sshhost_3fa9c1d2", "sshhost_7b2e4d10"]
     assert fixture["udr7"] == fixture["plugins"][0]["state"]        # alias = instância migrada
+
+
+def test_the_cable_seal_says_what_it_measured():
+    """O selo do cabo era uma CONSTANTE: dizia "não observável" acontecesse o que
+    acontecesse. Hoje ele responde o que dá para afirmar — e nada além disso."""
+    from river_unifi_bridge.state import SharedState
+
+    st = SharedState()
+    assert st.health()["usb"] == "sem_dados"          # antes da 1.ª leitura
+
+    st.update_snapshot({"source": {"driver_name": "usbhid-ups", "driver_version": "2.8.5"}})
+    assert st.health()["usb"] == "ok"                  # lendo pelo cabo, driver real
+
+    st.update_snapshot({"source": {"driver_name": "fake-nut-ups", "driver_version": "fake"}})
+    assert st.health()["usb"] == "simulado"            # simulador não é cabo
+
+    st.record_failure("sem resposta do NUT")
+    assert st.health()["usb"] == "falha"
