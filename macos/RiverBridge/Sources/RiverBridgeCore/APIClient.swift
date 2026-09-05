@@ -186,8 +186,6 @@ public struct APIClient: Sendable {
 
     // MARK: - O River como aparelho (2026-09-04)
 
-    /// Quem está com o cabo agora. A interface de no-break do River é exclusiva:
-    /// um leitor por vez, e a tela precisa dizer qual é.
     // --- acesso ao console (0.6.0) -------------------------------------------
     /// Prepara o acesso: o SERVIÇO cria a chave e lê a identidade do console.
     /// A chave privada nunca vem — só a pública e as impressões digitais.
@@ -221,15 +219,10 @@ public struct APIClient: Sendable {
                                   body: Data("{}".utf8)))
     }
 
+    /// Quem está com o cabo agora. Só leitura: o cabo vai e volta sozinho quando o
+    /// aplicativo do fabricante abre e fecha — a tela informa, não manda.
     public func riverCabo() async throws -> EstadoDoCabo {
         try JSONCoding.decoder().decode(EstadoDoCabo.self, from: try await run(request("v1/river/cabo")))
-    }
-
-    /// Empresta o cabo ao aplicativo do fabricante, ou toma de volta.
-    public func riverCabo(acao: String) async throws -> EstadoDoCabo {
-        let body = try JSONSerialization.data(withJSONObject: ["acao": acao])
-        return try JSONCoding.decoder().decode(
-            EstadoDoCabo.self, from: try await run(request("v1/river/cabo", method: "POST", body: body)))
     }
 
     /// Desliga o PRÓPRIO River. Corta a energia de tudo o que está nele — a tela

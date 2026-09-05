@@ -255,23 +255,18 @@ import Testing
     #expect(a.asBridgeEvent.id != b.asBridgeEvent.id)
 }
 
-@Test func theTwoActionsThatTouchPowerSayWhatTheyDo() {
-    // Os dois atos que mexem na energia dos equipamentos precisam dizer, na
-    // própria confirmação, o que acontece — e não podem falar em sigla, chave
-    // nem código. É a regra da casa aplicada ao lugar mais perigoso do app.
-    let entregar = RiverConfirmation(ato: .liberarCabo)
-    #expect(entregar.title.contains("EcoFlow"))
-    #expect(entregar.confirmLabel.contains("paramos de ler") || entregar.confirmLabel.contains("stop reading"))
-    #expect(entregar.message.contains("um leitor por vez") || entregar.message.contains("one reader at a time"))
-
+@Test func theActionThatTouchesPowerSaysWhatItDoes() {
+    // O ato que mexe na energia dos equipamentos precisa dizer, na própria
+    // confirmação, o que acontece — e não pode falar em sigla, chave nem
+    // código. É a regra da casa aplicada ao lugar mais perigoso do app.
+    // (Entregar o cabo deixou de ser ato: o cabo vai e volta sozinho.)
     let desligar = RiverConfirmation(ato: .desligarRiver)
     #expect(desligar.title.contains("DESLIGAR") || desligar.title.contains("OFF"))
     #expect(desligar.confirmLabel.contains("corta a energia") || desligar.confirmLabel.contains("cuts power"))
     #expect(desligar.message.contains("perde energia") || desligar.message.contains("loses power"))
 
     // Nenhuma das frases carrega jargão de máquina.
-    for texto in [entregar.title, entregar.confirmLabel, entregar.message,
-                  desligar.title, desligar.confirmLabel, desligar.message] {
+    for texto in [desligar.title, desligar.confirmLabel, desligar.message] {
         #expect(texto.contains("killpower") == false)
         #expect(texto.contains("_") == false)
         #expect(texto.contains("409") == false)

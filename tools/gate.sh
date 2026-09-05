@@ -695,6 +695,17 @@ cena_mutacao S46b src/river_unifi_bridge/cabo_automatico.py \
     tests/unit/test_cabo_automatico.py::test_the_cable_comes_back_when_the_vendor_app_closes \
     tests/unit/test_cabo_automatico.py::test_a_search_that_blows_up_brings_the_cable_back_instead_of_keeping_it
 
+# --- 0.8.0: a UX que o dono determinou, inteira -------------------------------
+
+# S57 — o padrão do aplicativo da EcoFlow casa a INTERFACE e não o daemon deles,
+# que roda sempre. As duas versões anteriores (o caminho do pacote; o prefixo
+# `…/Contents/MacOS/`) casavam o daemon, e o cabo era largado na primeira volta e
+# nunca voltava. Medido no Mac mini em 2026-09-05 com a interface aberta.
+cena_mutacao S57 src/river_unifi_bridge/cabo_automatico.py \
+    'APLICATIVO_DO_FABRICANTE = r"/Contents/MacOS/PowerManager$"' \
+    'APLICATIVO_DO_FABRICANTE = r"/Applications/PowerManager.app/Contents/MacOS/"' \
+    tests/unit/test_cabo_automatico.py::test_o_daemon_deles_nao_e_o_aplicativo
+
 # --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
 
 # S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão

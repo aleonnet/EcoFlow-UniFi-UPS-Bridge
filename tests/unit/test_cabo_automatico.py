@@ -6,9 +6,31 @@ aberto?" é injetado. A cerca anti-spawn da casa já proíbe o contrário.
 
 from __future__ import annotations
 
+import re
+
 from river_unifi_bridge.cabo_automatico import (
-    EV_LARGADO, EV_MANTIDO, EV_RETOMADO, CaboAutomatico)
+    APLICATIVO_DO_FABRICANTE, EV_LARGADO, EV_MANTIDO, EV_RETOMADO, CaboAutomatico)
 from river_unifi_bridge.nut_supervisor import EstadoDoCabo
+
+# As linhas de comando MEDIDAS no Mac mini em 2026-09-05, com a interface aberta.
+_DAEMON_DELES = ("/Applications/PowerManager.app/Contents/MacOS/PowerManager_1.0.0.16.app"
+                 "/Contents/PowerManagerService/PowerManagerService")
+_INTERFACE_DELES = ("/Applications/PowerManager.app/Contents/MacOS/PowerManager_1.0.0.16.app"
+                    "/Contents/MacOS/PowerManager")
+_LANCADOR_DELES = "/Applications/PowerManager.app/Contents/MacOS/PowerManager"
+
+
+def test_o_daemon_deles_nao_e_o_aplicativo():
+    """O padrão casa a INTERFACE e não casa o daemon que roda sempre.
+
+    `pgrep -f` lê o padrão como expressão regular sobre a linha de comando
+    inteira — o que `re.search` reproduz aqui. As duas versões anteriores do
+    padrão casavam o daemon, e o cabo era largado para sempre.
+    """
+    assert re.search(APLICATIVO_DO_FABRICANTE, _INTERFACE_DELES)
+    assert re.search(APLICATIVO_DO_FABRICANTE, _LANCADOR_DELES)
+    assert not re.search(APLICATIVO_DO_FABRICANTE, _DAEMON_DELES), \
+        "o padrão casa o daemon permanente da EcoFlow: o cabo seria largado para sempre"
 
 
 class SupervisorFalso:

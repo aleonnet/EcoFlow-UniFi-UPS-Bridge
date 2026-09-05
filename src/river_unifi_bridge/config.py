@@ -89,13 +89,12 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     # o cabo quando o aplicativo do fabricante abre e retoma quando ele fecha —
     # sem botão na tela (ver cabo_automatico.py). Nunca larga com proteção armada.
     #
-    # Nasce DESLIGADO, e o motivo é medido: com o aplicativo da EcoFlow aberto, o
-    # serviço continuou lendo o River normalmente (captura do dono no Mac mini,
-    # 2026-09-05 — 93 W, autonomia e uma hora de histórico, com o aplicativo
-    # deles na tela ao lado). Ou seja: o empréstimo não tem benefício demonstrado
-    # nessa configuração, e um automatismo que age sem benefício provado não pode
-    # ser o padrão. Quem quiser, liga.
-    "RIVER_CABO_AUTOMATICO": (bool, False, False, None),
+    # Nasce LIGADO: é a ordem do dono ("ao abrir o PowerManager ele tem de
+    # funcionar, sem botão"). O que se mediu antes não contradiz: em modo Local
+    # o aplicativo deles diz "connection failed" enquanto o nosso leitor segura
+    # o cabo (2026-09-04), e o nosso serviço segue lendo com o aplicativo deles
+    # aberto em modo Remote (2026-09-05). Ligado, os dois modos funcionam.
+    "RIVER_CABO_AUTOMATICO": (bool, False, True, None),
 }
 
 
@@ -193,7 +192,7 @@ class BridgeConfig:
     river_nut_managed: bool = True
     river_nut_publica: bool = True
     river_nut_aparelho: str = "river-bridge"
-    river_cabo_automatico: bool = False
+    river_cabo_automatico: bool = True
     # Diagnostics for the caller (never fatal): "<line>: <message>"
     warnings: list[str] = field(default_factory=list)
 

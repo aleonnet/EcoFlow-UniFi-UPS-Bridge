@@ -66,8 +66,10 @@ struct SettingsView: View {
     @State private var serviceVersion: String?
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
 
-    /// A linha que diz quem está com o cabo e oferece a troca. A exclusividade do
-    /// aparelho é física; escondê-la seria mentir para o dono.
+    /// A linha que diz quem está com o cabo. Só informa: o cabo vai e volta
+    /// sozinho quando o aplicativo da EcoFlow abre e fecha (ordem do dono, 0.7.0:
+    /// "não precisa de botão na UI"). A exclusividade do aparelho é física;
+    /// escondê-la seria mentir — mas pedir um clique por ela era complexidade.
     @ViewBuilder
     private func linhaDoCabo(_ cabo: EstadoDoCabo) -> some View {
         let comEles = cabo.pausado == true
@@ -81,35 +83,15 @@ struct SettingsView: View {
                               "The EcoFlow app has the River")
                      : L10n.t("O River está com este serviço", "This service has the River"))
                     .font(.system(.body, design: .rounded))
-                if let motivo = cabo.motivo, comEles == false, cabo.lendo == false {
+                if comEles {
+                    Text(L10n.t("Volta sozinho quando o aplicativo dele fechar.",
+                                "It comes back on its own when their app closes."))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if let motivo = cabo.motivo, cabo.lendo == false {
                     Text(motivo).font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            Button(comEles ? L10n.t("Retomar", "Take back")
-                           : L10n.t("Entregar…", "Hand over…")) {
-                if comEles {
-                    Task { await mudarCabo("retomar") }
-                } else {
-                    confirmacaoRiver = .liberarCabo
-                }
-            }
-            .buttonStyle(.glass)
-        }
-    }
-
-    private func mudarCabo(_ acao: String) async {
-        guard let endpoint = ApiEndpoint.discover() else {
-            riverFeedback = L10n.t("Serviço parado — nada mudou.", "Service down — nothing changed.")
-            return
-        }
-        do {
-            estadoDoCabo = try await APIClient(endpoint: endpoint).riverCabo(acao: acao)
-            riverFeedback = nil
-        } catch let APIError.badStatus(_, body) {
-            riverFeedback = ProtectionRefusal.text(body)
-        } catch {
-            riverFeedback = L10n.t("Não consegui falar com o serviço.", "Could not reach the service.")
         }
     }
 
@@ -388,8 +370,8 @@ struct SettingsView: View {
                     if let cabo = estadoDoCabo, cabo.lendo != nil {
                         SettingsRows.divider
                         linhaDoCabo(cabo)
-                            .comDica(L10n.t("O River aceita um leitor por vez. Aqui você entrega o cabo ao aplicativo da EcoFlow — e o toma de volta quando quiser.",
-                                         "The River accepts one reader at a time. Here you hand the cable over to the EcoFlow app — and take it back whenever you want."))
+                            .comDica(L10n.t("O River aceita um leitor por vez. Quando o aplicativo da EcoFlow abre, o serviço entrega o cabo a ele; quando fecha, toma de volta. Com proteção armada o cabo não sai, e a linha do tempo avisa.",
+                                         "The River accepts one reader at a time. When the EcoFlow app opens, the service hands it the cable; when it closes, takes it back. With a protection armed the cable stays, and the timeline says so."))
                     }
                     SettingsRows.divider
                     HStack(spacing: Espaco.medio) {
@@ -522,8 +504,8 @@ struct SettingsView: View {
             await carregarRiver()
             applySeamSheet()
         }
-        // Os dois atos que mexem na energia dos equipamentos pedem confirmação,
-        // no mesmo molde do armamento da proteção.
+        // O ato que mexe na energia dos equipamentos pede confirmação, no mesmo
+        // molde do armamento da proteção.
         .confirmacao(Binding(
             get: {
                 confirmacaoRiver.map { ato in
@@ -534,7 +516,6 @@ struct SettingsView: View {
                     ) {
                         Task {
                             switch ato {
-                            case .liberarCabo: await mudarCabo("liberar")
                             case .desligarRiver: await desligarRiver()
                             }
                         }

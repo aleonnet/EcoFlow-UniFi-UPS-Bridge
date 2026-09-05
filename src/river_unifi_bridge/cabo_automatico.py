@@ -29,21 +29,24 @@ from __future__ import annotations
 import subprocess
 import time
 
-# O executável do APLICATIVO do fabricante — não o pacote inteiro.
+# O executável da INTERFACE do fabricante — e só ele.
 #
-# A primeira versão procurava `/Applications/PowerManager.app`, o caminho do
-# pacote, na linha de comando de qualquer processo. Isso não distingue "o dono
-# abriu o aplicativo" de "um ajudante de fundo dele está rodando": a EcoFlow
-# instala um daemon de sistema que roda SEMPRE (lido dentro do pacote deles em
-# 2026-09-04), e o binário de um ajudante de `.app` mora dentro do próprio
-# pacote. O serviço roda como root e enxerga todo processo da máquina, então o
-# casamento era permanente — o cabo era largado no primeiro ciclo e nunca voltava,
-# com o aplicativo fechado (visto pelo dono no Mac mini, 2026-09-05).
+# É uma expressão regular (é assim que `pgrep -f` lê o padrão), ancorada no fim
+# da linha de comando. A anatomia do pacote deles, medida no Mac mini em
+# 2026-09-05 com a interface aberta (`open -a PowerManager; pgrep -fl`):
 #
-# `Contents/MacOS/` é onde mora o executável principal de um aplicativo, e só
-# ele: ajudantes vivem em `Contents/Resources`, `Contents/Library` ou
-# `Contents/Helpers`. É a diferença entre "aberto" e "instalado".
-APLICATIVO_DO_FABRICANTE = "/Applications/PowerManager.app/Contents/MacOS/"
+#   …/PowerManager.app/Contents/MacOS/PowerManager_1.0.0.16.app/Contents/MacOS/PowerManager
+#       → a interface: só existe enquanto o dono a tem aberta
+#   …/PowerManager.app/Contents/MacOS/PowerManager_1.0.0.16.app/Contents/PowerManagerService/PowerManagerService
+#       → o daemon deles (LaunchDaemon `com.ecoflow.PowerManagerService`): roda SEMPRE
+#
+# As duas versões anteriores erravam para o mesmo lado: a primeira procurava o
+# caminho do pacote, a segunda o prefixo `…/PowerManager.app/Contents/MacOS/`,
+# e as duas casam o daemon, cujo caminho inteiro passa por ali. Com qualquer
+# uma o cabo era largado na primeira volta e nunca voltava, com a interface
+# fechada. Ancorar no executável da interface é o que distingue "o dono abriu"
+# de "o serviço de fundo deles está instalado".
+APLICATIVO_DO_FABRICANTE = r"/Contents/MacOS/PowerManager$"
 # De quanto em quanto tempo olhamos. Não é a cada ciclo do laço (2 s) de
 # propósito: cada olhada é um processo novo, e o que se ganha em pressa não paga.
 # Com 5 s, o aplicativo do fabricante espera no máximo isso para receber o cabo.
