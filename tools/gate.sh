@@ -586,6 +586,15 @@ cena_mutacao S34b src/river_unifi_bridge/nut_comandos.py \
     "return tuple(_ACAO_DO_COMANDO)" \
     tests/unit/test_nut_comandos.py::test_only_what_the_type_knows_how_to_do_is_announced
 
+# S35 — leitura serial VENCIDA não pode continuar sendo publicada. Um watt que
+# parou no tempo, mostrado como se fosse de agora, é pior que watt nenhum: quem
+# lê pelo Home Assistant não tem como saber que o número congelou.
+cena_mutacao S35 src/river_unifi_bridge/service.py \
+    "if clock() - quando > SERIAL_VALIDADE_SEGUNDOS:" \
+    "if False:" \
+    tests/unit/test_service_loop.py::test_a_stale_serial_reading_stops_being_published \
+    tests/unit/test_service_loop.py::test_one_failed_serial_read_does_not_blank_the_outlets
+
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
 import sys

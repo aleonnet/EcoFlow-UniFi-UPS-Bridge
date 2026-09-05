@@ -712,3 +712,50 @@ def test_publishing_can_be_turned_off(tmp_path, monkeypatch):
     with pytest.raises(Terminador):
         run_loop(cfg, once=False)
     assert criadas == []
+
+
+def test_a_stale_serial_reading_stops_being_published(tmp_path, monkeypatch):
+    """Passado o prazo, o watt por tomada SAI do NUT — não congela.
+
+    Um número velho publicado como se fosse de agora é pior que número nenhum:
+    quem lê pelo Home Assistant não tem como saber que ele parou no tempo.
+    """
+    class Terminador(BaseException):
+        pass
+
+    relogio = {"agora": 0.0}
+    publicados: list[dict] = []
+    boa = river_serial.LeituraRiver(carga_total_w=86.0, carga_ac_w=86.0)
+    respostas = [(boa, "/dev/cu.fake")]
+
+    class Ponte(PonteEspia):
+        def atualizar(self, snap, _plugins=()):
+            from river_unifi_bridge.nut_publicacao import variaveis_do_river
+            publicados.append(variaveis_do_river(snap))
+
+    def anda(_cfg):
+        if len(publicados) >= 2:
+            raise Terminador()
+        return sim_snap("OL CHRG", "80")
+
+    def ler(*_a, **_k):
+        return respostas.pop(0) if respostas else None
+
+    real = service._completa_pela_serial
+
+    def com_relogio(snap, configuracao, **_k):
+        """Cada volta anda mais que a validade: a 2.ª já vê a leitura vencida."""
+        real(snap, configuracao, ler=ler, clock=lambda: relogio["agora"])
+        relogio["agora"] += service.SERIAL_VALIDADE_SEGUNDOS + 1
+
+    monkeypatch.setattr(service, "poll_once", anda)
+    monkeypatch.setattr(service, "PonteDoNut", Ponte)
+    monkeypatch.setattr(service, "_completa_pela_serial", com_relogio)
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = False
+    cfg.river_serial_port = "/dev/cu.fake"
+    with pytest.raises(Terminador):
+        run_loop(cfg, once=False)
+    assert publicados[0]["outlet.1.realpower"] == "86.0"
+    assert "outlet.1.realpower" not in publicados[1]
