@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from river_unifi_bridge.config import ConfigError, load_config
+from river_unifi_bridge.config import ConfigError, load_config, recusa_do_vigia_espelho
 from river_unifi_bridge.model import snapshot_from_nut_vars
 from river_unifi_bridge.nut_servico import PonteDoNut
 
@@ -207,6 +207,30 @@ def test_the_same_name_is_fine_when_we_are_not_publishing(tmp_path):
         CONFIG_MINIMA.replace("NUT_UPS=river-office", "NUT_UPS=river-bridge")
         + "RIVER_NUT_PUBLICA=0\n", encoding="utf-8")
     assert load_config(str(arquivo)).nut_ups == "river-bridge"
+
+
+def test_a_protected_device_name_is_refused_as_the_protection_source():
+    """O aparelho de um dispositivo protegido também é publicado por nós.
+
+    A instância migrada se chama `udr7`, e com `NUT_UPS=udr7` a proteção passaria
+    a ler a carga de bateria que ela mesma escreveu na volta anterior — o mesmo
+    laço fechado, por outra porta (revisão fria da 0.7.0).
+    """
+    motivo = recusa_do_vigia_espelho("udr7", "river-bridge", publica=True,
+                                     dispositivos={"udr7"})
+    assert motivo is not None and "dispositivo protegido" in motivo
+
+
+def test_the_rule_is_the_same_one_the_screen_uses_before_writing():
+    """A mesma função vale nos dois caminhos: o arquivo, na partida, e a tela.
+
+    Só no arquivo não bastava — a tela gravava a configuração ruim, mandava
+    reiniciar, e no reinício o serviço parava de propósito e não voltava.
+    """
+    assert recusa_do_vigia_espelho("river-office", "river-bridge", publica=True,
+                                   dispositivos={"udr7"}) is None
+    assert recusa_do_vigia_espelho("udr7", "river-bridge", publica=False,
+                                   dispositivos={"udr7"}) is None
 
 
 def test_the_factory_reader_keeps_working_as_the_source(tmp_path):

@@ -89,12 +89,27 @@ def caminho_do_soquete(aparelho: str, estado: str = ESTADO_PADRAO) -> str:
 
 
 def codifica(valor: str) -> str:
-    """Escapa o que o parseconf trataria como estrutura (`pconf_encode`).
+    """Prepara um valor para viajar: escapa a estrutura e achata o que não é linha.
 
-    Sem isto, um valor com aspas partiria a linha em duas e o servidor guardaria
-    metade de um número como se fosse o todo.
+    Duas coisas, e a segunda é a que dói:
+
+    1. `\\` e `"` são escapados, como o `pconf_encode` do NUT faz — sem isso, um
+       valor com aspas partiria a linha em duas e o servidor guardaria metade de
+       um número como se fosse o todo.
+    2. **Quebra de linha e demais caracteres de controle viram espaço.** Uma
+       variável do NUT é uma linha; um valor com `\\n` no meio não é um valor
+       estranho, é uma LINHA NOVA injetada no protocolo. E boa parte do que
+       publicamos vem de fora: o modelo e a versão do firmware saem do que o
+       console respondeu. Um console comprometido — ou só um firmware que responde
+       em duas linhas — passaria a escrever `ups.status` do aparelho publicado.
+       (Revisão fria da 0.7.0, reproduzido.)
+
+    O corte em `LIMITE_CARACTERES` é do parseconf, que lê os dois lados do
+    soquete: valor maior não seria entendido do outro lado.
     """
-    return valor.replace("\\", "\\\\").replace('"', '\\"')
+    limpo = "".join(" " if (ord(c) < 0x20 or ord(c) == 0x7F) else c for c in valor)
+    limpo = limpo.replace("\\", "\\\\").replace('"', '\\"')
+    return limpo[:LIMITE_CARACTERES]
 
 
 def divide_linha(linha: str) -> list[str]:
@@ -212,7 +227,21 @@ class DriverDoNut:
                 servidor.bind(self.caminho)
             finally:
                 os.umask(umask_antes)
-            os.chmod(self.caminho, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)
+            # 0600, e NÃO o 0660 que os drivers do NUT usam. A diferença é
+            # deliberada e o motivo está na documentação do próprio NUT: "There
+            # are no access controls in the drivers. Anything that can connect to
+            # their sockets can make requests, including SET and INSTCMD … These
+            # sockets must be kept secure."
+            #
+            # Medido nesta máquina em 2026-09-05: /opt/homebrew/var/state/ups é
+            # 0755 com grupo `admin`, e um soquete 0660 ali dentro fica gravável
+            # por QUALQUER conta administradora — que poderia mandar desligar o
+            # River sem ficha, sem senha e sem deixar rastro de quem foi. Com
+            # 0600, só quem roda o serviço conecta; o servidor do no-break sobe
+            # como o mesmo usuário (o supervisor lhe passa `-u`), então nada muda
+            # para ele. Quem rodar o `upsd` com outro usuário simplesmente não vê
+            # os nossos aparelhos — falha visível, não buraco silencioso.
+            os.chmod(self.caminho, stat.S_IRUSR | stat.S_IWUSR)
             servidor.listen(16)
             servidor.setblocking(False)
             self._servidor = servidor
@@ -243,13 +272,16 @@ class DriverDoNut:
                 except OSError:
                     pass
                 self._servidor = None
-            for descritor in (self._acorda_r, self._acorda_w):
+            # Os números somem ANTES de os arquivos fecharem: quem cutucar em
+            # seguida vê -1 e desiste, em vez de escrever num descritor fechado.
+            descritores = (self._acorda_r, self._acorda_w)
+            self._acorda_r = self._acorda_w = -1
+            for descritor in descritores:
                 if descritor >= 0:
                     try:
                         os.close(descritor)
                     except OSError:
                         pass
-            self._acorda_r = self._acorda_w = -1
             self._thread = None
         try:
             os.unlink(self.caminho)
@@ -257,12 +289,20 @@ class DriverDoNut:
             pass
 
     def _cutuca(self) -> None:
-        """Tira o laço do `select` sem esperar o tempo limite."""
-        if self._acorda_w >= 0:
-            try:
-                os.write(self._acorda_w, b"x")
-            except OSError:
-                pass
+        """Tira o laço do `select` sem esperar o tempo limite.
+
+        Sob a trava de propósito: fora dela, um `encerrar()` concorrente fecharia
+        o cano entre a leitura do número e a escrita, e o número já poderia ter
+        sido reaproveitado por outro descritor do processo — o banco do histórico,
+        o cano de um `ssh`. Escrever um byte no arquivo errado é o tipo de defeito
+        que aparece uma vez por mês e nunca no teste (revisão fria da 0.7.0).
+        """
+        with self._lock:
+            if self._acorda_w >= 0:
+                try:
+                    os.write(self._acorda_w, b"x")
+                except OSError:
+                    pass
 
     # -- o que publicamos ---------------------------------------------------
     def publicar(self, variaveis: dict[str, str], *,
@@ -424,12 +464,12 @@ class DriverDoNut:
             except ValueError:
                 cliente.quer_broadcast = True
         elif verbo == "INSTCMD" and len(partes) > 1:
-            self._instcmd(partes[1:])
+            self._instcmd(cliente, partes[1:])
         elif verbo == "SET":
             # Nós não expomos variável para escrita: o que se muda aqui se muda
             # na tela, com as cercas dela. Recusar em silêncio seria pior — o
             # rastreio devolve "inválido" e o servidor traduz para o cliente.
-            self._responder_rastreio(partes, CMD_INVALIDO)
+            self._responder_rastreio(cliente, partes, CMD_INVALIDO)
         self._cutuca()
 
     def _despejar(self, cliente: _Cliente) -> None:
@@ -464,13 +504,25 @@ class DriverDoNut:
                 return partes[indice + 1]
         return None
 
-    def _responder_rastreio(self, partes: list[str], codigo: int) -> None:
+    def _responder_rastreio(self, cliente: _Cliente, partes: list[str], codigo: int) -> None:
         identificador = self._rastreio(partes)
         if identificador is not None:
-            with self._lock:
-                self._para_todos(f"TRACKING {identificador} {codigo}\n")
+            self._para_um(cliente, f"TRACKING {identificador} {codigo}\n")
 
-    def _instcmd(self, argumentos: list[str]) -> None:
+    def _para_um(self, cliente: _Cliente, texto: str) -> None:
+        """Resposta é para QUEM PERGUNTOU.
+
+        Mandá-la como aviso geral tinha duas consequências, as duas medidas na
+        revisão fria da 0.7.0: chegava a quem não perguntou, e **não chegava** a
+        quem tivesse pedido para não receber avisos (`NOBROADCAST`) — o River era
+        desligado e o Home Assistant nunca sabia se a ordem valeu.
+        """
+        with self._lock:
+            if cliente in self._clientes:      # desligou no meio: não há a quem responder
+                cliente.enfileira(texto)
+        self._cutuca()
+
+    def _instcmd(self, cliente: _Cliente, argumentos: list[str]) -> None:
         """`INSTCMD <cmd> [<param>] [TRACKING <id>]`.
 
         O comando roda em linha de execução PRÓPRIA: desligar um roteador por
@@ -489,9 +541,7 @@ class DriverDoNut:
         if not conhecido or executor is None:
             self._log("WARN", "nut_instcmd_desconhecido", comando=nome)
             if identificador is not None:
-                with self._lock:
-                    self._para_todos(f"TRACKING {identificador} {CMD_DESCONHECIDO}\n")
-                self._cutuca()
+                self._para_um(cliente, f"TRACKING {identificador} {CMD_DESCONHECIDO}\n")
             return
 
         def rodar() -> None:
@@ -502,9 +552,7 @@ class DriverDoNut:
                           tipo=type(exc).__name__, reason=str(exc)[:200])
                 codigo = CMD_FALHOU
             if identificador is not None:
-                with self._lock:
-                    self._para_todos(f"TRACKING {identificador} {codigo}\n")
-                self._cutuca()
+                self._para_um(cliente, f"TRACKING {identificador} {codigo}\n")
 
         threading.Thread(target=rodar, name=f"nut-instcmd-{nome}", daemon=True).start()
 

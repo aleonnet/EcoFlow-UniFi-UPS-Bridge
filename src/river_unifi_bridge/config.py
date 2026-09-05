@@ -72,6 +72,11 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     # ARQUIVO, como a de armamento: a API nunca a abre, e a tela só age com ela
     # aberta MAIS a confirmação do dono.
     "RIVER_POWEROFF_ALLOWED": (bool, False, False, None),
+    # Mandar um dispositivo protegido desligar ou reiniciar AGORA, à mão. Terceira
+    # trava de arquivo da casa, pelo mesmo motivo das outras duas: é ato
+    # destrutivo num aparelho de produção. Fechada, a ordem nem é oferecida a
+    # quem lê pelo NUT — a proteção automática continua valendo, com a trava dela.
+    "DEVICE_CMD_ALLOWED": (bool, False, False, None),
     # O serviço cuida do driver e do servidor do NUT como filhos (ver
     # nut_supervisor.py). Desligado, quem cuida é você, por fora.
     "RIVER_NUT_MANAGED": (bool, False, True, None),
@@ -173,6 +178,7 @@ class BridgeConfig:
     river_serial_enabled: bool = True
     river_serial_port: str = "auto"
     river_poweroff_allowed: bool = False
+    device_cmd_allowed: bool = False
     river_nut_managed: bool = True
     river_nut_publica: bool = True
     river_nut_aparelho: str = "river-bridge"
@@ -244,26 +250,41 @@ def load_config(path: str) -> BridgeConfig:
     for key, (_typ, required, default, _bounds) in _ALLOWLIST.items():
         kwargs[key.lower()] = values.get(key, default)
     cfg = BridgeConfig(**kwargs)  # type: ignore[arg-type]
-    _recusa_o_vigia_espelho(cfg, path)
+    recusa = recusa_do_vigia_espelho(cfg.nut_ups, cfg.river_nut_aparelho,
+                                     publica=cfg.river_nut_publica)
+    if recusa is not None:
+        raise ConfigError(f"{path}: {recusa}")
     cfg.warnings = warnings
     return cfg
 
 
-def _recusa_o_vigia_espelho(cfg: "BridgeConfig", onde: str) -> None:
-    """A proteção não pode ler um aparelho publicado por NÓS.
+def recusa_do_vigia_espelho(nut_ups: str, aparelho: str, *, publica: bool,
+                            dispositivos: "frozenset[str] | set[str] | tuple" = ()
+                            ) -> str | None:
+    """A proteção não pode ler um aparelho publicado por NÓS. Devolve o motivo.
 
-    A ponte passou a publicar no NUT um aparelho com tudo o que ela sabe do
-    River. Se a política de proteção fosse apontada para ESSE aparelho, ela
-    decidiria desligar um roteador com base em dados que ela mesma escreveu — um
-    laço fechado, em que um erro de leitura vira verdade e se confirma sozinho a
-    cada volta. É recusa de partida, não aviso: um serviço que sobe assim parece
-    saudável e não vigia nada.
+    A ponte publica no NUT um aparelho com tudo o que ela sabe do River, e mais um
+    por dispositivo protegido. Se a política de proteção fosse apontada para
+    qualquer um deles, ela decidiria desligar um roteador com base em dados que
+    ela mesma escreveu — um laço fechado, em que um erro de leitura vira verdade e
+    se confirma sozinho a cada volta.
+
+    Devolve texto (e não levanta) porque os DOIS caminhos precisam dela: o arquivo,
+    na partida, e a tela, antes de gravar. Só no arquivo não bastava — um PUT
+    gravava a configuração ruim, respondia "reinicie", e no reinício o serviço
+    parava de propósito e não voltava mais (revisão fria da 0.7.0).
     """
-    if cfg.river_nut_publica and cfg.nut_ups == cfg.river_nut_aparelho:
-        raise ConfigError(
-            f"{onde}: NUT_UPS={cfg.nut_ups} é o aparelho que a própria ponte publica. "
-            "A proteção tem de ler o leitor de fábrica (por exemplo river-office); "
-            "lendo o nosso, ela decidiria com dados que ela mesma escreveu.")
+    if not publica:
+        return None
+    if nut_ups == aparelho:
+        return (f"NUT_UPS={nut_ups} é o aparelho que a própria ponte publica. "
+                "A proteção tem de ler o leitor de fábrica (por exemplo river-office); "
+                "lendo o nosso, ela decidiria com dados que ela mesma escreveu.")
+    if nut_ups in set(dispositivos):
+        return (f"NUT_UPS={nut_ups} é um dispositivo protegido, que a ponte também "
+                "publica no NUT. A proteção tem de ler o leitor de fábrica; lendo "
+                "esse, ela decidiria com dados que ela mesma escreveu.")
+    return None
 
 
 # §7A.5 — which changed keys apply live vs. require a service restart.
@@ -277,7 +298,6 @@ HOT_RELOAD_KEYS = frozenset(
         "HISTORY_RETENTION_DAYS",
         "RIVER_SERIAL_ENABLED",
         "RIVER_SERIAL_PORT",
-        "RIVER_NUT_PUBLICA",
         # Fase 3'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).
         "PROTECT_UDR7",
         "PROTECT_DRY_RUN",
@@ -299,7 +319,8 @@ HOT_RELOAD_KEYS = frozenset(
 )
 
 # Fase 3'-EXP — trava de armamento: só o arquivo .env (nunca o PUT) a abre/fecha.
-FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED"})
+FILE_ONLY_KEYS = frozenset({"UDR7_ARM_ALLOWED", "RIVER_POWEROFF_ALLOWED",
+                            "DEVICE_CMD_ALLOWED"})
 # Conjunto congelado enquanto o daemon está armado (PUT → 409 `armado`), com a única
 # exceção do desarme (PUT contendo só as chaves do predicado que o torna falso).
 # O nome do dispositivo tem prefixo UDR7_ mas NÃO é configuração de proteção: pode

@@ -42,6 +42,7 @@ class PluginFalso:
 
 def executor(**kw):
     linha: list[tuple[str, str]] = []
+    kw.setdefault("cfg", cfg(device_cmd_allowed=True))
     padrao = dict(aparelho_do_river=APARELHO, plugins=(),
                   registrar=lambda evento, detalhe: linha.append((evento, detalhe)),
                   desligar_river=lambda: None,
@@ -67,9 +68,34 @@ def test_the_river_offers_no_shutdown_while_the_file_lock_is_shut():
 
 def test_only_what_the_type_knows_how_to_do_is_announced():
     """O console UniFi sabe desligar e reiniciar; um host genérico só desliga."""
-    assert set(comandos_do_dispositivo(PluginFalso())) == {DESLIGAR, REINICIAR}
+    aberta = cfg(device_cmd_allowed=True)
+    assert set(comandos_do_dispositivo(PluginFalso(), aberta)) == {DESLIGAR, REINICIAR}
     so_desliga = PluginFalso(acoes={"desligar": "shutdown -h now"})
-    assert comandos_do_dispositivo(so_desliga) == (DESLIGAR,)
+    assert comandos_do_dispositivo(so_desliga, aberta) == (DESLIGAR,)
+
+
+def test_a_device_offers_no_order_while_the_file_lock_is_shut():
+    """Terceira trava de arquivo da casa, pelo mesmo motivo das outras duas.
+
+    Desligar um roteador de produção é ato destrutivo, e todo ato destrutivo aqui
+    tem uma trava que só o arquivo abre. Antes desta, mandar num roteador à mão
+    era o ÚNICO ato destrutivo do sistema sem trava — a diferença que a revisão
+    fria da 0.7.0 apontou.
+    """
+    assert comandos_do_dispositivo(PluginFalso(), cfg(device_cmd_allowed=False)) == ()
+
+
+def test_the_lock_is_checked_again_when_the_order_arrives():
+    """Anunciar de menos é cortesia; recusar é a cerca.
+
+    Quem fala com o soquete não é obrigado a perguntar o que existe antes de
+    mandar — a trava tem de valer também para quem manda direto.
+    """
+    plugin = PluginFalso()
+    exe = executor(cfg=cfg(device_cmd_allowed=False), plugins=[plugin])
+    assert exe("udr7", DESLIGAR) == CMD_INVALIDO
+    assert plugin.feitas == []
+    assert exe.linha[0][0] == "UDR7_ORDEM_RECUSADA"
 
 
 def test_the_names_are_the_ones_home_assistant_understands():
@@ -86,7 +112,7 @@ def test_the_names_are_the_ones_home_assistant_understands():
 def test_the_river_is_not_turned_off_with_the_file_lock_shut():
     """A trava de arquivo é a mesma da tela: nem a API nem o NUT a abrem."""
     desligou = []
-    exe = executor(cfg=cfg(river_poweroff_allowed=False),
+    exe = executor(cfg=cfg(river_poweroff_allowed=False, device_cmd_allowed=True),
                    desligar_river=lambda: desligou.append(1))
     assert exe(APARELHO, DESLIGAR) == CMD_INVALIDO
     assert desligou == []
@@ -96,7 +122,7 @@ def test_the_river_is_not_turned_off_with_the_file_lock_shut():
 def test_the_river_is_not_turned_off_while_a_protection_is_armed():
     """Duas ordens de desligamento ao mesmo tempo — a automática e a do dono."""
     desligou = []
-    exe = executor(cfg=cfg(river_poweroff_allowed=True),
+    exe = executor(cfg=cfg(river_poweroff_allowed=True, device_cmd_allowed=True),
                    plugins=[PluginFalso(armado=True)],
                    desligar_river=lambda: desligou.append(1))
     assert exe(APARELHO, DESLIGAR) == CMD_INVALIDO
@@ -110,7 +136,7 @@ def test_with_both_locks_open_the_river_is_turned_off_and_it_goes_to_the_timelin
     precisa achar ali o que aconteceu com o aparelho dele.
     """
     desligou = []
-    exe = executor(cfg=cfg(river_poweroff_allowed=True),
+    exe = executor(cfg=cfg(river_poweroff_allowed=True, device_cmd_allowed=True),
                    desligar_river=lambda: desligou.append(1))
     assert exe(APARELHO, DESLIGAR) == CMD_FEITO
     assert desligou == [1]
@@ -121,13 +147,13 @@ def test_a_shutdown_that_fails_says_so_instead_of_reporting_success():
     def estoura():
         raise RuntimeError("o servidor do no-break recusou o pedido")
 
-    exe = executor(cfg=cfg(river_poweroff_allowed=True), desligar_river=estoura)
+    exe = executor(cfg=cfg(river_poweroff_allowed=True, device_cmd_allowed=True), desligar_river=estoura)
     assert exe(APARELHO, DESLIGAR) == CMD_FALHOU
     assert "RIVER_DESLIGAR_FALHOU" in [e for e, _ in exe.linha]
 
 
 def test_an_unknown_command_on_the_river_is_refused():
-    exe = executor(cfg=cfg(river_poweroff_allowed=True))
+    exe = executor(cfg=cfg(river_poweroff_allowed=True, device_cmd_allowed=True))
     assert exe(APARELHO, "test.battery.start") == CMD_DESCONHECIDO
 
 

@@ -528,8 +528,8 @@ cena_mutacao S4bh src/river_unifi_bridge/ssh_acesso.py \
 # PRÓPRIA ponte publica fecharia o laço (ela decidiria desligar um roteador com
 # base em dados que ela mesma escreveu, e um erro de leitura viraria verdade).
 cena_mutacao S31 src/river_unifi_bridge/config.py \
-    "if cfg.river_nut_publica and cfg.nut_ups == cfg.river_nut_aparelho:" \
-    "if False:" \
+    "    if nut_ups == aparelho:" \
+    "    if False:" \
     tests/unit/test_nut_servico.py::test_the_protection_may_not_read_a_device_we_publish
 
 # S31b — dispositivo protegido só entra no NUT com alcance PROVADO. Sem a prova,
@@ -594,6 +594,84 @@ cena_mutacao S35 src/river_unifi_bridge/service.py \
     "if False:" \
     tests/unit/test_service_loop.py::test_a_stale_serial_reading_stops_being_published \
     tests/unit/test_service_loop.py::test_one_failed_serial_read_does_not_blank_the_outlets
+
+# --- o que a revisão fria da 0.7.0 achou, cada achado com a sua cerca ---------
+
+# S36 — a RESPOSTA de um comando é para quem perguntou. Como aviso geral, ela
+# chegava a quem não pediu e NÃO chegava a quem tinha desligado os avisos: o
+# River era desligado e o Home Assistant nunca sabia se a ordem tinha valido.
+cena_mutacao S36 src/river_unifi_bridge/nut_driver.py \
+    "            if cliente in self._clientes:      # desligou no meio: não há a quem responder
+                cliente.enfileira(texto)" \
+    "            self._para_todos(texto)" \
+    tests/unit/test_nut_driver.py::test_the_answer_goes_to_who_asked_even_with_broadcasts_off \
+    tests/unit/test_nut_driver.py::test_the_answer_does_not_go_to_a_client_that_did_not_ask
+
+# S37 — uma variável do NUT é UMA linha. Quebra de linha no valor não é valor
+# estranho: é linha nova injetada no protocolo, e o que publicamos vem de fora
+# (modelo e firmware saem do que o console respondeu).
+cena_mutacao S37 src/river_unifi_bridge/nut_driver.py \
+    'limpo = "".join(" " if (ord(c) < 0x20 or ord(c) == 0x7F) else c for c in valor)' \
+    "limpo = valor" \
+    tests/unit/test_nut_driver.py::test_a_value_with_a_newline_cannot_inject_a_second_line
+
+# S38 — o soquete é 0600. Com 0660, na pasta 0755 de grupo `admin` desta máquina,
+# qualquer conta administradora mandaria desligar o River sem ficha e sem rastro.
+cena_mutacao S38 src/river_unifi_bridge/nut_driver.py \
+    "os.chmod(self.caminho, stat.S_IRUSR | stat.S_IWUSR)" \
+    "os.chmod(self.caminho, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)" \
+    tests/unit/test_nut_driver.py::test_only_who_runs_the_service_can_send_an_order_through_the_socket
+
+# S39 — mandar num dispositivo à mão exige trava de ARQUIVO, como os outros dois
+# atos destrutivos da casa. Sem ela, era o único que não tinha nenhuma.
+cena_mutacao S39 src/river_unifi_bridge/nut_comandos.py \
+    'if cfg is not None and not getattr(cfg, "device_cmd_allowed", False):' \
+    "if False:" \
+    tests/unit/test_nut_comandos.py::test_a_device_offers_no_order_while_the_file_lock_is_shut
+
+# S39b — e a trava vale também para quem manda direto no soquete, sem perguntar
+# antes o que existe. Anunciar de menos é cortesia; recusar é a cerca.
+cena_mutacao S39b src/river_unifi_bridge/nut_comandos.py \
+    'if not getattr(self.cfg, "device_cmd_allowed", False):' \
+    "if False:" \
+    tests/unit/test_nut_comandos.py::test_the_lock_is_checked_again_when_the_order_arrives
+
+# S40 — o nome de um dispositivo protegido também é aparelho publicado por nós, e
+# a proteção não pode lê-lo. No `.env` isso não dá para conferir: os dispositivos
+# vivem na loja.
+cena_mutacao S40 src/river_unifi_bridge/config.py \
+    "if nut_ups in set(dispositivos):" \
+    "if False:" \
+    tests/unit/test_nut_servico.py::test_a_protected_device_name_is_refused_as_the_protection_source \
+    tests/unit/test_service_loop.py::test_the_service_refuses_to_start_reading_a_device_it_publishes
+
+# S41 — a regra cruzada vale no PUT também. Só no arquivo, a tela gravava a
+# configuração ruim, mandava reiniciar, e no reinício o serviço parava de
+# propósito — que sob o launchd é a saída que NÃO relança.
+cena_mutacao S41 src/river_unifi_bridge/api.py \
+    "        if recusa_espelho is not None:" \
+    "        if False:" \
+    tests/unit/test_api.py::test_the_screen_cannot_write_a_configuration_that_stops_the_service
+
+# S42 — a chave que liga a publicação NÃO aplica a quente; anunciá-la como se
+# aplicasse faria a tela dizer que a porta das ordens fechou enquanto os soquetes
+# continuavam no ar até o reinício.
+cena_mutacao S42 src/river_unifi_bridge/config.py \
+    '        "RIVER_SERIAL_PORT",
+        # Fase 3'"'"'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).' \
+    '        "RIVER_SERIAL_PORT",
+        "RIVER_NUT_PUBLICA",
+        # Fase 3'"'"'-EXP: tudo da proteção aplica a quente, exceto a trava (arquivo).' \
+    tests/unit/test_api.py::test_turning_publishing_off_is_not_announced_as_taking_effect_now
+
+# S43 — o trecho que o serviço mantém no `ups.conf` não pode comer o que está
+# fora das marcas. A promessa do instalador é que quem configurou o NUT à mão
+# continua com a configuração dele — e a seção do leitor de fábrica, que a
+# proteção lê, está justamente fora do nosso trecho.
+cena_mutacao S43 src/river_unifi_bridge/nut_conf.py \
+    "    return texto[:inicio] + novo + texto[fim:]" \
+    "    return texto[:inicio] + novo" \
+    tests/unit/test_nut_conf.py::test_what_comes_after_our_block_survives_a_rewrite
 
 # S5 — exemplo de config do repo parseia limpo
 if (cd "$RAIZ" && "$PY" - <<'EOF' >/dev/null 2>&1
@@ -726,6 +804,23 @@ if [ -n "$S9M_SENHA" ] && [ "$S9M_SENHA" = "$S9M_FICHA" ] && [ "$S9M_MODO" = "60
     ok "S9m conta do aparelho: criada uma vez, senha e ficha 0600 concordando"
 else
     erro "S9m conta do aparelho: conta=${S9M_SENHA:+ok} ficha=${S9M_FICHA:+ok} modo=${S9M_MODO:-ausente} seções=$(grep -c '^\[riverbridge\]$' "$INST/nutetc/upsd.users" 2>/dev/null)"
+fi
+
+# S9m2 — a conta do Home Assistant existe, com a permissão de mandar ordens e com
+# a senha guardada numa ficha 0600 (é ela que a tela mostra ao dono). Medido no
+# código do Home Assistant em 2026-09-05: sem usuário e senha, a integração NUT
+# dele nem chega a perguntar quais comandos existem — a conta sem `instcmds`
+# acompanharia o River e não ofereceria ordem nenhuma.
+S9M2_SENHA="$(awk '/^\[homeassistant\]/{d=1;next} /^\[/{d=0} d && $1=="password"{print $3; exit}' "$INST/nutetc/upsd.users" 2>/dev/null)"
+S9M2_FICHA="$(cat "$INST/state/nut-homeassistant.token" 2>/dev/null)"
+S9M2_MODO="$(stat -f '%Lp' "$INST/state/nut-homeassistant.token" 2>/dev/null)"
+S9M2_CMD="$(awk '/^\[homeassistant\]/{d=1;next} /^\[/{d=0} d && $1=="instcmds"{print $3; exit}' "$INST/nutetc/upsd.users" 2>/dev/null)"
+if [ -n "$S9M2_SENHA" ] && [ "$S9M2_SENHA" = "$S9M2_FICHA" ] && [ "$S9M2_MODO" = "600" ] \
+   && [ "$S9M2_CMD" = "ALL" ] && [ "$S9M2_SENHA" != "$S9M_SENHA" ] \
+   && [ "$(grep -c '^\[homeassistant\]$' "$INST/nutetc/upsd.users")" = "1" ]; then
+    ok "S9m2 conta do Home Assistant: criada uma vez, com ordens permitidas, senha própria em ficha 0600"
+else
+    erro "S9m2 conta do Home Assistant: conta=${S9M2_SENHA:+ok} ficha=${S9M2_FICHA:+ok} modo=${S9M2_MODO:-ausente} instcmds=${S9M2_CMD:-ausente} seções=$(grep -c '^\[homeassistant\]$' "$INST/nutetc/upsd.users" 2>/dev/null)"
 fi
 
 # S9b — guarda pré-atualização (D12, 2026-09-03)# S9b — guarda pré-atualização (D12, 2026-09-03): serviço carregado + uma

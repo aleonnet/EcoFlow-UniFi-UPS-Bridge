@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import re
 
+from . import nut_conf
 from .nut_driver import DriverDoNut, DriverError, ESTADO_PADRAO, caminho_do_soquete
 from .nut_publicacao import variaveis_do_dispositivo, variaveis_do_river
 
@@ -45,9 +46,16 @@ class PonteDoNut:
 
     def __init__(self, *, aparelho: str = APARELHO_PADRAO, estado: str = ESTADO_PADRAO,
                  log=None, criar_driver=DriverDoNut, executor=None,
-                 comandos_do_river=(), comandos_do_dispositivo=None) -> None:
+                 comandos_do_river=(), comandos_do_dispositivo=None,
+                 ups_conf: str = "", ao_mudar_a_declaracao=None) -> None:
         self.aparelho = aparelho
         self.estado = estado
+        # O servidor do no-break só serve aparelho declarado no `ups.conf`, e os
+        # dispositivos entram e saem pela tela do app a qualquer hora. Sem manter
+        # essa declaração em dia, um roteador adicionado hoje só apareceria no
+        # Home Assistant depois de o dono rodar o instalador de novo.
+        self.ups_conf = ups_conf
+        self._ao_mudar_a_declaracao = ao_mudar_a_declaracao or (lambda: None)
         self._log = log or (lambda *_a, **_k: None)
         self._criar = criar_driver
         self._executor = executor
@@ -57,6 +65,9 @@ class PonteDoNut:
         self._comandos_do_dispositivo = comandos_do_dispositivo or (lambda _p: ())
         self._river: DriverDoNut | None = None
         self._dispositivos: dict[str, DriverDoNut] = {}
+        # O nome que o dono deu a cada dispositivo, para a declaração no `ups.conf`
+        # dizer o mesmo que a tela.
+        self._descricoes: dict[str, str] = {}
 
     # -- ciclo de vida ------------------------------------------------------
     def iniciar(self) -> None:
@@ -104,6 +115,29 @@ class PonteDoNut:
             self._river.publicar(variaveis_do_river(snap),
                                  comandos=self._comandos_do_river, dados_ok=True)
         self._reconciliar(snap, plugins)
+        self._declarar(snap)
+
+    def _declarar(self, snap) -> None:
+        """Deixa o `ups.conf` com os aparelhos que estão no ar — e só então avisa.
+
+        O aviso (que reinicia o servidor do no-break) só sai quando o arquivo
+        MUDOU de verdade: reiniciar a cada volta do laço deixaria a leitura do
+        River com um buraco a cada dois segundos.
+        """
+        if not self.ups_conf or self._river is None:
+            return
+        declarados = [(self.aparelho, (snap.model or "River") + " (River Bridge)")]
+        declarados += [(identificador, self._descricoes.get(identificador, identificador))
+                       for identificador in sorted(self._dispositivos)]
+        try:
+            mudou = nut_conf.atualizar(self.ups_conf, declarados)
+        except OSError as exc:
+            self._log("WARN", "nut_conf_nao_escrito", reason=str(exc)[:200])
+            return
+        if mudou:
+            self._log("INFO", "nut_conf_atualizado",
+                      aparelhos=[nome for nome, _ in declarados])
+            self._ao_mudar_a_declaracao()
 
     def marcar_sem_dados(self) -> None:
         """O no-break calou: o servidor precisa saber que o que ele tem envelheceu.
@@ -125,6 +159,7 @@ class PonteDoNut:
         for identificador in list(self._dispositivos):
             if identificador not in publicaveis:
                 self._dispositivos.pop(identificador).encerrar()
+                self._descricoes.pop(identificador, None)
                 self._log("INFO", "nut_dispositivo_recolhido", aparelho=identificador)
         for identificador, plugin in publicaveis.items():
             driver = self._dispositivos.get(identificador)
@@ -135,9 +170,11 @@ class PonteDoNut:
                 self._dispositivos[identificador] = driver
                 self._log("INFO", "nut_dispositivo_publicado", aparelho=identificador)
             registro = plugin.alcance_registrado() or {}
+            nome = plugin.status().get("name") or identificador
+            self._descricoes[identificador] = nome
             driver.publicar(
                 variaveis_do_dispositivo(
-                    snap, nome=plugin.status().get("name") or identificador,
+                    snap, nome=nome,
                     modelo=registro.get("modelo"), firmware=registro.get("firmware"),
                     fabricante=getattr(plugin, "fabricante", None)),
                 comandos=self._comandos_do_dispositivo(plugin), dados_ok=True)

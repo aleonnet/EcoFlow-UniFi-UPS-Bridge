@@ -135,19 +135,25 @@ def driver(pasta_curta):
     d.encerrar()
 
 
-def test_the_socket_is_created_the_way_nut_drivers_create_it(pasta_curta):
-    """`chmod 0660`, como o `dstate.c` do NUT faz.
+def test_only_who_runs_the_service_can_send_an_order_through_the_socket(pasta_curta):
+    """0600 — mais estrito que o 0660 dos drivers de fábrica, de propósito.
 
-    Mais frouxo, qualquer programa da máquina mandaria o River desligar; mais
-    estrito, o servidor do no-break não conseguiria conectar quando ele roda
-    com o grupo e não com o mesmo usuário.
+    A documentação do NUT é literal: "There are no access controls in the
+    drivers. Anything that can connect to their sockets can make requests,
+    including SET and INSTCMD … These sockets must be kept secure."
+
+    E a pasta em que eles vivem nesta máquina é 0755 com grupo `admin` (medido em
+    2026-09-05): com 0660, qualquer conta administradora mandaria desligar o
+    River sem ficha, sem senha e sem rastro de quem foi — enquanto a mesma ordem
+    pela tela exige uma ficha de arquivo 0600. Era a maior diferença de trava
+    entre os dois caminhos (revisão fria da 0.7.0).
     """
     caminho = os.path.join(pasta_curta, "river-bridge-river")
     d = nd.DriverDoNut(caminho)
     d.iniciar()
     try:
         modo = stat.S_IMODE(os.stat(caminho).st_mode)
-        assert modo == 0o660, f"modo {oct(modo)}"
+        assert modo == 0o600, f"modo {oct(modo)}"
         assert stat.S_ISSOCK(os.stat(caminho).st_mode)
     finally:
         d.encerrar()
@@ -362,4 +368,79 @@ def test_writing_a_variable_from_the_network_is_refused(pasta_curta):
         assert d.variaveis()["ups.status"] == "OL"
     finally:
         servidor.fecha()
+        d.encerrar()
+
+
+# -- o que a revisão fria da 0.7.0 achou ---------------------------------------
+
+def test_a_value_with_a_newline_cannot_inject_a_second_line(pasta_curta):
+    """Uma variável do NUT é UMA linha. Quebra no meio não é valor estranho: é
+    linha nova injetada no protocolo.
+
+    E boa parte do que publicamos vem de fora — o modelo e o firmware saem do que
+    o console respondeu. Um console comprometido, ou só um firmware que responde
+    em duas linhas, passaria a escrever o estado do aparelho publicado.
+    """
+    d = nd.DriverDoNut(os.path.join(pasta_curta, "sock"))
+    d.iniciar()
+    servidor = Servidor(d.caminho).liga()
+    try:
+        d.publicar({"ups.status": "OL",
+                    "device.model": 'UDR7\nSETINFO ups.status "OB LB'})
+        linha = servidor.espera("SETINFO device.model")
+        assert "\n" not in linha
+        assert nd.divide_linha(linha)[1] == "device.model"
+        # E o valor continua UM só argumento, com o texto achatado.
+        assert nd.divide_linha(linha)[2].startswith("UDR7 SETINFO")
+    finally:
+        servidor.fecha()
+        d.encerrar()
+
+
+def test_the_answer_goes_to_who_asked_even_with_broadcasts_off(pasta_curta):
+    """`NOBROADCAST` desliga os AVISOS, não as respostas.
+
+    Sem esta distinção, o River era desligado (o executor rodava) e o Home
+    Assistant nunca recebia a confirmação: para quem mandou, a ordem falhou; para
+    o aparelho, ela aconteceu (revisão fria da 0.7.0, reproduzido).
+    """
+    d = nd.DriverDoNut(os.path.join(pasta_curta, "sock"),
+                       executor=lambda _c, _p: nd.CMD_FEITO)
+    d.iniciar()
+    d.publicar({}, comandos=["load.off"])
+    servidor = Servidor(d.caminho).liga()
+    try:
+        servidor.manda("NOBROADCAST")
+        servidor.manda("INSTCMD load.off TRACKING mudo")
+        assert servidor.espera("TRACKING") == "TRACKING mudo 0"
+    finally:
+        servidor.fecha()
+        d.encerrar()
+
+
+def test_the_answer_does_not_go_to_a_client_that_did_not_ask(pasta_curta):
+    """Resposta é para quem perguntou. Quem não perguntou recebe os avisos, e só."""
+    d = nd.DriverDoNut(os.path.join(pasta_curta, "sock"),
+                       executor=lambda _c, _p: nd.CMD_FEITO)
+    d.iniciar()
+    d.publicar({"ups.status": "OL"}, comandos=["load.off"])
+    quem_pergunta = Servidor(d.caminho).liga()
+    outro = Servidor(d.caminho).liga()
+    try:
+        quem_pergunta.manda("INSTCMD load.off TRACKING p1")
+        assert quem_pergunta.espera("TRACKING") == "TRACKING p1 0"
+        # No outro, o que chega é a publicação seguinte — e NADA da resposta
+        # alheia pelo caminho: uma marca de rastreio de outro cliente diria a ele
+        # que uma ordem que ele não deu terminou.
+        d.publicar({"ups.status": "OB"}, comandos=["load.off"])
+        vistas = []
+        while True:
+            linha = outro.linha()
+            vistas.append(linha)
+            if linha.startswith("SETINFO"):
+                break
+        assert vistas == ['SETINFO ups.status "OB"'], f"vazou para quem não pediu: {vistas}"
+    finally:
+        quem_pergunta.fecha()
+        outro.fecha()
         d.encerrar()

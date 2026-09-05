@@ -50,6 +50,7 @@ def _sem_porta_serial(monkeypatch):
         def __init__(self, *_a, **_k): self.acoes = []
         def iniciar(self): self.acoes.append("iniciar")
         def vigiar(self): self.acoes.append("vigiar")
+        def reiniciar_servidor(self): self.acoes.append("reiniciar_servidor")
         def encerrar(self): self.acoes.append("encerrar")
         def estado(self):
             from river_unifi_bridge.nut_supervisor import EstadoDoCabo

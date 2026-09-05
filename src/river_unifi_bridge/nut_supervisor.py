@@ -230,6 +230,21 @@ class NutSupervisor:
             return EstadoDoCabo(lendo=vivo, pausado_pelo_dono=False,
                                 motivo=None if vivo else "o leitor não subiu")
 
+    def reiniciar_servidor(self) -> None:
+        """Derruba o servidor do no-break; a vigilância o traz de volta.
+
+        Serve para uma coisa só: o `ups.conf` mudou (um dispositivo entrou ou
+        saiu pela tela) e o servidor precisa lê-lo de novo. O leitor de fábrica
+        NÃO é tocado — ele é quem segura o cabo do River, e derrubá-lo por causa
+        de uma linha de configuração deixaria a proteção cega por segundos.
+        """
+        with self._lock:
+            if self._pausado:
+                return
+            self._parar(self._servidor)
+            self._servidor = None
+            self._log("INFO", "nut_servidor_reiniciando", motivo="configuração mudou")
+
     def encerrar(self) -> None:
         """Serviço saindo: leva os filhos junto, para não deixar órfão com o cabo."""
         with self._lock:

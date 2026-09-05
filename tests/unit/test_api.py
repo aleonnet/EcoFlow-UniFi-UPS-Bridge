@@ -1315,3 +1315,42 @@ async def test_touching_the_console_access_is_refused_while_armed(unlocked, aces
     # testar continua valendo: é leitura, e é o que confirma que o armamento vale
     status, _ = await _acesso(c, "testar")
     assert status == 200
+
+
+# -- a regra CRUZADA da configuração (revisão fria da 0.7.0) -------------------
+
+async def test_the_screen_cannot_write_a_configuration_that_stops_the_service(client):
+    """Uma chave sozinha pode ser válida e o conjunto não.
+
+    Apontar a proteção para um aparelho que a própria ponte publica fecha um laço,
+    e o serviço recusa subir com isso. Sem esta conferência no PUT, a tela gravava,
+    dizia "reinicie", e no reinício o serviço fazia parada deliberada — que sob o
+    launchd é a saída que NÃO relança. O dono ficava sem proteção nenhuma, com uma
+    linha de registro e uma tela que dissera que tinha dado certo.
+    """
+    r = await client.put("/v1/config", json={"NUT_UPS": "river-bridge"}, headers=client.auth)
+    assert r.status == 409
+    corpo = await r.json()
+    assert corpo["motivo"] == "vigia_espelho"
+    assert "a própria ponte publica" in corpo["erro"]
+
+
+async def test_the_factory_reader_is_still_accepted(client):
+    """O caminho normal continua passando: a proteção lê o leitor de fábrica."""
+    r = await client.put("/v1/config", json={"NUT_UPS": "river-office"},
+                         headers=client.auth)
+    assert r.status == 200
+
+
+async def test_turning_publishing_off_is_not_announced_as_taking_effect_now(client):
+    """Ela NÃO aplica a quente, e dizer que aplicou seria mentir na tela.
+
+    O dono desligaria a publicação para fechar a porta das ordens; os soquetes
+    continuariam no ar até o serviço reiniciar, e a tela teria dito que valeu.
+    """
+    r = await client.put("/v1/config", json={"RIVER_NUT_PUBLICA": "0"},
+                         headers=client.auth)
+    assert r.status == 200
+    corpo = await r.json()
+    assert corpo["aplicadas_a_quente"] == []
+    assert corpo["restart_required"] is True

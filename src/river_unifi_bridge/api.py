@@ -27,6 +27,7 @@ from .config import (
     FILE_ONLY_KEYS,
     HOT_RELOAD_KEYS,
     config_field_names,
+    recusa_do_vigia_espelho,
     validate_update,
 )
 from .devices import DeviceInstance, DevicesError, new_id, now_iso, validate_fields
@@ -595,6 +596,22 @@ class ApiServer:
                 parsed[key] = validate_update(str(key), str(raw))
             except ConfigError as exc:
                 return web.json_response({"erro": str(exc)}, status=400)
+
+        # A regra CRUZADA: uma chave sozinha pode ser válida e o conjunto não.
+        # Apontar a proteção para um aparelho que a própria ponte publica fecha um
+        # laço, e o serviço recusa subir com isso. Sem esta conferência aqui, o
+        # PUT gravava, respondia "reinicie", e no reinício o serviço fazia parada
+        # deliberada — que sob o launchd é a saída que NÃO relança. O dono ficava
+        # sem proteção nenhuma, com uma linha de registro e uma tela que dissera
+        # que tinha dado certo (revisão fria da 0.7.0).
+        recusa_espelho = recusa_do_vigia_espelho(
+            str(parsed.get("NUT_UPS", self.cfg.nut_ups)),
+            str(parsed.get("RIVER_NUT_APARELHO", self.cfg.river_nut_aparelho)),
+            publica=bool(parsed.get("RIVER_NUT_PUBLICA", self.cfg.river_nut_publica)),
+            dispositivos={plugin.id for plugin in self.plugins},
+        )
+        if recusa_espelho is not None:
+            return self._refuse(409, "vigia_espelho", recusa_espelho)
 
         # Order is a fence: validate -> authorize -> write -> apply. A refusal never
         # leaves a trace in the .env file.

@@ -759,3 +759,22 @@ def test_a_stale_serial_reading_stops_being_published(tmp_path, monkeypatch):
         run_loop(cfg, once=False)
     assert publicados[0]["outlet.1.realpower"] == "86.0"
     assert "outlet.1.realpower" not in publicados[1]
+
+
+def test_the_service_refuses_to_start_reading_a_device_it_publishes(tmp_path, monkeypatch, capsys):
+    """O nome de um dispositivo protegido também é aparelho publicado por nós.
+
+    No arquivo de configuração isto não dá para conferir — os dispositivos vivem
+    na loja, não no `.env`. Sem esta conferência, `NUT_UPS=udr7` subia um serviço
+    que lia a carga de bateria que ele mesmo tinha escrito na volta anterior.
+    """
+    monkeypatch.setenv("RUB_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(service, "poll_once",
+                        lambda _c: (_ for _ in ()).throw(AssertionError("não pode chegar ao laço")))
+    cfg = make_cfg(poll_interval_seconds=0)
+    cfg.ui_api_enabled = False
+    cfg.nut_ups = "udr7"                  # o id da instância migrada
+    assert run_loop(cfg, once=False) == service.EXIT_VALIDATION
+    saida = capsys.readouterr().out
+    assert '"parada_deliberada"' in saida
+    assert "publicado" in saida

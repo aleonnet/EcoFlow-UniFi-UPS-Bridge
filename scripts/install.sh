@@ -419,38 +419,37 @@ escreve_se_faltar() {   # 1=caminho 2=modo 3=conteúdo
 # conta no `upsd.users` e um arquivo 0600 do diretório de estado, que só o
 # serviço lê. Fora do `.env` de propósito — a rota de configuração devolve o
 # `.env` inteiro para o aplicativo.
-garantir_conta_do_aparelho() {
-  local arquivo="$NUT_ETC/upsd.users" ficha="$STATE_DIR/nut-admin.token" senha=""
+garantir_conta_do_upsd() {   # 1=seção 2=ficha 3=linhas de permissão 4=para que serve
+  local secao="$1" ficha="$2" permissoes="$3" proposito="$4"
+  local arquivo="$NUT_ETC/upsd.users" senha=""
   # Conta já existente manda: a senha dela é a verdade, e a ficha é reescrita a
   # partir dela. Gerar outra deixaria os dois lados divergentes, e o serviço
   # ouviria "acesso negado" sem ninguém entender por quê.
-  if [ -f "$arquivo" ] && grep -q '^\[riverbridge\]' "$arquivo" 2>/dev/null; then
-    senha="$(awk '/^\[riverbridge\]/{d=1;next} /^\[/{d=0}
+  if [ -f "$arquivo" ] && grep -q "^\[$secao\]" "$arquivo" 2>/dev/null; then
+    senha="$(awk -v s="[$secao]" '$0==s{d=1;next} /^\[/{d=0}
                   d && tolower($0) ~ /^[[:space:]]*password[[:space:]]*=/ {
                     sub(/^[^=]*=[[:space:]]*/, "", $0); gsub(/^"|"$/, "", $0); print; exit }' "$arquivo")"
     if [ -z "$senha" ]; then
       # Seção existe e a senha não é legível: acrescentar outra deixaria duas
       # contas com o mesmo nome e a ficha guardando a que o servidor não usa.
-      nota "conta do aparelho: a seção [riverbridge] existe em $arquivo mas não consegui ler a senha; ajuste-a à mão"
+      nota "conta $secao: a seção existe em $arquivo mas não consegui ler a senha; ajuste-a à mão"
       return 1
     fi
   fi
   if [ -z "$senha" ]; then
     senha="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
-    man_set "file:$arquivo#riverbridge" pending
+    man_set "file:$arquivo#$secao" pending
     cat >> "$arquivo" <<EOF
 
-# Conta com que o SERVIÇO manda no aparelho (lembrete de bateria baixa,
-# desligamento). Senha gerada na instalação; o serviço a lê de
-# $ficha. Não a use noutro programa.
-[riverbridge]
+# $proposito
+# Senha gerada na instalação; ela também está em $ficha.
+[$secao]
     password = $senha
-    actions = SET
-    instcmds = ALL
+$permissoes
 EOF
     chmod 0640 "$arquivo"
     [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$arquivo" || true
-    man_set "file:$arquivo#riverbridge" created
+    man_set "file:$arquivo#$secao" created
   fi
   # ESTE é o primeiro ponto do instalador que cria o diretório de estado — e ele
   # roda como root. Criado sem dono, o serviço (que roda como o usuário) não
@@ -461,7 +460,7 @@ EOF
     chmod 0700 "$STATE_DIR"
     [ "$(id -u)" = "0" ] && chown "$SERVICE_USER" "$STATE_DIR" || true
   fi
-  # A ficha é reescrita sempre que divergir: é ela que o serviço lê.
+  # A ficha é reescrita sempre que divergir: é ela que o serviço (e a tela) leem.
   if [ ! -f "$ficha" ] || [ "$(cat "$ficha" 2>/dev/null)" != "$senha" ]; then
     man_set "file:$ficha" pending
     printf '%s' "$senha" > "$ficha"
@@ -471,6 +470,24 @@ EOF
     return 0
   fi
   return 1
+}
+
+garantir_conta_do_aparelho() {
+  garantir_conta_do_upsd riverbridge "$STATE_DIR/nut-admin.token" \
+    "    actions = SET
+    instcmds = ALL" \
+    "Conta com que o SERVIÇO manda no aparelho (lembrete de bateria baixa, desligamento). Não a use noutro programa."
+}
+
+# A conta do Home Assistant. Ela precisa de instcmds porque é o que faz a
+# integração NUT dele oferecer as ordens: medido no código do Home Assistant em
+# 2026-09-05, sem usuário e senha ele nem chega a perguntar quais comandos
+# existem. É diferente da conta do aplicativo da EcoFlow, que é só de leitura, e
+# da nossa, que manda no leitor de fábrica.
+garantir_conta_do_home_assistant() {
+  garantir_conta_do_upsd homeassistant "$STATE_DIR/nut-homeassistant.token" \
+    "    instcmds = ALL" \
+    "Conta do Home Assistant: acompanha o River e pode mandar as ordens que a ponte publica (desligar o River, desligar/reiniciar um dispositivo protegido). Cada ordem passa pelas mesmas travas da tela do aplicativo."
 }
 
 instalar_leitura_river() {
@@ -515,6 +532,7 @@ instalar_leitura_river() {
     upsmon secondary
 " && mudou=1
   garantir_conta_do_aparelho && mudou=1
+  garantir_conta_do_home_assistant && mudou=1
 
   # Quem sobe, vigia e para o driver e o servidor do NUT é o NOSSO SERVIÇO
   # (src/river_unifi_bridge/nut_supervisor.py), não o launchd. Três motivos

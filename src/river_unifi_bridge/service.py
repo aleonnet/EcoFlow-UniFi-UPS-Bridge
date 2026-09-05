@@ -18,7 +18,7 @@ import threading
 import time
 
 from . import __version__
-from .config import BridgeConfig, ConfigError, load_config
+from .config import BridgeConfig, ConfigError, load_config, recusa_do_vigia_espelho
 from .devices import DeviceStore, DevicesError
 from .localtoken import state_dir
 from .model import UpsSnapshot, snapshot_from_nut_vars
@@ -45,6 +45,9 @@ PRUNE_INTERVAL_SECONDS = 3600
 # É o mesmo seam do prefixo do NUT: sem ele, uma cena do portão criaria soquetes
 # na instalação REAL de quem roda a suíte.
 ESTADO_DO_NUT = "/opt/homebrew/var/state/ups"
+# E onde mora a configuração dele. O serviço só reescreve o trecho entre as
+# marcas do River Bridge; o resto do arquivo é do dono (ver nut_conf.py).
+ETC_DO_NUT = "/opt/homebrew/etc/nut"
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -365,6 +368,18 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
             return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
         # A loja vence: a instância migrada `udr7` é copiada para o cfg em memória
         # (GET /v1/config diz a verdade); o .env NÃO é reescrito no boot.
+        # A mesma cerca do arquivo, agora com a lista de dispositivos na mão: o
+        # nome de um deles também é aparelho publicado por nós, e a proteção não
+        # pode ler o que ela mesma escreve. No arquivo isto não dava para conferir
+        # — os dispositivos vivem na loja, não no `.env` (revisão fria da 0.7.0).
+        recusa = recusa_do_vigia_espelho(
+            cfg.nut_ups, cfg.river_nut_aparelho, publica=cfg.river_nut_publica,
+            dispositivos={plugin.id for plugin in plugins})
+        if recusa is not None:
+            _log("ERROR", "config_invalid", reason=recusa)
+            _log("ERROR", "parada_deliberada",
+                 reason="a proteção leria um aparelho publicado por nós")
+            return EXIT_OK if os.environ.get("RUB_LAUNCHD") == "1" else EXIT_VALIDATION
         for plugin in plugins:
             if plugin.id == "udr7" and hasattr(plugin, "instance"):
                 shadowed = apply_instance_to_cfg(plugin.instance, cfg)
@@ -448,7 +463,16 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 estado=os.environ.get("RUB_NUT_STATE") or ESTADO_DO_NUT,
                 log=_log, executor=executor,
                 comandos_do_river=comandos_do_river(cfg),
-                comandos_do_dispositivo=comandos_do_dispositivo)
+                comandos_do_dispositivo=lambda plugin: comandos_do_dispositivo(plugin, cfg),
+                ups_conf=os.path.join(
+                    os.environ.get("RUB_NUT_ETC") or ETC_DO_NUT, "ups.conf"),
+                # Aparelho que entra ou sai precisa de um servidor que releia a
+                # configuração. Só o SERVIDOR reinicia: o leitor de fábrica é
+                # quem segura o cabo do River, e derrubá-lo por causa de uma
+                # linha deixaria a proteção cega por segundos.
+                ao_mudar_a_declaracao=(
+                    supervisor.reiniciar_servidor if supervisor is not None
+                    else (lambda: None)))
             ponte.iniciar()
 
         while True:

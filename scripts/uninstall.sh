@@ -74,7 +74,8 @@ caminho_seguro() {  # $1=classe $2=caminho
     # feita depois de uma instalação 0.5.0 saía com falha e deixava a senha
     # no disco (revisão fria da 0.5.0, 2.ª rodada).
     file|dir) case "$2" in "$PREFIX"/*) return 0 ;; "$NUT_ETC"/*) return 0 ;;
-                 "$STATE_DIR"/nut-admin.token) return 0 ;; esac ;;
+                 "$STATE_DIR"/nut-admin.token) return 0 ;;
+                 "$STATE_DIR"/nut-homeassistant.token) return 0 ;; esac ;;
   esac
   return 1
 }

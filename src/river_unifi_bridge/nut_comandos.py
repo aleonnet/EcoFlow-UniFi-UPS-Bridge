@@ -21,8 +21,8 @@ Onde vive cada cerca:
 
 | Ordem | O que ela exige |
 |---|---|
-| desligar o River | a trava de arquivo do serviço aberta **e** nenhuma proteção armada |
-| desligar/reiniciar um dispositivo | alcance provado nos últimos 30 dias |
+| desligar o River | a trava de arquivo `RIVER_POWEROFF_ALLOWED` aberta **e** nenhuma proteção armada |
+| desligar/reiniciar um dispositivo | a trava de arquivo `DEVICE_CMD_ALLOWED` aberta **e** alcance provado nos últimos 30 dias |
 
 A trava de arquivo é a mesma de sempre: nem esta rota nem a da tela a abrem. E
 "nenhuma proteção armada" existe para não haver duas ordens de desligamento ao
@@ -53,12 +53,20 @@ def comandos_do_river(cfg) -> tuple[str, ...]:
     return (DESLIGAR,) if getattr(cfg, "river_poweroff_allowed", False) else ()
 
 
-def comandos_do_dispositivo(plugin) -> tuple[str, ...]:
+def comandos_do_dispositivo(plugin, cfg=None) -> tuple[str, ...]:
     """O que o aparelho de um dispositivo protegido anuncia.
 
-    Só o que o TIPO sabe fazer: o console UniFi sabe desligar e reiniciar; um host
-    genérico por SSH sabe desligar. O que ele não sabe não vira botão.
+    Duas condições, e as duas têm de valer:
+
+    1. **A trava de arquivo do serviço tem de estar aberta.** Desligar um roteador
+       de produção é ato destrutivo, e na casa todo ato destrutivo tem uma trava
+       que só o arquivo abre — a mesma mecânica do desligamento do River e do
+       armamento da proteção. Fechada, a ordem não é oferecida a ninguém.
+    2. **O tipo tem de saber fazer.** O console UniFi sabe desligar e reiniciar;
+       um host genérico por SSH sabe desligar. O que ele não sabe não vira botão.
     """
+    if cfg is not None and not getattr(cfg, "device_cmd_allowed", False):
+        return ()
     acoes = plugin.acoes_manuais() if hasattr(plugin, "acoes_manuais") else {}
     return tuple(nome for nome, acao in _ACAO_DO_COMANDO.items() if acao in acoes)
 
@@ -141,6 +149,14 @@ class ExecutorDeComandos:
         acao = _ACAO_DO_COMANDO.get(comando)
         if plugin is None or acao is None:
             return CMD_DESCONHECIDO
+        if not getattr(self.cfg, "device_cmd_allowed", False):
+            # A trava é conferida de novo AQUI, e não só no que se anuncia: quem
+            # fala com o soquete não é obrigado a perguntar o que existe antes de
+            # mandar. Anunciar de menos é cortesia; recusar é a cerca.
+            self._recusou(f"{aparelho.upper()}_ORDEM_RECUSADA", comando,
+                          "mandar neste dispositivo à mão está bloqueado no arquivo "
+                          "do serviço; abra a trava e reinicie para poder usar esta ordem")
+            return CMD_INVALIDO
         if acao not in (plugin.acoes_manuais() if hasattr(plugin, "acoes_manuais") else {}):
             return CMD_DESCONHECIDO
         self._log("WARN", "nut_dispositivo_ordem", aparelho=aparelho, acao=acao, origem="NUT")
