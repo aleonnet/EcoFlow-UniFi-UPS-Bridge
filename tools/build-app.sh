@@ -237,9 +237,52 @@ cat > "$APP/Contents/Library/LaunchDaemons/com.river.unifi-bridge.plist" <<'PLIS
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
+# ── assinatura: de dentro para fora (0.8.0) ───────────────────────────────────
+# Com `RUB_SIGN_IDENTITY` (um "Developer ID Application: …"), cada Mach-O do
+# pacote — o interpretador e as extensões do Python, as dependências, o NUT e
+# as bibliotecas dele, o executável do App — é assinado com o runtime endurecido
+# e carimbo de tempo, e só depois o pacote. É o que a notarização exige de todo
+# código aninhado; `--deep` não alcança os Mach-O soltos em Resources (medido:
+# 24 arquivos, 2026-09-05) e a Apple o desaconselha. Sem identidade (gate,
+# desenvolvimento), a assinatura é ad-hoc e o pacote roda só nesta máquina.
+#
+# codesign(1): "runtime — On macOS versions >= 10.14.0, opts signed processes
+# into a hardened runtime environment which includes runtime code signing
+# enforcement, library validation, hard, kill, and debugging restrictions."
+# O carimbo de tempo (`--timestamp`) exige rede; ad-hoc não o aceita.
+IDENTIDADE="${RUB_SIGN_IDENTITY:--}"
+assinar() {
+  if [ "$IDENTIDADE" = "-" ]; then
+    codesign --force --sign - "$1" >/dev/null 2>&1
+  else
+    codesign --force --options runtime --timestamp --sign "$IDENTIDADE" "$1" >/dev/null 2>&1
+  fi
+}
+assinar_de_dentro_para_fora() {
+  local arquivo assinados=0
+  while IFS= read -r -d '' arquivo; do
+    file -b "$arquivo" | grep -q 'Mach-O' || continue
+    assinar "$arquivo" || { echo "[ERRO] não consegui assinar $arquivo"; return 1; }
+    assinados=$((assinados + 1))
+  done < <(find "$RES/python" "$RES/libs" "$RES/nut" -type f \
+             \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0)
+  assinar "$APP/Contents/MacOS/RiverBridge" || { echo "[ERRO] não consegui assinar o executável"; return 1; }
+  assinar "$APP" || { echo "[ERRO] não consegui assinar o pacote"; return 1; }
+  echo "│ assinados $assinados Mach-O aninhados + executável + pacote ($([ "$IDENTIDADE" = "-" ] && echo ad-hoc || echo "$IDENTIDADE"))"
+}
+assinar_de_dentro_para_fora || exit 1
 codesign --verify --deep --strict "$APP" 2>/dev/null \
   || { echo "[ERRO] a assinatura do pacote não verifica depois de embutir o serviço"; exit 1; }
+if [ "$IDENTIDADE" != "-" ]; then
+  # Prova: o executável e um Mach-O aninhado saíram com o runtime endurecido e
+  # a autoridade certa — é o que a notarização vai conferir, arquivo a arquivo.
+  for prova in "$APP/Contents/MacOS/RiverBridge" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
+    codesign -dv --verbose=2 "$prova" 2>&1 | grep -q 'flags=.*runtime' \
+      || { echo "[ERRO] sem runtime endurecido: $prova"; exit 1; }
+    codesign -dv --verbose=2 "$prova" 2>&1 | grep -q 'Authority=Developer ID Application' \
+      || { echo "[ERRO] não é Developer ID: $prova"; exit 1; }
+  done
+fi
 
 # Arranque de prova: o serviço tem de rodar do pacote E não deixar rastro nele.
 # Sem isto, o defeito só apareceria na máquina de quem instalou.

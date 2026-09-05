@@ -6,6 +6,9 @@
 #   tools/release.sh --dry-run vX.Y.Z   constrói tudo em dist/vX.Y.Z/, não cria tag, não publica
 #   tools/release.sh vX.Y.Z             tudo: gate, build, tag, assets, push da tag, gh release
 #   opções: --no-gate (pula tools/gate.sh — só quando o gate acabou de rodar verde)
+#           --ad-hoc  (publica sem Developer ID nem notarização; desde a 0.8.0 a
+#                      release EXIGE RUB_SIGN_IDENTITY e RUB_NOTARY_PROFILE no
+#                      ambiente — a primeira abertura sem isso pede "Abrir Assim Mesmo")
 #
 # Assets com nome SEM versão, para o instalador baixar por
 #   https://github.com/<slug>/releases/latest/download/<asset>
@@ -31,12 +34,13 @@ ASSET_SRC="river-unifi-bridge-src.tar.gz"
 ASSET_DMG="River-Bridge.dmg"
 ASSET_SUMS="SHA256SUMS"
 
-MODO="full"; TAG=""; NO_GATE=0
+MODO="full"; TAG=""; NO_GATE=0; AD_HOC=0
 for arg in "$@"; do
   case "$arg" in
     --check) MODO="check" ;;
     --dry-run) MODO="dry" ;;
     --no-gate) NO_GATE=1 ;;
+    --ad-hoc) AD_HOC=1 ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     v[0-9]*) TAG="$arg" ;;
     *) echo "argumento desconhecido: $arg (uso)"; exit 2 ;;
@@ -86,6 +90,21 @@ for f in git shasum ditto plutil codesign tar; do command -v "$f" >/dev/null 2>&
 checar_versoes "$V"
 cd "$RAIZ"
 [ -z "$(git status --porcelain)" ] || falha "árvore suja — commite ou guarde antes de lançar" 3
+# Assinatura e notarização (0.8.0): a release sai com Developer ID e ticket da
+# Apple, senão a primeira abertura pede "Abrir Assim Mesmo" — a experiência que
+# o dono vetou. Só `--ad-hoc`, explícito, publica sem isso.
+if [ "$AD_HOC" = "0" ]; then
+  [ -n "${RUB_SIGN_IDENTITY:-}" ] && [ "${RUB_SIGN_IDENTITY:-}" != "-" ] \
+    || falha "RUB_SIGN_IDENTITY ausente: exporte o nome do certificado 'Developer ID Application: …' (ou --ad-hoc, de propósito)" 4
+  security find-identity -v -p codesigning 2>/dev/null | grep -qF "$RUB_SIGN_IDENTITY" \
+    || falha "o certificado '$RUB_SIGN_IDENTITY' não está no chaveiro desta máquina" 4
+  [ -n "${RUB_NOTARY_PROFILE:-}" ] \
+    || falha "RUB_NOTARY_PROFILE ausente: guarde a credencial com 'xcrun notarytool store-credentials <perfil>' e exporte o nome (ou --ad-hoc)" 4
+  diga "assinatura: $RUB_SIGN_IDENTITY · notarização: perfil $RUB_NOTARY_PROFILE"
+else
+  diga "AD-HOC: sem Developer ID nem notarização (a primeira abertura vai pedir 'Abrir Assim Mesmo')"
+  export RUB_SIGN_IDENTITY="-"; unset RUB_NOTARY_PROFILE
+fi
 if [ "$MODO" = "full" ]; then
   git fetch -q origin
   [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] \
@@ -110,10 +129,14 @@ diga "tools/build-app.sh"
 [ -x "$APP_SRC/Contents/MacOS/RiverBridge" ] || falha "app não montado em $APP_SRC" 1
 bundle_v="$(plutil -extract CFBundleShortVersionString raw -o - "$APP_SRC/Contents/Info.plist")"
 [ "$bundle_v" = "$V" ] || falha "Info.plist diz $bundle_v, esperado $V" 3
-codesign --verify --deep --strict "$APP_SRC" || falha "assinatura (ad-hoc) do app não verifica" 1
+codesign --verify --deep --strict "$APP_SRC" || falha "assinatura do app não verifica" 1
 file "$APP_SRC/Contents/MacOS/RiverBridge" | grep -q arm64 || falha "binário não é arm64" 3
 if xattr -lr "$APP_SRC" 2>/dev/null | grep -q com.apple.quarantine; then
   echo "[AVISO] o app de origem carrega com.apple.quarantine — o zip herdaria; limpe antes (xattr -dr)"
+fi
+if [ "$AD_HOC" = "0" ]; then
+  codesign -dv --verbose=2 "$APP_SRC" 2>&1 | grep -q 'Authority=Developer ID Application' \
+    || falha "o app não saiu assinado com Developer ID" 1
 fi
 
 if [ "$MODO" = "full" ]; then
@@ -124,14 +147,20 @@ else
 fi
 diga "git archive $ARCH_REF → $ASSET_SRC (prefixo river-unifi-bridge-$TAG/, casa com --strip-components=1)"
 git archive --format=tar.gz --prefix="river-unifi-bridge-$TAG/" -o "$DIST/$ASSET_SRC" "$ARCH_REF"
-diga "ditto → $ASSET_APP"
-(cd "$(dirname "$APP_SRC")" && ditto -c -k --keepParent "$(basename "$APP_SRC")" "$DIST/$ASSET_APP")
+# O disco vem ANTES do zip: é na notarização do disco que o ticket nasce, e ele
+# é grampeado também no programa — o zip tem de carregar o programa já grampeado.
 diga "tools/build-dmg.sh → $ASSET_DMG"
 "$RAIZ/tools/build-dmg.sh" >"$DIST/build-dmg.log" 2>&1 \
   || falha "build do disco falhou — veja $DIST/build-dmg.log" 1
 DMG_ORIGEM="$(dirname "$APP_SRC")/River Bridge $V.dmg"
 [ -f "$DMG_ORIGEM" ] || falha "disco não montado em $DMG_ORIGEM" 1
 cp "$DMG_ORIGEM" "$DIST/$ASSET_DMG"
+if [ "$AD_HOC" = "0" ]; then
+  xcrun stapler validate "$DIST/$ASSET_DMG" >/dev/null 2>&1 || falha "o disco publicado não carrega o ticket da Apple" 1
+  xcrun stapler validate "$APP_SRC" >/dev/null 2>&1 || falha "o programa não carrega o ticket da Apple" 1
+fi
+diga "ditto → $ASSET_APP"
+(cd "$(dirname "$APP_SRC")" && ditto -c -k --keepParent "$(basename "$APP_SRC")" "$DIST/$ASSET_APP")
 (cd "$DIST" && shasum -a 256 "$ASSET_APP" "$ASSET_SRC" "$ASSET_DMG" > "$ASSET_SUMS")
 
 # Auto-prova: o zip devolve o mesmo executável; o tarball traz o instalador.

@@ -86,6 +86,38 @@ codesign --verify --deep --strict "$MONTAGEM/River Bridge.app" 2>/dev/null \
 hdiutil detach -quiet "$MONTAGEM" && MONTAGEM=""
 [ -z "$falhou" ] || erro "$falhou"
 
+# ── assinatura e notarização do disco (0.8.0) ────────────────────────────────
+# Com `RUB_SIGN_IDENTITY`, o disco é assinado; com `RUB_NOTARY_PROFILE` (o
+# perfil guardado por `xcrun notarytool store-credentials`), ele vai à Apple,
+# tem de voltar "Accepted", e o ticket é grampeado no disco E no programa (o
+# ticket vale pelo hash do código, e o programa zipado da release é o mesmo). A
+# prova final é o próprio Gatekeeper desta máquina avaliando o disco.
+IDENTIDADE="${RUB_SIGN_IDENTITY:-}"
+PERFIL="${RUB_NOTARY_PROFILE:-}"
+if [ -n "$IDENTIDADE" ] && [ "$IDENTIDADE" != "-" ]; then
+  codesign --force --timestamp --sign "$IDENTIDADE" "$DMG" >/dev/null 2>&1 \
+    || erro "não consegui assinar o disco com $IDENTIDADE"
+  ok "disco assinado ($IDENTIDADE)"
+fi
+if [ -n "$PERFIL" ]; then
+  [ -n "$IDENTIDADE" ] && [ "$IDENTIDADE" != "-" ] || erro "notarizar exige RUB_SIGN_IDENTITY (Developer ID)"
+  echo "│ notarizando (xcrun notarytool submit --wait, perfil $PERFIL)"
+  NOTA="$(xcrun notarytool submit "$DMG" --keychain-profile "$PERFIL" --wait 2>&1)" \
+    || { printf '%s\n' "$NOTA" | tail -5; erro "a notarização falhou"; }
+  printf '%s\n' "$NOTA" | grep -q 'status: Accepted' \
+    || { printf '%s\n' "$NOTA" | tail -8; erro "a Apple não aceitou o disco (veja o registro acima)"; }
+  xcrun stapler staple "$DMG" >/dev/null 2>&1 || erro "não consegui grampear o ticket no disco"
+  xcrun stapler staple "$APP" >/dev/null 2>&1 || erro "não consegui grampear o ticket no programa"
+  xcrun stapler validate "$DMG" >/dev/null 2>&1 || erro "o ticket grampeado no disco não valida"
+  # A prova que importa: o Gatekeeper DESTA máquina aceita o disco como
+  # "Notarized Developer ID". Sem isto, a primeira abertura pede "Abrir Assim
+  # Mesmo" na máquina de quem instala.
+  VEREDITO="$(spctl -a -t open --context context:primary-signature -v "$DMG" 2>&1)"
+  printf '%s\n' "$VEREDITO" | grep -q 'source=Notarized Developer ID' \
+    || { printf '%s\n' "$VEREDITO"; erro "o Gatekeeper não aceita o disco como notarizado"; }
+  ok "disco notarizado e grampeado: $VEREDITO"
+fi
+
 ok "River Bridge $VERSAO.dmg pronto ($(du -sh "$DMG" | cut -f1))"
 echo "│ disco: $DMG"
 echo "│ abrir: open \"$DMG\" — depois arraste o programa para Aplicativos"

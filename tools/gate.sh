@@ -806,6 +806,27 @@ cena_mutacao S63 src/river_unifi_bridge/nut_bootstrap.py \
         raise ConfiguracaoDoDono(' \
     tests/unit/test_nut_bootstrap.py::test_arquivo_do_dono_nao_e_tocado
 
+# S64 — a assinatura é de DENTRO para fora, com o runtime endurecido, e o
+# `--deep` não é o único passo: a notarização confere cada Mach-O aninhado, e
+# `--deep` não alcança os soltos em Resources (medido: 24 arquivos). Cena de
+# texto, como a S44 e a S60.
+S64_FALHOU=""
+grep -q -- '--options runtime --timestamp' "$RAIZ/tools/build-app.sh" \
+  || S64_FALHOU="a assinatura não pede o runtime endurecido com carimbo de tempo"
+grep -q 'assinar_de_dentro_para_fora || exit 1' "$RAIZ/tools/build-app.sh" \
+  || S64_FALHOU="${S64_FALHOU:-a assinatura de dentro para fora não é chamada}"
+grep -q 'codesign --force --deep --sign' "$RAIZ/tools/build-app.sh" \
+  && S64_FALHOU="${S64_FALHOU:-voltou o --deep como assinatura do pacote}"
+grep -q "status: Accepted" "$RAIZ/tools/build-dmg.sh" \
+  || S64_FALHOU="${S64_FALHOU:-o disco não exige a notarização aceita}"
+grep -q 'source=Notarized Developer ID' "$RAIZ/tools/build-dmg.sh" \
+  || S64_FALHOU="${S64_FALHOU:-o disco não é avaliado pelo Gatekeeper depois de grampeado}"
+if [ -z "$S64_FALHOU" ]; then
+    ok "S64 assinatura: de dentro para fora, runtime endurecido, notarização exigida e provada"
+else
+    erro "S64 assinatura: $S64_FALHOU"
+fi
+
 # --- o que a 2.ª revisão fria da 0.7.0 achou ---------------------------------
 
 # S47 — marca do nosso trecho que não fecha é RECUSA, não conserto. A versão
