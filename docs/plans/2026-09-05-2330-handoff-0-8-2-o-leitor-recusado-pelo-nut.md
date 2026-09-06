@@ -358,7 +358,7 @@ primeira queda real, B42/B43). O `.zip` da bancada ficou em `~/Desktop` do mini 
 
 ### 5c. A 0.10.0 (2026-09-06, 15h00–17h10): o widget do macOS
 
-Plano e revisão: `2026-09-06-1500-o-widget-do-macos-0-10-0.md` (+ `…-banca.md`, `…review.md`). Plano: rodada 1
+Plano e revisão: `2026-09-06-1500-o-widget-do-macos-0-10-0.md` (+ `…-banca.md`; a revisão amarrada pelo nome em `~/.claude/plans/…review.md`). Plano: rodada 1
 com cinco bloqueadores de levantamento meu (o Dropover é App Store, não Developer ID; gravação nos testes iria
 para o contêiner real; "medido" onde era inferência; conta do orçamento; Info.plist incompleto), rodada 2 com um
 mecânico. Diff: rodada 1 com um bloqueador de desenho (a hora do retrato só avançava na mudança → widget
