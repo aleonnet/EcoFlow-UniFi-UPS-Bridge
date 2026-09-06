@@ -77,8 +77,8 @@ struct ServicoGroup: View {
                             SMAppService.openSystemSettingsLoginItems()
                         }
                     }
-                    if estado.acaoNaAbertura == .refazerRegistro {
-                        Button(AcaoDoServico.refazerRegistro.rotulo, action: refazerRegistro)
+                    if estado.acaoNaAbertura == .religar {
+                        Button(AcaoDoServico.religar.rotulo, action: registrarDeNovo)
                             .buttonStyle(.borderedProminent)
                             .disabled(trabalhando)
                     }
@@ -207,16 +207,11 @@ struct ServicoGroup: View {
         return (depois == .esperandoAprovacao || depois == .noAr) ? nil : queixa
     }
 
-    /// Registrado mas parado: desregistra e registra de novo. Apple: "If the
-    /// service is already registered, this method returns" — registrar por
-    /// cima não faz nada; e um registro de instalação anterior não relança o
-    /// serviço sozinho. Refazer pede a autorização de novo — a tela diz isso.
-    static func refazer() async -> String? {
-        do {
-            try await SMAppService.daemon(plistName: plistDoServico).unregister()
-        } catch {
-            return L10n.t("O macOS respondeu: ", "macOS said: ") + error.localizedDescription
-        }
+    /// Registrado mas parado: o mesmo `register()`. Medido no Mac mini em
+    /// 2026-09-06: num registro já autorizado, `register()` devolve ok e o
+    /// launchd sobe o serviço em segundos, sem nova autorização. O relógio
+    /// zera para dar ao serviço o tempo de subir.
+    static func religar() -> String? {
         relogio = EstadoDoServico.RelogioDoRegistro()
         return registrar()
     }
@@ -229,26 +224,22 @@ struct ServicoGroup: View {
     @MainActor static func registrarNaAbertura() -> (tentou: Bool, queixa: String?) {
         guard !registroTentadoNestaAbertura else { return (false, nil) }
         registroTentadoNestaAbertura = true
-        return (true, registrar())
+        // O mesmo ato do botão, inclusive o relógio zerado: no caso do registro
+        // herdado, a tentativa acontece aos 15 s de silêncio, e sem zerar a
+        // faixa "não responde" ficaria na tela durante a subida do serviço
+        // (revisão fria da 0.8.4).
+        return (true, religar())
     }
 
     private func registrarDeNovo() {
         trabalhando = true
-        recado = Self.registrar()
+        recado = estado == .registradoMasParado ? Self.religar() : Self.registrar()
         trabalhando = false
         conferir()
         aoMudar()
     }
 
-    private func refazerRegistro() {
-        trabalhando = true
-        Task {
-            recado = await Self.refazer()
-            trabalhando = false
-            conferir()
-            aoMudar()
-        }
-    }
+
 
     private func remover() {
         trabalhando = true

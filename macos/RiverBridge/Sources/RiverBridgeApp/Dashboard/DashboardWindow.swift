@@ -311,11 +311,12 @@ struct AvisoDoTopo: View {
             while !Task.isCancelled {
                 servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
                 if !servico.precisaRegistrar { queixaDoRegistro = nil }
-                if servico.precisaRegistrar {
-                    // O registro da abertura: uma vez por lançamento. Depois
-                    // dele o macOS mostra a notificação de autorização, e o
-                    // estado passa a "autorize" — o botão ao lado leva ao mesmo
-                    // interruptor nos Ajustes do Sistema.
+                if servico.aberturaRegistra {
+                    // O registro da abertura: uma vez por lançamento. Sem registro,
+                    // o macOS mostra a notificação de autorização e o estado passa
+                    // a "autorize". Com um registro já autorizado e o serviço mudo
+                    // (instalação anterior), o mesmo `register()` o sobe na hora,
+                    // sem autorização nova (medido no Mac mini, 2026-09-06).
                     let tentativa = ServicoGroup.registrarNaAbertura()
                     if tentativa.tentou {
                         queixaDoRegistro = tentativa.queixa
@@ -335,11 +336,9 @@ struct AvisoDoTopo: View {
             if !servico.precisaRegistrar { queixaDoRegistro = nil }
         case .abrirAjustesDoSistema:
             SMAppService.openSystemSettingsLoginItems()
-        case .refazerRegistro:
-            Task {
-                queixaDoRegistro = await ServicoGroup.refazer()
-                servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
-            }
+        case .religar:
+            queixaDoRegistro = ServicoGroup.religar()
+            servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
         }
     }
 }

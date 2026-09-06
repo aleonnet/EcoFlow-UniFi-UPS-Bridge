@@ -8,7 +8,7 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$RAIZ/macos/RiverBridge"
 DIST="$PKG/dist"
 APP="$DIST/River Bridge.app"
-VERSAO="0.8.3"
+VERSAO="0.8.4"
 
 # ── o serviço dentro do pacote (0.7.0) ────────────────────────────────────────
 # Por que o interpretador vem junto: medido em 2026-09-05 neste macOS 26.6.2 —

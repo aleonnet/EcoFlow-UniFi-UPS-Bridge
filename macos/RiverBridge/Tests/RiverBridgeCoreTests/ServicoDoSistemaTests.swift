@@ -153,7 +153,7 @@ import Testing
 @Test func registradoMasParadoCombinaAsDuasFontes() {
     // `.enabled` é "eligible to run", não "rodando": com o registro habilitado e
     // o serviço mudo por mais tempo do que leva para subir, a tela diz "não
-    // responde" e oferece refazer o registro — nunca "no ar" ao lado de "sem
+    // responde" e oferece religar o serviço — nunca "no ar" ao lado de "sem
     // resposta" (dono, Mac mini, 2026-09-06).
     #expect(EstadoDoServico.combinado(registro: .noAr, respondendo: true, haQuantoTempoHabilitado: 999) == .noAr)
     #expect(EstadoDoServico.combinado(registro: .noAr, respondendo: false, haQuantoTempoHabilitado: 2) == .noAr)
@@ -163,8 +163,13 @@ import Testing
     #expect(EstadoDoServico.combinado(registro: .esperandoAprovacao, respondendo: false, haQuantoTempoHabilitado: 999) == .esperandoAprovacao)
     #expect(EstadoDoServico.combinado(registro: .foraDeAplicativos, respondendo: true, haQuantoTempoHabilitado: 0) == .foraDeAplicativos)
     let parado = EstadoDoServico.registradoMasParado
-    #expect(parado.avisaNaAbertura && parado.acaoNaAbertura == .refazerRegistro && parado.podeRemover)
-    #expect(AcaoDoServico.refazerRegistro.rotulo(emPortugues: false) == "Redo the registration")
+    #expect(parado.avisaNaAbertura && parado.acaoNaAbertura == .religar && parado.podeRemover)
+    #expect(AcaoDoServico.religar.rotulo(emPortugues: false) == "Restart the service")
+    // A abertura registra de novo neste estado: `register()` num registro já
+    // autorizado sobe o serviço sem nova autorização (medido, 2026-09-06).
+    #expect(parado.aberturaRegistra && !parado.precisaRegistrar)
+    #expect(EstadoDoServico.naoInstalado.aberturaRegistra)
+    #expect(!EstadoDoServico.esperandoAprovacao.aberturaRegistra && !EstadoDoServico.noAr.aberturaRegistra)
 }
 
 @Test func todoEstadoTemTituloEExplicacaoNasDuasLinguas() {
@@ -185,7 +190,7 @@ import Testing
         let en = estado.titulo(emPortugues: false) + estado.explicacao(emPortugues: false)
         #expect(en.rangeOfCharacter(from: acentos) == nil, "português vazou em inglês: \(estado)")
     }
-    for acao in [AcaoDoServico.registrar, .abrirAjustesDoSistema] {
+    for acao in [AcaoDoServico.registrar, .abrirAjustesDoSistema, .religar] {
         #expect(acao.rotulo(emPortugues: false).rangeOfCharacter(from: acentos) == nil)
     }
 }

@@ -118,7 +118,7 @@ $ ls -la /Library/Logs/river-unifi-bridge.log → 235572 bytes; "identity": {"mo
 | O que o dono viu (capturas) | Fonte primária | Correção |
 |---|---|---|
 | Programa no Lixo, interruptor "River Bridge" **ligado** em Itens de Início de Sessão | `SMAppService.unregister()`: "Unregisters the service so the system no longer launches it. … If the service is currently running it, the system terminates it." Só um processo do pacote pode chamá-lo ("property list in the calling app's Contents/Library/LaunchDaemons directory"). O `launchctl bootout` da 0.8.x só parava o processo. | O pacote traz `Contents/MacOS/river-bridge-servico` (alvo Swift `RiverBridgeServico`); o serviço o executa como o usuário da sessão, a partir do caminho ATUAL do pacote (já no Lixo), com a saída herdada do serviço (o diário): o ajudante escreve lá `unregister=ok`, e ninguém espera por ele, porque o `unregister` derruba o serviço no instante seguinte; depois o bootout. Cenas S66 e S66b. |
-| "O serviço está no ar" + "Sem resposta do serviço" + "Serviço parado" na mesma tela | `SMAppService.Status.enabled`: "The service has been successfully registered and is **eligible to run**." Não é "rodando". | Estado combinado: registro do sistema × resposta do serviço (fluxo de leituras). Habilitado e mudo por ≥ 15 s → "registrado, mas não responde", botão **Refazer o registro** (unregister + register; pede autorização de novo, e a frase diz). Painel, Ajustes e menu de barra leem a mesma fonte; a faixa "Serviço parado" saiu; a faixa da configuração só aparece com o serviço respondendo. |
+| "O serviço está no ar" + "Sem resposta do serviço" + "Serviço parado" na mesma tela | `SMAppService.Status.enabled`: "The service has been successfully registered and is **eligible to run**." Não é "rodando". | Estado combinado: registro do sistema × resposta do serviço (fluxo de leituras). Habilitado e mudo por ≥ 15 s → "registrado, mas não responde", botão **Religar o serviço** — o mesmo `register()`, que num registro já autorizado sobe o serviço sem nova senha (medido, §4d); a abertura já o faz sozinha (0.8.4). Painel, Ajustes e menu de barra leem a mesma fonte; a faixa "Serviço parado" saiu; a faixa da configuração só aparece com o serviço respondendo. |
 | "Isto apaga, sem volta…" (lista longa); "Abrir a trava — o desligamento passa a ser real"; "DESLIGAR o River agora?"; texto da rede em 4 linhas | HIG Alerts: "Write a title that clearly and succinctly describes the situation." "If you need to add an informative message, keep it as short as possible, using complete sentences." "Aim for a one- or two-word title that describes the result of selecting the button." "Always use the title 'Cancel'…" | Título curto, mensagem de 1–3 frases, botões **Remover / Abrir / Permitir / Desligar**, Cancelar sempre. "Sem volta" saiu (era falso: Registrar de novo existe). Testes medem o tamanho e os rótulos. |
 | "Não consegui apagar o estado: Could not connect to the server." | HIG Writing: "When an error message is necessary, display it as close to the problem as possible, avoid blame, and be clear about what someone can do to fix it." | Com o serviço mudo, a confirmação diz que a chave e as senhas ficam em `/Library/Application Support/river-unifi-bridge` e o registro é desfeito mesmo assim; erro do serviço, se houver, sai em português/inglês. |
 | Depois de Remover completamente, a linha "River Bridge" continua listada (desligada) | A Apple documenta o registro, não a lista dos Ajustes do Sistema. | A linha é do macOS; o que é nosso (registro, processo, estado) sai. Dito no código, não prometido na tela. |
@@ -144,6 +144,25 @@ quarentena da instalação) e pôr um binário ad-hoc dentro quebra o lacre; ao 
 Gatekeeper mostra **"River Bridge is damaged and can't be opened"** na tela do dono e a chamada
 trava. Foi o que o dono viu à 00h30; a cópia era minha e foi removida. Medir só com o pacote
 inteiro assinado, copiado por scp.
+
+## 4d. Bancada da 0.8.3/0.8.4 no mini, por mim (2026-09-06, 01h10–01h35)
+
+```
+== 0.8.2 → Lixo (mv, o mesmo que o Finder)
+{"event": "PACOTE_NO_LIXO_REMOVIDO", "pacote": "/Applications/River Bridge.app", "agora": ".../.Trash/River Bridge.app/Contents/Info.plist"}
+{"event": "parada_deliberada", "reason": "o pacote foi para o Lixo: estado apagado e serviço desregistrado", "apagados": 13}
+processos: nenhum · pasta de estado: não existe · launchd: Bad request (job sumiu) · interruptor: fica (defeito da 0.8.2)
+== 0.8.3 (assinada) em /Applications, sobre o registro herdado
+river-bridge-servico status   → status=enabled            (o fantasma da 0.8.2)
+river-bridge-servico register → register=ok, status_depois=enabled   ← SEM nova autorização
+6 s depois: launchd running pid 25576; usbhid-ups e river-bridge-upsd como root
+health: usb ok, nut ok, cabo.lendo true
+LIST UPS: river-office, river-bridge  (udr7 não: a lista de dispositivos foi apagada pelo Lixo, como manda)
+LIST VAR river-bridge: outlet.count 4, outlet.1.realpower 64.8, ups.status OL, battery.charge 100
+trava RIVER_POWEROFF_ALLOWED=1 pela API → {"aplicadas_a_quente": ["RIVER_POWEROFF_ALLOWED"]} → LIST CMD river-bridge: load.off; =0 → nenhum
+rede: PUT {"aberta": true} → {"servidor_reiniciado": true}; netstat: *.3493 LISTEN; do MacBook, LIST UPS em 192.168.1.13:3493 → river-office, river-bridge; PUT {"aberta": false} → fechou
+cabo: open -a PowerManager → 9 s: cabo {"lendo": false, "pausado": true, "motivo": "o aplicativo da EcoFlow abriu"}; pkill → 12 s: {"lendo": true}, usb ok
+```
 
 ## 5. Próximo passo, na ordem
 

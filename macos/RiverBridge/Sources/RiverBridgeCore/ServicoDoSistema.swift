@@ -100,9 +100,10 @@ public enum AcaoDoServico: Sendable, Equatable {
     case registrar
     /// O macOS espera a autorização: levar o dono aos Ajustes do Sistema.
     case abrirAjustesDoSistema
-    /// Registrado, mas o serviço não responde: refazer o registro (desregistrar
-    /// e registrar; o macOS pede a autorização de novo).
-    case refazerRegistro
+    /// Registrado e autorizado, mas o serviço não responde: religar, que é o
+    /// mesmo `register()` — medido no Mac mini em 2026-09-06: num registro já
+    /// autorizado ele sobe o serviço na hora, sem nova autorização.
+    case religar
 
     public var rotulo: String { rotulo(emPortugues: L10n.cachedIsPT) }
 
@@ -112,8 +113,8 @@ public enum AcaoDoServico: Sendable, Equatable {
             return pt ? "Registrar de novo" : "Register again"
         case .abrirAjustesDoSistema:
             return pt ? "Abrir Ajustes do Sistema" : "Open System Settings"
-        case .refazerRegistro:
-            return pt ? "Refazer o registro" : "Redo the registration"
+        case .religar:
+            return pt ? "Religar o serviço" : "Restart the service"
         }
     }
 }
@@ -127,8 +128,8 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
     /// Registrado, autorizado e respondendo.
     case noAr
     /// Registrado e autorizado, mas o serviço não responde há mais tempo do
-    /// que leva para subir: o registro é de uma instalação anterior, ou o
-    /// processo caiu e não voltou.
+    /// que leva para subir. É o gatilho de a abertura religá-lo (uma vez); se
+    /// depois disso ele continuar mudo, o botão da tela religa de novo.
     case registradoMasParado
     /// O sistema respondeu `.notFound`: "An error occurred and the framework
     /// couldn't find this service". (Desligar nos Ajustes do Sistema NÃO cai
@@ -197,10 +198,12 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
                   + "logs in."
         case .registradoMasParado:
             return pt
-                ? "O macOS conhece o serviço, mas ele não está rodando. Refazer o "
-                  + "registro pede a autorização de novo."
-                : "macOS knows the service, but it is not running. Redoing the "
-                  + "registration asks for the authorization again."
+                ? "O macOS conhece o serviço, mas ele não está rodando. Toque em "
+                  + "Religar o serviço; se não voltar, use Remover completamente e "
+                  + "abra o programa de novo."
+                : "macOS knows the service, but it is not running. Click Restart the "
+                  + "service; if it does not come back, use Remove completely and open "
+                  + "the app again."
         case .naoEncontradoPeloSistema:
             return pt
                 ? "O macOS respondeu que não encontra o serviço registrado. Toque em "
@@ -268,6 +271,17 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
         }
     }
 
+    /// A abertura chama `register()` neste estado? Sim quando o sistema não
+    /// conhece o serviço, e TAMBÉM quando o conhece, autorizado, mas ele não
+    /// responde: registrar de novo é idempotente pela Apple ("If the service is
+    /// already registered, this method returns") e, medido no Mac mini em
+    /// 2026-09-06, sobe na hora um serviço cujo registro já estava autorizado —
+    /// o caso do registro herdado de uma instalação anterior (o dono viu
+    /// "no ar" com o serviço morto).
+    public var aberturaRegistra: Bool {
+        precisaRegistrar || self == .registradoMasParado
+    }
+
     /// Dá para remover por aqui agora?
     public var podeRemover: Bool {
         switch self {
@@ -293,7 +307,7 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
         switch self {
         case .naoInstalado, .naoEncontradoPeloSistema: return .registrar
         case .esperandoAprovacao: return .abrirAjustesDoSistema
-        case .registradoMasParado: return .refazerRegistro
+        case .registradoMasParado: return .religar
         case .noAr, .instaladoPelaLinhaDeComando, .foraDeAplicativos: return nil
         }
     }

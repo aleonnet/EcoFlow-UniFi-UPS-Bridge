@@ -9,6 +9,29 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-09-06
+
+Medido no Mac mini, com a 0.8.3 instalada por cima do registro herdado da 0.8.2 (habilitado,
+serviço morto): `register()` num registro já autorizado devolve ok e o launchd sobe o serviço
+em segundos, **sem nova autorização**. A 0.8.3 oferecia "Refazer o registro" (desregistrar e
+registrar, que pede a senha de novo) — desnecessário.
+
+### Mudado
+- **"Registrado, mas não responde" ganha o ato certo: Religar o serviço**, o mesmo `register()`
+  da abertura. E a própria abertura o faz sozinha nesse estado, uma vez por lançamento: quem
+  instala uma versão nova por cima de um registro já autorizado vê o serviço subir sem clicar em
+  nada. O "Refazer o registro" saiu.
+- O ajudante do pacote (`river-bridge-servico`) aceita `register`, `status` e `unregister`.
+
+### Bancada no Mac mini (2026-09-06, por ssh)
+- 0.8.2 no Lixo: serviço apagou os 13 itens do estado e se descarregou (diário:
+  `PACOTE_NO_LIXO_REMOVIDO`, `parada_deliberada`); interruptor ficou ligado (o defeito da 0.8.2).
+- 0.8.3 instalada por cima: `river-bridge-servico status` → `enabled`; `register` → `ok`; 6 s
+  depois leitor e servidor rodando como root; saúde `usb: ok, nut: ok, cabo.lendo: true`.
+- Servidor do no-break: `river-office` e `river-bridge`; `outlet.count 4`; `outlet.1.realpower
+  64.8`. Trava "Permitir desligar o River" ligada pela API: `CMD river-bridge load.off` aparece
+  para a conta do Home Assistant; desligada: some.
+
 ## [0.8.3] — 2026-09-06
 
 A auditoria que o dono exigiu depois de testar a 0.8.2 no Mac mini como usuário: o

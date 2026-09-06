@@ -11,7 +11,9 @@
 // app's Contents/Library/LaunchDaemons directory"). O serviço em Python não é;
 // este executável, dentro de Contents/MacOS, é.
 //
-// Uso: river-bridge-servico [status|unregister]   (padrão: status)
+// Uso: river-bridge-servico [status|register|unregister]   (padrão: status)
+// `register`: o mesmo `register()` que o programa chama ao abrir — serve para
+// religar um serviço cujo registro já está autorizado (medição de 2026-09-06).
 // Saída: linhas `chave=valor`, para o diário do serviço. Código 0 = ok.
 
 import Foundation
@@ -36,6 +38,17 @@ print("status=\(nome(servico.status))")
 switch CommandLine.arguments.dropFirst().first ?? "status" {
 case "status":
     exit(0)
+case "register":
+    do {
+        try servico.register()
+        print("register=ok")
+        print("status_depois=\(nome(servico.status))")
+        exit(0)
+    } catch {
+        print("register=erro: \(error.localizedDescription)")
+        print("status_depois=\(nome(servico.status))")
+        exit(1)
+    }
 case "unregister":
     do {
         try servico.unregister()
@@ -47,6 +60,6 @@ case "unregister":
         exit(1)
     }
 default:
-    print("uso: river-bridge-servico [status|unregister]")
+    print("uso: river-bridge-servico [status|register|unregister]")
     exit(2)
 }
