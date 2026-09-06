@@ -3,9 +3,12 @@
 //
 // Este processo roda em caixa de areia e não fala com o serviço: lê o retrato
 // que o app grava no contêiner do grupo (RetratoDoWidget, no Core) e desenha.
-// A linha do tempo tem entradas a cada 5 min por 30 min — a idade do retrato
-// cresce a cada entrada sem recarga — e pede recarga depois (`.after`), o que dá
-// 48 pedidos por dia, dentro do orçamento documentado de 40 a 70. Cada pedido
+// A linha do tempo tem entradas a cada 5 min até 25 min — a idade do retrato
+// cresce a cada entrada sem recarga — e pede recarga aos 30 (`.after`), o que dá
+// 48 pedidos por dia, dentro do orçamento documentado de 40 a 70. A última
+// entrada fica em 25 min de propósito: uma em 30 cairia SEMPRE no traço (o
+// retrato tem 0–2 min ao recarregar; 30 + 2 > 30), mesmo com o app aberto.
+// Se o sistema atrasar a recarga, o widget fica em "às HH:MM", que é a verdade. Cada pedido
 // atendido fica em `recargas.log` no contêiner, para a bancada medir quantos o
 // sistema honra de fato. Sem retrato ou com retrato de mais de meia hora, o
 // widget mostra traço e o que fazer — dado velho não é presente.
@@ -36,7 +39,7 @@ struct Provedor: TimelineProvider {
         Self.registraRecarga()
         let agora = Date.now
         let retrato = Self.retratoAtual()
-        let entradas = stride(from: 0.0, through: Self.janela, by: Self.passo)
+        let entradas = stride(from: 0.0, to: Self.janela, by: Self.passo)
             .map { Entrada(date: agora.addingTimeInterval($0), retrato: retrato) }
         completion(Timeline(entries: entradas, policy: .after(agora.addingTimeInterval(Self.janela))))
     }

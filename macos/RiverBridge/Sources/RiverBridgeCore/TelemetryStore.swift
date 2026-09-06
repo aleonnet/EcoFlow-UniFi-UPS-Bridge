@@ -126,7 +126,7 @@ public final class TelemetryStore {
         healthGeneration += 1
         let mine = healthGeneration
         let api = client ?? ApiEndpoint.discover(environment: environment).map { APIClient(endpoint: $0) }
-        guard let api else { return }
+        guard let api else { gravarRetrato(); return }   // o batimento também sem serviço
         let chain = try? await api.health()
         guard mine == healthGeneration else { return }
         health = chain
@@ -157,6 +157,10 @@ public final class TelemetryStore {
                 guard let endpoint = ApiEndpoint.discover(environment: environment) else {
                     self?.phase = .serviceDown(L10n.t("Serviço não instalado ou nunca iniciado",
                                                      "Service not installed or never started"))
+                    // A fase não muda a cada volta, e o `didSet` só dispara na
+                    // mudança: o batimento de 2 min do retrato tem de vir daqui
+                    // (revisão fria da 0.10.0, rodada 2).
+                    self?.gravarRetrato()
                     try? await Task.sleep(for: .seconds(2))
                     continue
                 }

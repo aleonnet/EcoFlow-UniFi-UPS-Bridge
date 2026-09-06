@@ -1,5 +1,7 @@
 // O retrato do widget (0.10.0): nasce do estado sem inventar, pede recarga só em
-// mudança de significado, envelhece em três faixas, e o store só grava quando muda.
+// mudança de significado, envelhece em três faixas, e o store grava quando o
+// conteúdo muda ou quando o último gravado tem mais de 2 min (a hora é a da
+// última leitura confirmada).
 
 import Foundation
 import Testing

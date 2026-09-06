@@ -11,12 +11,15 @@
 // Medido em 2026-09-06 nesta máquina: `containerURL(forSecurityApplicationGroupIdentifier:)`
 // → ~/Library/Group Containers/8A47D8UNV2.com.river.bridge, gravável pelo app.
 //
-// Por que "só quando muda" e "só em mudança de significado": o WidgetKit dá a
-// cada widget um orçamento de 40 a 70 recargas por dia (docs/widgetkit/keeping-a-widget-up-to-date);
-// um estado chega por SSE a cada ~2 s. O app grava o arquivo quando o conteúdo
-// muda (não a hora) e pede recarga quando o SIGNIFICADO muda (fonte, bateria
-// baixa, serviço, degrau de 10 pontos). O periódico é da linha do tempo do
-// próprio widget.
+// Por que "quando muda, ou a cada 2 min" e "recarga só em mudança de
+// significado": o WidgetKit dá a cada widget um orçamento de 40 a 70 recargas
+// por dia (docs/widgetkit/keeping-a-widget-up-to-date); um estado chega por SSE
+// a cada ~2 s. O app grava o arquivo quando o conteúdo muda e, com o conteúdo
+// igual, a cada 2 min — para a hora do retrato ser a da última leitura
+// CONFIRMADA, não a da última mudança (senão um River estável a 100 % parecia
+// velho com o app aberto). Pede recarga quando o SIGNIFICADO muda (fonte,
+// bateria baixa, serviço, degrau de 10 pontos, idioma). O periódico é da linha
+// do tempo do próprio widget.
 //
 // Regra da casa que vale aqui inteira: dado ausente é `nil`, nunca zero; e dado
 // velho não é presente (IdadeDoRetrato).
