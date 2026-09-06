@@ -1060,6 +1060,16 @@ EOF
 # medido em 2026-09-06, e foi a queda do dono ao abrir 24 h/7 d de eventos (os
 # eventos do cabo não estavam na legenda). Mutante: tira o passo que põe no
 # domínio o rótulo que nenhuma lista conhece.
+# S73 — o selo da instância armada é "Armada", e nunca acusa alcance (0.9.0). O
+# estado `armado_nao_verificado` é o de toda instância armada; "alcance não
+# verificado" era tradução ao pé da letra e falsa. Mutante: o texto velho volta.
+if [ -d "$APP_DIR" ]; then
+    cena_mutacao_swift S73 Sources/RiverBridgeCore/DeviceStateText.swift \
+        '        case "armado_nao_verificado": return (L10n.t("Armada", "Armed"), .perigo)' \
+        '        case "armado_nao_verificado": return (L10n.t("Armada — alcance não verificado", "Armed — reach unverified"), .perigo)' \
+        oEstadoArmadoNaoAcusaAlcance
+fi
+
 # S74 — na folha do River, tempo para carga completa sem leitura é traço, nunca
 # "0 min" (0.9.0: o serviço publica null quando o aparelho não está carregando).
 if [ -d "$APP_DIR" ]; then

@@ -1,0 +1,75 @@
+{
+  "usb": "sem_dados",
+  "nut": "sem_dados",
+  "bridge": "ok",
+  "unifi": "sem_caminho_nativo_documentado",
+  "udr7": "armado_nao_verificado",
+  "udr7_detail": {
+    "state": "armado_nao_verificado",
+    "dry_run": false,
+    "enabled": true,
+    "source": "ok",
+    "source_detail": null,
+    "missing_key": null,
+    "cutoff": 2,
+    "threshold": 5,
+    "charge_low": 10.0,
+    "margin_estimate_s": null,
+    "warnings": [
+      "lock_open",
+      "margin_unknown"
+    ],
+    "ssh_host": "192.0.2.1",
+    "ssh_binary": "/usr/bin/ssh",
+    "last_event": "UDR7_ARMED",
+    "last_event_at": "2026-09-06T13:55:00-0300",
+    "outage": false,
+    "attempts": 0,
+    "sent_pending_restore": false,
+    "name": "UDR7",
+    "alcance_verificado": true,
+    "alcance_modelo": "UDR7",
+    "alcance_em": "2026-09-06T13:51:00-0300"
+  },
+  "plugins": [
+    {
+      "id": "udr7",
+      "type": "udr7_ssh",
+      "name": "UDR7",
+      "state": "armado_nao_verificado",
+      "detail": {
+        "state": "armado_nao_verificado",
+        "dry_run": false,
+        "enabled": true,
+        "source": "ok",
+        "source_detail": null,
+        "missing_key": null,
+        "cutoff": 2,
+        "threshold": 5,
+        "charge_low": 10.0,
+        "margin_estimate_s": null,
+        "warnings": [
+          "lock_open",
+          "margin_unknown"
+        ],
+        "ssh_host": "192.0.2.1",
+        "ssh_binary": "/usr/bin/ssh",
+        "last_event": "UDR7_ARMED",
+        "last_event_at": "2026-09-06T13:55:00-0300",
+        "outage": false,
+        "attempts": 0,
+        "sent_pending_restore": false,
+        "name": "UDR7",
+        "alcance_verificado": true,
+        "alcance_modelo": "UDR7",
+        "alcance_em": "2026-09-06T13:51:00-0300"
+      }
+    }
+  ],
+  "cabo": null,
+  "ha": "nao_observavel",
+  "last_error": null,
+  "last_tick_error": null,
+  "has_snapshot": false,
+  "version": 0
+}

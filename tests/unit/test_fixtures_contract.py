@@ -47,6 +47,20 @@ def test_health_udr7_fixture_matches_code():
     assert state.health() == fixture
 
 
+def test_health_armado_fixture_matches_code():
+    """A instância ARMADA (0.9.0): o fixture que a captura do cartão de Saúde usa.
+    Como o `health_udr7`, a lista `plugins` é escrita à mão e o contrato prova
+    que o serviço a publica tal qual, com o alias `udr7`/`udr7_detail`."""
+    from river_unifi_bridge.state import SharedState
+
+    fixture = load("health_armado")
+    state = SharedState()
+    state.set_plugins(fixture["plugins"])
+    assert state.health() == fixture
+    assert fixture["udr7_detail"]["state"] == "armado_nao_verificado"
+    assert fixture["udr7_detail"]["alcance_verificado"] is True
+
+
 def test_health_legacy_fixture_is_swift_only():
     # Decoded only by Swift (udr7 absent -> nil); the daemon never emits it any more.
     legacy = load("health_legacy")

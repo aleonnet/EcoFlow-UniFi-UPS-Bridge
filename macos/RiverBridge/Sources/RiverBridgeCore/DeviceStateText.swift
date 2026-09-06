@@ -35,7 +35,13 @@ public enum DeviceStateText {
         switch state {
         case "desabilitado": return (L10n.t("Desligada", "Off"), .neutro)
         case "dry_run": return (L10n.t("Modo ensaio", "Rehearsal"), .ensaio)
-        case "armado_nao_verificado": return (L10n.t("Armada — alcance não verificado", "Armed — reach unverified"), .atencao)
+        // "Armada" e só: o serviço publica este estado para TODA instância armada
+        // sem desligamento em curso (protect.py `_state_for`; volta a ele depois de
+        // uma queda real). O nome do estado não codifica alcance nem histórico —
+        // o alcance é provado pelo "Testar conexão", o histórico é a linha
+        // "último: …" do cartão. "alcance não verificado" era tradução ao pé da
+        // letra, e falsa (dono, 2026-09-06: "que porra é alcance não verificado?").
+        case "armado_nao_verificado": return (L10n.t("Armada", "Armed"), .perigo)
         case "enviado": return (L10n.t("Desligamento enviado", "Shutdown sent"), .perigo)
         case "fonte_nao_real": return (L10n.t("Bloqueada — fonte não aceita", "Blocked — source not accepted"), .bloqueio)
         case "fonte_nao_local": return (L10n.t("Bloqueada — NUT não é local", "Blocked — NUT not local"), .bloqueio)

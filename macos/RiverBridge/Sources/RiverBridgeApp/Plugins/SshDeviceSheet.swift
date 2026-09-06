@@ -484,8 +484,7 @@ struct SshDeviceSheet: View {
             _ = try await APIClient(endpoint: endpoint).updateDevice(id: instance.id, dryRun: on)
             feedback = nil
             notice = on ? L10n.t("Modo ensaio ligado — proteção desarmada.", "Rehearsal on — protection disarmed.")
-                        : L10n.t("Proteção ARMADA. Feche a trava no arquivo do serviço.",
-                                 "Protection ARMED. Close the lock in the service file.")
+                        : L10n.t("Proteção ARMADA.", "Protection ARMED.")
             await store.refreshDevices()
             await store.refreshHealth()
         } catch let APIError.badStatus(_, body) {

@@ -54,6 +54,17 @@ private func fixtureURL(_ name: String) -> URL {
     #expect(state.outlets?.temperaturesC == [25.0, 34.0, 25.0, 25.0])
 }
 
+@Test func decodeHealthArmado() throws {
+    // 0.9.0: a instância armada, com alcance provado — o fixture da captura do cartão.
+    let data = try Data(contentsOf: fixtureURL("health_armado"))
+    let chain = try JSONCoding.decoder().decode(HealthChain.self, from: data)
+    let detail = try #require(chain.pluginDetail(id: "udr7"))
+    #expect(detail.state == "armado_nao_verificado")
+    #expect(detail.enabled == true && detail.dryRun == false)
+    #expect(detail.alcanceVerificado == true)
+    #expect(detail.warnings == ["lock_open", "margin_unknown"])
+}
+
 @Test func decodeHealthWithUdr7Detail() throws {
     let data = try Data(contentsOf: fixtureURL("health_udr7"))
     let chain = try JSONCoding.decoder().decode(HealthChain.self, from: data)

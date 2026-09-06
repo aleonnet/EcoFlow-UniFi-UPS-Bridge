@@ -55,13 +55,21 @@ enum SshEngineText {
         }
         if d.dryRun == true { parts.append(L10n.t("modo ensaio", "rehearsal mode")) }
         if let margin = d.marginEstimateS { parts.append(L10n.t("margem ≈ \(margin) s", "margin ≈ \(margin) s")) }
+        // Armada de verdade = ligada e fora do ensaio (a mesma conta de
+        // `ProtectionConfig.armed`). Com a proteção armada, a trava aberta é o
+        // esperado — não é aviso; só vale a pena dizer quando ela ficou aberta
+        // sem proteção armada.
+        let armada = d.enabled == true && d.dryRun == false
         for w in d.warnings ?? [] {
             switch w {
-            case "lock_open": parts.append(L10n.t("trava de armamento aberta no arquivo do serviço (veja o guia)",
-                                                   "arming lock open in the service file (see the guide)"))
+            case "lock_open" where !armada:
+                parts.append(L10n.t("trava de armamento aberta — Ajustes › Travas",
+                                    "arming lock open — Settings › Locks"))
+            case "lock_open": break
             case "charge_missing": parts.append(L10n.t("sem leitura de carga", "no charge reading"))
-            case "margin_unknown": parts.append(L10n.t("margem desconhecida (taxa não medida)", "margin unknown (rate not measured)"))
-            case "margin_short": parts.append(L10n.t("margem curta", "short margin"))
+            case "margin_unknown": parts.append(L10n.t("tempo entre o aviso e o corte ainda não medido (só numa queda real)",
+                                                        "time between the warning and the cutoff not measured yet (only in a real outage)"))
+            case "margin_short": parts.append(L10n.t("tempo entre o aviso e o corte curto", "short time between the warning and the cutoff"))
                         default: break        // aviso que este app ainda não conhece: melhor calar que exibir código
             }
         }

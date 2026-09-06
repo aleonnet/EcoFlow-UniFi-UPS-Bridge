@@ -201,10 +201,10 @@ struct ArmingRow: View {
                  ? L10n.t("Falta provar que o serviço alcança este aparelho: use Conectar ou Testar conexão, logo abaixo.",
                           "The service still has to prove it reaches this device: use Connect or Test connection, just below.")
                  : armAllowed
-                 ? L10n.t("A trava de armamento está aberta. Feche-a no arquivo do serviço depois de armar (veja o guia).",
-                          "The arming lock is open. Close it in the service file after arming (see the guide).")
-                 : L10n.t("A trava de armamento está fechada. Para armar, abra-a no arquivo do serviço e reinicie (veja o guia).",
-                          "The arming lock is closed. To arm, open it in the service file and restart (see the guide)."))
+                 ? L10n.t("A trava de armamento está aberta (Ajustes › Travas).",
+                          "The arming lock is open (Settings › Locks).")
+                 : L10n.t("A trava de armamento está fechada. Abra-a em Ajustes › Travas para armar.",
+                          "The arming lock is closed. Open it in Settings › Locks to arm."))
                 .font(.caption)
                 .foregroundStyle(armAllowed && alcanceProvado ? Cor.atencao : Cor.neutro)
                 .fixedSize(horizontal: false, vertical: true)

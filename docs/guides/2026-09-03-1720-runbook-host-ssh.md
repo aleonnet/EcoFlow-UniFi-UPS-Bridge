@@ -46,7 +46,9 @@ uma arma e desarma sozinha — desarmar uma não pede nada da outra.
 
 ## 5. Estados que a folha e o cartão de Saúde mostram
 
-`Desligada`, `Modo ensaio`, `Armada — alcance não verificado`, `Desligamento enviado`,
+`Desligada`, `Modo ensaio`, `Armada` (até a 0.8.7 o selo dizia "Armada — alcance não
+verificado", tradução ao pé da letra do nome do estado e falsa: o alcance é provado pelo
+"Testar conexão"; emenda de 2026-09-06, 0.9.0), `Desligamento enviado`,
 `Bloqueada — …` (fonte não aceita, corte do River não configurado, limiar ≤ corte+1,
 configuração incompleta, chave SSH ausente/insegura, máquina fora do `known_hosts`,
 calibrando, armamento ausente, configuração mudou após armar), `Aguardando energia voltar`.

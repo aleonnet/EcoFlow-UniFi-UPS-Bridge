@@ -324,8 +324,8 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.borderless)
                     }
-                    .comDica(L10n.t("Desliga a saída do próprio River: tudo o que estiver ligado nele perde energia na hora. Só funciona com a trava aberta no arquivo do serviço e com nenhuma proteção armada.",
-                                 "Switches the River's own output off: everything plugged into it loses power at once. It only works with the lock open in the service file and no protection armed."))
+                    .comDica(L10n.t("Desliga a saída do próprio River: tudo o que estiver ligado nele perde energia na hora. Só funciona com a trava aberta em Ajustes › Travas e com nenhuma proteção armada.",
+                                 "Switches the River's own output off: everything plugged into it loses power at once. It only works with the lock open in Settings › Locks and no protection armed."))
                     if let riverFeedback {
                         Text(riverFeedback)
                             .font(.caption).foregroundStyle(Cor.atencao)

@@ -218,6 +218,16 @@ private let tres = [
     #expect(!queda.matches(eventType: "UDR7_SHUTDOWN_SENT", device: nil, devices: tres))
 }
 
+/// "Armada" e só (0.9.0). O estado `armado_nao_verificado` é o de toda instância
+/// armada sem desligamento em curso; traduzi-lo como "alcance não verificado" era
+/// falso — o alcance é provado pelo "Testar conexão" (dono, 2026-09-06).
+@Test func oEstadoArmadoNaoAcusaAlcance() throws {
+    let badge = try #require(DeviceStateText.badge(state: "armado_nao_verificado", console: true))
+    #expect(["Armada", "Armed"].contains(badge.texto))
+    #expect(!badge.texto.lowercased().contains("alcance") && !badge.texto.lowercased().contains("reach"))
+    #expect(badge.tom == .perigo)
+}
+
 @Test func everyStateTheServiceCanPublishHasABadge() throws {
     // O serviço publica o vocabulário fechado de estados em /v1/device-types.
     // Se ele ganhar um estado e o app não ganhar o selo, o dispositivo aparece
