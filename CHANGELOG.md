@@ -9,6 +9,27 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-09-05
+
+O que o dono viu ao abrir a 0.8.0 no Mac mini, como usuário: a autorização do serviço
+estava escondida num botão dentro de Ajustes, e a tela misturava duas línguas.
+
+### Mudado
+- **A autorização é pedida na abertura, sem botão.** O programa registra o serviço sozinho
+  ao abrir; o macOS mostra a notificação ("River Bridge can run in the background for all
+  users. Do you want to allow this?") e o aviso no topo da tela Energia explica e leva ao
+  mesmo interruptor em Ajustes do Sistema › Geral › Itens de Início de Sessão. É o que a
+  Apple manda para um serviço sem o qual o programa não funciona ("check the authorization
+  status at launch … alert the user, and call `openSystemSettingsLoginItems()`"). O botão
+  "Instalar o serviço" saiu de Ajustes › Serviço; ficou "Registrar de novo", só para o caso
+  raro de o registro da abertura falhar. A autorização em si o certificado não dispensa: o
+  macOS a cobra de todo serviço de sistema registrado por um programa.
+- **Toda frase do serviço sai numa língua só.** As frases de estado, a confirmação de
+  remoção e o aviso do Lixo passaram a existir em par (português, inglês); no Mac mini em
+  inglês metade do cartão saía em português. Teste novo: em inglês nenhuma frase do serviço
+  carrega acento do português.
+- LEIA-ME do disco e o guia dizem o passo novo: abrir, Permitir, pronto.
+
 ## [0.8.0] — 2026-09-05
 
 A UX que o dono determinou, inteira: **nada pede terminal**. A 0.7.0 tinha entregado o

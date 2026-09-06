@@ -1,8 +1,11 @@
 # Runbook — instalar, usar e remover pelo App (sem terminal)
 
-status: superado por 2026-09-05-2200-runbook-instalar-usar-e-remover-pelo-app.md
+status: aceito
 data: 2026-09-05
-supera: 2026-09-05-1327-runbook-o-home-assistant-com-tudo.md
+supera: 2026-09-05-1930-runbook-instalar-usar-e-remover-pelo-app.md
+
+O que mudou na 0.8.1, em uma frase: **a autorização do serviço é pedida na abertura**, sem
+botão em Ajustes (o dono abriu a 0.8.0 no Mac mini como usuário e não achou o passo).
 
 O que mudou na 0.8.0, em uma frase: **nada aqui pede terminal**. O NUT vai dentro do
 pacote, o disco é assinado e notarizado, as três travas são interruptores na tela, o
@@ -16,11 +19,16 @@ arrastar o programa para o Lixo remove tudo.
 
 1. Baixe o `River-Bridge.dmg` da release e abra-o.
 2. Arraste o **River Bridge** para a pasta **Aplicativos**, ao lado.
-3. Abra o programa. Ele é assinado com Developer ID e notarizado pela Apple: abre sem
-   "Abrir Assim Mesmo".
-4. **Ajustes › Serviço › Instalar o serviço**, e aprove em **Ajustes do Sistema › Geral ›
-   Itens de Início de Sessão** (o macOS pede isso para todo serviço que sobe com o
-   computador; é a única senha que você digita).
+3. Abra o programa **de Aplicativos**. Ele é assinado com Developer ID e notarizado pela
+   Apple: abre sem "Abrir Assim Mesmo". Aberto do disco montado ou de Downloads, ele só
+   mostra "Mova o River Bridge para Aplicativos" e não registra nada: um serviço registrado
+   dali apontaria para um caminho que some ao ejetar o disco.
+4. O macOS pergunta, numa notificação, se o River Bridge pode rodar em segundo plano:
+   clique em **Permitir** (pede a sua senha de administrador). Se a notificação passar, o
+   aviso no topo da tela Energia diz o mesmo e o botão **Abrir Ajustes do Sistema** leva
+   ao interruptor, em **Geral › Itens de Início de Sessão**. Não há botão para instalar:
+   o programa registra o serviço sozinho ao abrir. A autorização o macOS cobra de todo
+   serviço que sobe com o computador, certificado ou não; é a única senha que você digita.
 
 Pronto. O serviço sobe, cria a configuração do NUT no diretório dele
 (`/Library/Application Support/river-unifi-bridge/nut`), lança o leitor e o servidor do
@@ -99,6 +107,9 @@ Lixo é medido na bancada, não afirmado aqui.
 
 | # | O que fazer | O que tem de aparecer |
 |---|---|---|
+| 0a | abrir o programa direto do disco montado | o aviso "Mova o River Bridge para Aplicativos" no topo, sem botão; nada registrado (`launchctl print system/com.river.unifi-bridge` não encontra) |
+| 0b | arrastar para Aplicativos e abrir de lá | a notificação do macOS "River Bridge can run in the background…" e, no topo, "Autorize o River Bridge no macOS" com o botão **Abrir Ajustes do Sistema**; sem botão de instalar em lugar nenhum |
+| 0c | Permitir (senha de administrador) | em até 2 s o aviso some e a tela Energia passa a mostrar o River |
 | 1 | no Mac, `printf 'LIST UPS\n' \| nc 127.0.0.1 3493` | `river-office`, `river-bridge` e `udr7` |
 | 2 | `printf 'LIST VAR river-bridge\n' \| nc 127.0.0.1 3493` | `outlet.count "4"` e `outlet.1.realpower` com o watt da tomada de 120 V |
 | 3 | ligar "Permitir desligar o River"; `LIST CMD river-bridge` com a conta `homeassistant` | `load.off` |

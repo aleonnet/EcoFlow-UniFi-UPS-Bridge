@@ -105,7 +105,7 @@ struct EventsTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Espaco.micro) {
             if loadFailed {
-                Text(L10n.t("Histórico indisponível — a UI não alcança o serviço.", "History unavailable — the UI can’t reach the service."))
+                Text(L10n.t("Histórico indisponível — o programa não alcança o serviço.", "History unavailable — the app can’t reach the service."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else if rows.isEmpty {

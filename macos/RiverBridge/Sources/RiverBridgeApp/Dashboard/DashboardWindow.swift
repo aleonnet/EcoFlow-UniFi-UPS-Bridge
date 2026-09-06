@@ -3,6 +3,7 @@
 // control layer; content sits directly on the near-black ground.
 
 import RiverBridgeCore
+import ServiceManagement
 import SwiftUI
 
 struct DashboardWindow: View {
@@ -65,7 +66,7 @@ struct DashboardWindow: View {
                 Group {
                     switch section {
                     case .energia:
-                        EnergiaSection(aoPedirAjustes: { section = .ajustes }, store: store)
+                        EnergiaSection(store: store)
                     case .saude: HealthView(store: store)
                     case .ajustes: SettingsView(store: store)
                     }
@@ -169,9 +170,6 @@ struct DashboardWindow: View {
 
 // Energia = hero flow + dense chart + compact events, all on the ground.
 struct EnergiaSection: View {
-    /// Levar o dono para os Ajustes é decisão de quem tem as abas na mão.
-    var aoPedirAjustes: () -> Void = {}
-
     var store: TelemetryStore
     @State private var scrollOffset: CGFloat = 0
     @State private var headerMinY: CGFloat = 1000
@@ -201,7 +199,7 @@ struct EnergiaSection: View {
                     // O aviso do topo diz o que está faltando AGORA, e o que
                     // fazer. Ele pergunta ao sistema em que pé o serviço está —
                     // não deduz pela presença de um arquivo.
-                    AvisoDoTopo(store: store, aoPedirAjustes: aoPedirAjustes)
+                    AvisoDoTopo(store: store)
                     FlowScene(store: store)
                     ChartsView(store: store, chips: selectedChips)
                 }
@@ -266,18 +264,34 @@ struct EnergiaSection: View {
 ///   vazio e mudo.
 ///
 /// A ordem é a de quem está travado: primeiro o que impede tudo.
+///
+/// E é AQUI, na abertura, que o serviço é registrado e a autorização do macOS é
+/// pedida — não num botão dentro de Ajustes (o dono abriu o programa no Mac
+/// mini, não achou nada na abertura, e chamou o que era, 2026-09-05). A Apple é
+/// literal: "check the authorization status at launch. If helper executables
+/// don't have authorization, alert the user, and call
+/// openSystemSettingsLoginItems()" (citação inteira em ServicoDoSistema.swift).
 struct AvisoDoTopo: View {
     var store: TelemetryStore
-    var aoPedirAjustes: () -> Void
     @State private var servico: EstadoDoServico = .naoInstalado
+    /// A queixa do macOS quando o registro falhou. Vive só enquanto o estado
+    /// for "não registrado": assim que o sistema conhece o serviço (por este
+    /// botão, pelo de Ajustes, ou porque o macOS completou tarde), ela some —
+    /// senão a tela diria "autorize" e "o macOS recusou" ao mesmo tempo, o par
+    /// impossível que o dono viu no Mac mini (revisão fria da 0.8.1).
+    @State private var queixaDoRegistro: String?
 
     var body: some View {
         Group {
-            if servico == .naoInstalado || servico == .esperandoAprovacao {
-                Aviso(tom: .atencao, texto: servico.titulo, detalhe: servico.explicacao,
+            if servico.avisaNaAbertura {
+                let acao = servico.acaoNaAbertura
+                Aviso(tom: .atencao, texto: servico.titulo,
+                      detalhe: [servico.explicacao, queixaDoRegistro].compactMap { $0 }
+                          .joined(separator: "\n"),
                       simbolo: "power",
-                      rotuloDaAcao: L10n.t("Abrir Ajustes", "Open Settings"),
-                      acao: aoPedirAjustes)
+                      rotuloDaAcao: acao?.rotulo,
+                      acao: acao.map { acao in { executar(acao) } },
+                      acaoEmDestaque: true)
             } else if let motivoDoCabo = store.health?.cabo?.motivo,
                       store.health?.cabo?.lendo == false {
                 // A frase vem do SERVIÇO — é ele que sabe se o NUT falta, se o
@@ -298,8 +312,31 @@ struct AvisoDoTopo: View {
             // visto pelo dono no Mac mini, 2026-09-05, e ele chamou o que era.
             while !Task.isCancelled {
                 servico = ServicoGroup.estadoAgora()
+                if !servico.precisaRegistrar { queixaDoRegistro = nil }
+                if servico.precisaRegistrar {
+                    // O registro da abertura: uma vez por lançamento. Depois
+                    // dele o macOS mostra a notificação de autorização, e o
+                    // estado passa a "autorize" — o botão ao lado leva ao mesmo
+                    // interruptor nos Ajustes do Sistema.
+                    let tentativa = ServicoGroup.registrarNaAbertura()
+                    if tentativa.tentou {
+                        queixaDoRegistro = tentativa.queixa
+                        servico = ServicoGroup.estadoAgora()
+                    }
+                }
                 try? await Task.sleep(for: .seconds(2))
             }
+        }
+    }
+
+    private func executar(_ acao: AcaoDoServico) {
+        switch acao {
+        case .registrar:
+            queixaDoRegistro = ServicoGroup.registrar()
+            servico = ServicoGroup.estadoAgora()
+            if !servico.precisaRegistrar { queixaDoRegistro = nil }
+        case .abrirAjustesDoSistema:
+            SMAppService.openSystemSettingsLoginItems()
         }
     }
 }
@@ -313,20 +350,3 @@ struct ConnectionBanner: View {
     }
 }
 
-/// O leitor do no-break está pausado.
-///
-/// O título diz o ESTADO — não o nome de outro programa. A versão anterior
-/// anunciava a marca do fabricante no topo da tela, e ainda por cima misturava
-/// duas línguas (título do app, detalhe do serviço). O dono chamou o que era.
-struct LeitorPausadoBanner: View {
-    let motivo: String?
-
-    var body: some View {
-        Aviso(
-            tom: .atencao,
-            texto: L10n.t("O leitor do no-break está pausado",
-                          "The UPS reader is paused"),
-            detalhe: motivo,
-            simbolo: "pause.circle")
-    }
-}

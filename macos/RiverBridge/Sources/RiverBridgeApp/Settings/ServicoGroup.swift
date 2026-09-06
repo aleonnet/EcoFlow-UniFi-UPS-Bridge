@@ -1,13 +1,22 @@
-// O grupo "Serviço" dos Ajustes: instalar, aprovar e remover por completo.
+// O grupo "Serviço" dos Ajustes: em que pé o serviço está, e remover por completo.
 //
 // Arrastar o programa para Aplicativos põe o programa lá, e mais nada. O serviço
 // que vigia a energia vai junto dentro do pacote, mas alguém precisa registrá-lo
-// — e é aqui.
+// — e isso acontece SOZINHO na abertura do programa (`registrarNaAbertura()`,
+// chamado pelo aviso do topo do painel), como a Apple manda: "check the
+// authorization status at launch. If helper executables don't have
+// authorization, alert the user, and call openSystemSettingsLoginItems()". As
+// citações estão em RiverBridgeCore/ServicoDoSistema.swift.
 //
-// A regra que este arquivo respeita, e que veio da documentação da Apple (as
-// citações estão em RiverBridgeCore/ServicoDoSistema.swift): `register()` NÃO
-// termina o trabalho. Ele começa, e o estado fica esperando aprovação até o dono
-// ir aos Ajustes do Sistema. A tela diz isso com todas as letras — dizer
+// Até a 0.8.0 o registro era um botão aqui dentro, "Instalar o serviço". O dono
+// abriu o programa no Mac mini, não achou nada na abertura, e chamou o que era
+// (2026-09-05): a autorização que o macOS cobra tem de ser pedida na abertura,
+// não escondida em Ajustes. Este grupo fica com o que é de Ajustes: o estado,
+// a remoção completa, e o "Registrar de novo" para o caso raro de o registro da
+// abertura ter falhado.
+//
+// `register()` NÃO termina o trabalho. Ele começa, e o estado fica esperando a
+// autorização até o dono agir. A tela diz isso com todas as letras — dizer
 // "instalado" ali seria mentir, e o dono descobriria na próxima queda de energia.
 
 import RiverBridgeCore
@@ -51,13 +60,13 @@ struct ServicoGroup: View {
             }
             SettingsRows.divider
             HStack(spacing: Espaco.medio) {
-                if estado.podeInstalar {
-                    Button(L10n.t("Instalar o serviço", "Install the service"), action: instalar)
+                if estado.precisaRegistrar {
+                    Button(AcaoDoServico.registrar.rotulo, action: registrarDeNovo)
                         .buttonStyle(.borderedProminent)
                         .disabled(trabalhando)
                 }
-                if estado.mostraAjustesDoSistema {
-                    Button(L10n.t("Abrir Ajustes do Sistema", "Open System Settings")) {
+                if estado.acaoNaAbertura == .abrirAjustesDoSistema {
+                    Button(AcaoDoServico.abrirAjustesDoSistema.rotulo) {
                         SMAppService.openSystemSettingsLoginItems()
                     }
                 }
@@ -132,32 +141,64 @@ struct ServicoGroup: View {
         // comando, registrar outro daria dois vigias disputando o mesmo cabo e a
         // mesma porta, e o que perdesse ficaria mudo sem ninguém perceber.
         if InstalacaoPelaLinhaDeComando.existe() { return .instaladoPelaLinhaDeComando }
+        // Depois, ONDE o programa está: aberto do disco de instalação ou de
+        // Downloads, nada é registrado — o serviço apontaria para um caminho que
+        // some. (E é o que impede a cópia de ensaio das capturas, em /private/tmp,
+        // de registrar um serviço na máquina de quem desenvolve.)
+        if !emAplicativos() { return .foraDeAplicativos }
         switch SMAppService.daemon(plistName: plistDoServico).status {
         case .enabled: return .noAr
         case .requiresApproval: return .esperandoAprovacao
         case .notRegistered: return .naoInstalado
-        case .notFound: return .desligadoPeloSistema
+        case .notFound: return .naoEncontradoPeloSistema
         @unknown default: return .naoInstalado
         }
     }
 
-    private func instalar() {
-        trabalhando = true
-        recado = nil
+    /// O pacote está numa pasta Aplicativos (da máquina ou do usuário)? A regra
+    /// é `PastaDeAplicativos.contem`, no Core, onde o teste a refuta.
+    static func emAplicativos() -> Bool {
+        PastaDeAplicativos.contem(
+            Bundle.main.bundleURL,
+            pastas: FileManager.default.urls(for: .applicationDirectory,
+                                             in: [.localDomainMask, .userDomainMask]))
+    }
+
+    /// Registra o serviço no sistema. Devolve a queixa do macOS — só quando ela
+    /// impediu o registro.
+    ///
+    /// Erro que NÃO impediu o registro não é queixa: o dono via, na mesma tela,
+    /// "falta aprovar" e "a operação não pôde ser concluída", e as duas não
+    /// podiam ser verdade ao mesmo tempo (Mac mini, 2026-09-05). Se o sistema já
+    /// conhece o serviço, o registro valeu — o que falta é a autorização dele,
+    /// que a frase do estado já explica.
+    static func registrar() -> String? {
         var queixa: String?
         do {
-            try SMAppService.daemon(plistName: Self.plistDoServico).register()
+            try SMAppService.daemon(plistName: plistDoServico).register()
         } catch {
             queixa = L10n.t("O macOS respondeu: ", "macOS said: ") + error.localizedDescription
         }
+        let depois = estadoAgora()
+        return (depois == .esperandoAprovacao || depois == .noAr) ? nil : queixa
+    }
+
+    /// O registro da ABERTURA: uma tentativa por lançamento do programa, feita
+    /// pelo aviso do topo quando o sistema ainda não conhece o serviço. Devolve
+    /// se tentou (para o aviso guardar a queixa só quando houve tentativa).
+    @MainActor private static var registroTentadoNestaAbertura = false
+
+    @MainActor static func registrarNaAbertura() -> (tentou: Bool, queixa: String?) {
+        guard !registroTentadoNestaAbertura else { return (false, nil) }
+        registroTentadoNestaAbertura = true
+        return (true, registrar())
+    }
+
+    private func registrarDeNovo() {
+        trabalhando = true
+        recado = Self.registrar()
         trabalhando = false
         conferir()
-        // Erro que NÃO impediu o registro não é queixa: o dono via, na mesma
-        // tela, "falta aprovar" e "a operação não pôde ser concluída", e as duas
-        // não podiam ser verdade ao mesmo tempo (Mac mini, 2026-09-05). Se o
-        // sistema já conhece o serviço, o registro valeu — o que falta é o ato
-        // dele nos Ajustes, que a linha de cima já explica.
-        recado = (estado == .esperandoAprovacao || estado == .noAr) ? nil : queixa
         aoMudar()
     }
 

@@ -36,7 +36,7 @@ struct HealthView: View {
                   status: chain?.nut, detail: chain?.lastError),
             .init(id: "bridge", symbol: "gearshape.2.fill", name: L10n.t("Serviço river-unifi-bridge", "river-unifi-bridge service"),
                   status: store.phase == .live ? "ok" : "falha",
-                  detail: store.phase == .live ? L10n.t("API local respondendo.", "Local API responding.") : L10n.t("A UI não alcança a API local.", "The UI can’t reach the local API.")),
+                  detail: store.phase == .live ? L10n.t("Serviço respondendo.", "Service responding.") : L10n.t("O programa não alcança o serviço.", "The app can’t reach the service.")),
             .init(id: "unifi", symbol: "network", name: L10n.t("UniFi · visibilidade", "UniFi · visibility"),
                   status: chain?.unifi,
                   detail: L10n.t("Nenhum caminho nativo documentado para o console consumir um UPS de terceiros (pesquisa 2026-08-31).",

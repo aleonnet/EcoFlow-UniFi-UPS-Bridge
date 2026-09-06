@@ -114,6 +114,9 @@ struct Aviso: View {
     var simbolo: String?
     var rotuloDaAcao: String?
     var acao: (() -> Void)?
+    /// O botão em destaque: para o aviso da ABERTURA, quando o ato dele é o
+    /// único que importa na tela (autorizar o serviço). O resto fica discreto.
+    var acaoEmDestaque = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Espaco.medio) {
@@ -134,9 +137,14 @@ struct Aviso: View {
             }
             Spacer(minLength: Espaco.pequeno)
             if let rotuloDaAcao, let acao {
-                Button(rotuloDaAcao, action: acao)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                if acaoEmDestaque {
+                    Button(rotuloDaAcao, action: acao)
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button(rotuloDaAcao, action: acao)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
             }
         }
         .padding(Espaco.cartao)

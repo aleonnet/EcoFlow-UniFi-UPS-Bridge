@@ -31,7 +31,11 @@ import Testing
 
 @Test func aTravaDeArmamentoDizQueODesligamentoViraReal() {
     let texto = TravaConfirmation(trava: .armarProtecao)
-    #expect(texto.message.contains("de verdade") || texto.message.contains("really"))
+    // Lida UMA vez: a língua viva é estado global que outro teste alterna em
+    // paralelo, e ler `message` duas vezes na mesma expressão deu uma leitura
+    // em cada língua — falhou assim na suíte inteira em 2026-09-05.
+    let mensagem = texto.message
+    #expect(mensagem.contains("de verdade") || mensagem.contains("really"))
     #expect(texto.confirmLabel.contains("real"))
 }
 

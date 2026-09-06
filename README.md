@@ -34,11 +34,13 @@ segredo entra no repositório.
 
 **Pelo disco (desde a 0.8.0, sem terminal):** baixe o `River-Bridge.dmg` da
 [release](https://github.com/aleonnet/EcoFlow-UniFi-UPS-Bridge/releases/latest), arraste o
-programa para Aplicativos, abra-o (assinado com Developer ID e notarizado) e, em
-**Ajustes › Serviço**, instale o serviço e aprove nos Ajustes do Sistema. O NUT vai dentro
-do pacote (GPL-2.0, `Contents/Resources/nut/NOTICE-NUT.txt`); nada mais para instalar.
+programa para Aplicativos e abra-o (assinado com Developer ID e notarizado). O macOS
+pergunta se o River Bridge pode rodar em segundo plano: **Permitir**, e pronto (desde a
+0.8.1 o registro é automático; o aviso na abertura leva ao mesmo interruptor nos Ajustes do
+Sistema). O NUT vai dentro do pacote (GPL-2.0, `Contents/Resources/nut/NOTICE-NUT.txt`);
+nada mais para instalar.
 Arrastar o programa para o Lixo remove tudo. Passo a passo no
-[runbook](docs/guides/2026-09-05-1930-runbook-instalar-usar-e-remover-pelo-app.md).
+[runbook](docs/guides/2026-09-05-2200-runbook-instalar-usar-e-remover-pelo-app.md).
 
 **Pela linha de comando** (continua existindo; usa o NUT e o Python do Homebrew):
 
@@ -142,7 +144,7 @@ snapshot.
 ## Documentos
 
 - [Especificação](RIVER3PLUS_UNIFI_BRIDGE_SPEC_20260831.md) — a fonte de verdade das decisões.
-- [Runbook: instalar, usar e remover pelo App](docs/guides/2026-09-05-1930-runbook-instalar-usar-e-remover-pelo-app.md) (travas, Home Assistant pela rede, cabo automático, Lixo).
+- [Runbook: instalar, usar e remover pelo App](docs/guides/2026-09-05-2200-runbook-instalar-usar-e-remover-pelo-app.md) (travas, Home Assistant pela rede, cabo automático, Lixo).
 - [Runbook da proteção do UDR7 por instância](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md) e [do host SSH](docs/guides/2026-09-03-1720-runbook-host-ssh.md).
 - [Instalação em uma linha](docs/INSTALACAO_UMA_LINHA_20260901.md).
 - [API local](docs/reference/api-local.md).

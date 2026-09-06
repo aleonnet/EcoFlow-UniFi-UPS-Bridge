@@ -1,6 +1,6 @@
 [project]
 name = "river-unifi-bridge"
-version = "0.8.0"
+version = "0.8.1"
 description = "EcoFlow RIVER 3 Plus -> NUT -> UniFi bridge daemon (local-first, read-only por padrão)"
 requires-python = ">=3.13"
 license = { text = "MIT" }

@@ -78,12 +78,16 @@ cat > "$PALCO/LEIA-ME.txt" <<'TXT'
 River Bridge — o que saber antes de arrastar
 ============================================
 
-1. ARRASTE o River Bridge para a pasta Aplicativos, ao lado.
+1. ARRASTE o River Bridge para a pasta Aplicativos, ao lado, e abra-o DE LA.
+   Aberto daqui do disco (ou de Downloads), ele so mostra "Mova o River Bridge
+   para Aplicativos" e nao registra nada — o servico precisa de um lugar fixo.
 
-2. DEPOIS DE ABRIR: Ajustes > Servico > Instalar o servico, e aprove em
-       Ajustes do Sistema > Geral > Itens de Inicio de Sessao
-   O macOS pede isso para todo servico que sobe com o computador. Tudo o que o
-   River Bridge precisa ja esta dentro dele — nada mais para instalar.
+2. AO ABRIR, o macOS pergunta se o River Bridge pode rodar em segundo plano:
+   clique em Permitir (pede a sua senha de administrador). Se a notificacao
+   passar, o aviso no topo da tela leva ao mesmo interruptor, em Ajustes do
+   Sistema > Geral > Itens de Inicio de Sessao. E a unica autorizacao que o
+   macOS pede — para todo servico que sobe com o computador — e a unica senha
+   que voce digita. Tudo o que o River Bridge precisa ja esta dentro dele.
 
 3. PARA REMOVER, arraste o programa para o Lixo. O servico percebe, para de
    vigiar, apaga a chave do console, as senhas e o historico, e se desregistra

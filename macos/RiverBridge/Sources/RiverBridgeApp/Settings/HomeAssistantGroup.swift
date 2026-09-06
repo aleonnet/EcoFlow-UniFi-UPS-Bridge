@@ -37,8 +37,8 @@ struct HomeAssistantGroup: View {
                       texto: L10n.t("A conta do Home Assistant ainda não foi criada",
                                     "The Home Assistant account does not exist yet"),
                       detalhe: L10n.t(
-                        "Ela nasce quando o serviço sobe pela primeira vez. Instale o serviço no grupo acima e volte aqui.",
-                        "It is created the first time the service runs. Install the service in the group above and come back."))
+                        "Ela nasce quando o serviço sobe pela primeira vez: autorize o River Bridge no macOS (o aviso na tela Energia leva até lá) e volte aqui.",
+                        "It is created the first time the service runs: allow River Bridge in macOS (the notice on the Energy screen takes you there) and come back."))
             } else {
                 linhaDaRede
                 SettingsRows.divider
