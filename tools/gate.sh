@@ -1060,6 +1060,13 @@ EOF
 # medido em 2026-09-06, e foi a queda do dono ao abrir 24 h/7 d de eventos (os
 # eventos do cabo não estavam na legenda). Mutante: tira o passo que põe no
 # domínio o rótulo que nenhuma lista conhece.
+if [ -d "$APP_DIR" ]; then
+    cena_mutacao_swift S68 Sources/RiverBridgeCore/LegendaDeEventos.swift \
+        "            let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) ?? sobra + indice" \
+        "            guard let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) else { continue }" \
+        todaBarraTemASuaCorNoDominio
+fi
+
 # S73 — o selo da instância armada é "Armada", e nunca acusa alcance (0.9.0). O
 # estado `armado_nao_verificado` é o de toda instância armada; "alcance não
 # verificado" era tradução ao pé da letra e falsa. Mutante: o texto velho volta.
@@ -1079,12 +1086,7 @@ if [ -d "$APP_DIR" ]; then
         tempoParaCargaSemLeituraETraco
 fi
 
-if [ -d "$APP_DIR" ]; then
-    cena_mutacao_swift S68 Sources/RiverBridgeCore/LegendaDeEventos.swift \
-        "            let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) ?? sobra + indice" \
-        "            guard let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) else { continue }" \
-        todaBarraTemASuaCorNoDominio
-fi
+
 
 # S8..S10 — instalador (ordem 7): dry-run inócuo, idempotência 0→100,
 # uninstall preserva o alheio. Tudo em scratch com stubs de brew/launchctl.

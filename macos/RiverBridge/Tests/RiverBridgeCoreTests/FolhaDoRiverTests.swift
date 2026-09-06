@@ -67,3 +67,14 @@ private func linha(_ folha: FolhaDoRiver, _ rotulo: String) -> FolhaDoRiver.Linh
     let en = FolhaDoRiver(estado: nil, viva: true, emPortugues: false)
     #expect(en.grupos.map(\.titulo) == ["Device", "Power", "Battery", "Grid"])
 }
+
+@Test func semSerialONaoCarregarNaoEAfirmado() throws {
+    // Serviço vivo, porta serial muda (`outlets` nulo): traço sem a nota — a
+    // nota afirmaria "não está carregando" sem leitura nenhuma.
+    let semSerial = try estado("""
+    {"power": {"state": "ONLINE", "states": ["ONLINE"]}, "battery": {"charge_percent": 100.0}, "outlets": null}
+    """)
+    let folha = FolhaDoRiver(estado: semSerial, viva: true, emPortugues: true)
+    let tempo = try #require(linha(folha, "Tempo para carga completa"))
+    #expect(tempo.valor == "—" && tempo.nota == nil)
+}

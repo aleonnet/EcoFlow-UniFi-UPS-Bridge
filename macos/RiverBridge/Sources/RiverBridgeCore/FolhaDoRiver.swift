@@ -47,9 +47,11 @@ public struct FolhaDoRiver: Equatable, Sendable {
         titulo = e?.identity?.model ?? "River"
         serie = e?.identity?.serial ?? "—"
 
+        // A nota só quando a serial respondeu (há `outlets`) e o aparelho não está
+        // carregando: sem serial, o traço é falta de leitura, não "não carrega".
         let carregando = e?.power?.states?.contains("CHARGING") == true
-        let notaDaCarga: String? = (o?.timeToFullMinutes == nil && viva)
-            ? (carregando ? nil : t("só aparece enquanto carrega", "shown only while charging"))
+        let notaDaCarga: String? = (o != nil && o?.timeToFullMinutes == nil && !carregando)
+            ? t("só aparece enquanto carrega", "shown only while charging")
             : nil
 
         grupos = [

@@ -628,22 +628,63 @@ class ApiServer:
         return await self._csv(request, "amostras.csv", self.history.export_samples_csv)
 
     async def _csv(self, request: web.Request, nome: str, exporta) -> web.StreamResponse:
-        """Um CSV inteiro da faixa `from`..`to` (padrão: tudo até agora), em UTF-8
-        com BOM — é o que faz o Numbers e o Excel abrirem os acentos certos."""
+        """Um CSV da faixa `from`..`to` (padrão: tudo até agora), em UTF-8 com BOM —
+        é o que faz o Numbers e o Excel abrirem os acentos certos.
+
+        Em FLUXO, não em memória: medido no Mac mini em 2026-09-06, a base tinha
+        192.786 amostras em 5,6 dias (uma a cada 2,5 s), ≈ 65 bytes por linha de
+        CSV; com a retenção máxima (`HISTORY_RETENTION_DAYS` = 365) o arquivo
+        passaria de meio gigabyte. O SQLite é síncrono e roda numa thread; as
+        linhas viajam para o laço em blocos por uma fila com limite, então a
+        thread espera o cliente ler (contrapressão) em vez de encher a memória.
+        """
         q = request.query
         try:
             ts_from = int(q.get("from", "0"))
             ts_to = int(q.get("to", str(int(time.time()))))
         except ValueError as exc:
             return web.json_response({"erro": str(exc)}, status=400)
-        pedacos: list[str] = []
-        # O SQLite é síncrono e a faixa pode ter dias de amostras: fora do laço.
-        await asyncio.to_thread(exporta, ts_from, ts_to, pedacos.append)
-        corpo = "\ufeff" + "".join(pedacos)
-        return web.Response(
-            text=corpo, content_type="text/csv", charset="utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{nome}"'},
-        )
+        resp = web.StreamResponse(
+            headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+        resp.content_type = "text/csv"
+        resp.charset = "utf-8"
+        await resp.prepare(request)
+        await resp.write("\ufeff".encode("utf-8"))
+
+        loop = asyncio.get_running_loop()
+        fila: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=4)
+        LINHAS_POR_BLOCO = 512
+
+        def produz() -> None:
+            bloco: list[str] = []
+
+            def envia(pedaco: bytes | None) -> None:
+                asyncio.run_coroutine_threadsafe(fila.put(pedaco), loop).result()
+
+            def escreve(texto: str) -> None:
+                bloco.append(texto)
+                if len(bloco) >= LINHAS_POR_BLOCO:
+                    envia("".join(bloco).encode("utf-8"))
+                    bloco.clear()
+
+            try:
+                exporta(ts_from, ts_to, escreve)
+                if bloco:
+                    envia("".join(bloco).encode("utf-8"))
+            finally:
+                envia(None)
+
+        produtor = asyncio.create_task(asyncio.to_thread(produz))
+        try:
+            while True:
+                pedaco = await fila.get()
+                if pedaco is None:
+                    break
+                await resp.write(pedaco)
+        finally:
+            await produtor
+        await resp.write_eof()
+        return resp
 
     async def _h_events_delete(self, request: web.Request) -> web.Response:
         # `to` is mandatory by design: an accidental parameterless DELETE must

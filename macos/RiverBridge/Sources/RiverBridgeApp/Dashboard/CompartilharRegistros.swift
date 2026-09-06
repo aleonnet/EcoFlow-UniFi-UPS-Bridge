@@ -15,7 +15,6 @@ import RiverBridgeCore
 import SwiftUI
 
 struct CompartilharRegistros: View {
-    var store: TelemetryStore
     var period: EventPeriod
     var customFrom: Date
     var customTo: Date
@@ -83,11 +82,21 @@ struct CompartilharRegistros: View {
         aviso = nil
         defer { preparando = false }
         do {
-            let (zip, diarioIncluido) = try await montarPacote(APIClient(endpoint: endpoint))
-            aviso = ExportacaoDeRegistros.rodape(diarioIncluido: diarioIncluido)
+            let client = APIClient(endpoint: endpoint)
+            let faixa = self.faixa
+            let pacote = try await ExportacaoDeRegistros.montarPacote(
+                em: FileManager.default.temporaryDirectory,
+                baixa: { nome in
+                    nome == ExportacaoDeRegistros.nomeDosEventos
+                        ? try await client.eventsLogCSV(from: faixa.from, to: faixa.to)
+                        : try await client.samplesCSV(from: faixa.from, to: faixa.to)
+                },
+                diario: URL(fileURLWithPath: ExportacaoDeRegistros.caminhoDoDiario),
+                comprime: Self.comprimir)
+            aviso = ExportacaoDeRegistros.rodape(diarioIncluido: pacote.diarioIncluido)
             switch destino {
-            case .salvar: salvar(zip)
-            case .compartilhar: compartilhar(zip)
+            case .salvar: salvar(pacote.zip)
+            case .compartilhar: compartilhar(pacote.zip)
             }
         } catch {
             aviso = L10n.t("Histórico indisponível — o programa não alcança o serviço.",
@@ -95,26 +104,8 @@ struct CompartilharRegistros: View {
         }
     }
 
-    /// Baixa, copia, comprime. Devolve o .zip e se o diário entrou.
-    private func montarPacote(_ client: APIClient) async throws -> (URL, Bool) {
-        let faixa = self.faixa
-        let eventos = try await client.eventsLogCSV(from: faixa.from, to: faixa.to)
-        let amostras = try await client.samplesCSV(from: faixa.from, to: faixa.to)
-        let nome = ExportacaoDeRegistros.nomeDoPacote(agora: .now)
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("river-bridge-registros-\(UUID().uuidString)", isDirectory: true)
-        let pasta = base.appendingPathComponent(nome, isDirectory: true)
-        try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
-        try eventos.write(to: pasta.appendingPathComponent(ExportacaoDeRegistros.nomeDosEventos))
-        try amostras.write(to: pasta.appendingPathComponent(ExportacaoDeRegistros.nomeDasAmostras))
-        let diario = URL(fileURLWithPath: ExportacaoDeRegistros.caminhoDoDiario)
-        var diarioIncluido = false
-        if FileManager.default.isReadableFile(atPath: diario.path) {
-            try? FileManager.default.copyItem(at: diario, to: pasta.appendingPathComponent(ExportacaoDeRegistros.nomeDoDiario))
-            diarioIncluido = FileManager.default.fileExists(atPath: pasta.appendingPathComponent(ExportacaoDeRegistros.nomeDoDiario).path)
-        }
-        let zip = base.appendingPathComponent("\(nome).zip")
-        let argv = ExportacaoDeRegistros.argvDoDitto(pasta: pasta, zip: zip)
+    /// O ditto do macOS, fora da thread principal.
+    private static func comprimir(_ argv: [String]) async throws {
         try await Task.detached {
             let processo = Process()
             processo.executableURL = URL(fileURLWithPath: argv[0])
@@ -123,7 +114,6 @@ struct CompartilharRegistros: View {
             processo.waitUntilExit()
             guard processo.terminationStatus == 0 else { throw APIError.notConnected }
         }.value
-        return (zip, diarioIncluido)
     }
 
     @MainActor
