@@ -29,7 +29,16 @@ let package = Package(
         .executableTarget(name: "RiverBridgeServico"),
         .executableTarget(
             name: "RiverBridgeWidget",
-            dependencies: ["RiverBridgeCore"]
+            dependencies: ["RiverBridgeCore"],
+            // O executável de uma extensão entra pelo `NSExtensionMain` do
+            // Foundation, não pelo `main` do Swift. Medido em 2026-09-06 nos três
+            // widgets de terceiros desta máquina (Dropover, Excel, Teams): o
+            // `LC_MAIN` aponta para o stub de `_NSExtensionMain` e o `_main` do
+            // `@main` continua existindo, chamado por ele. Sem esta flag o
+            // `pluginkit` registrava o widget e a galeria de widgets NUNCA o
+            // listava (dono, no Mac mini, 0.10.0).
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain",
+                                           "-Xlinker", "-u", "-Xlinker", "_main"])]
         ),
         .testTarget(
             name: "RiverBridgeCoreTests",

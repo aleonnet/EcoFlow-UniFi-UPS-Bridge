@@ -8,7 +8,7 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$RAIZ/macos/RiverBridge"
 DIST="$PKG/dist"
 APP="$DIST/River Bridge.app"
-VERSAO="0.10.0"
+VERSAO="0.10.1"
 
 # ── o serviço dentro do pacote (0.7.0) ────────────────────────────────────────
 # Por que o interpretador vem junto: medido em 2026-09-05 neste macOS 26.6.2 —
@@ -39,6 +39,20 @@ AJUDANTE="$PKG/.build/release/river-bridge-servico"
 # O widget do macOS (0.10.0): o executável do .appex, montado mais abaixo.
 WIDGET_BIN="$PKG/.build/release/RiverBridgeWidget"
 [ -x "$WIDGET_BIN" ] || { echo "[ERRO] binário não encontrado: $WIDGET_BIN"; exit 1; }
+# O ponto de entrada de uma extensão é o NSExtensionMain do Foundation, não o
+# main do Swift (0.10.1). Medido em 2026-09-06 nos widgets do Dropover, do Excel e
+# do Teams: o LC_MAIN aponta para o stub de _NSExtensionMain, e o _main do @main
+# continua existindo. Sem isso o pluginkit registrava o widget e a galeria nunca o
+# listava (dono, no Mac mini). A flag vive em Package.swift (linkerSettings); aqui
+# é a prova de que o binário que vai para o pacote a carrega.
+# Sem `nm | grep -q`: com `pipefail`, o grep fecha o cano e o nm morre de SIGPIPE.
+NM_WIDGET="$(nm -m "$WIDGET_BIN")"
+grep -q 'external _NSExtensionMain (from Foundation)' <<< "$NM_WIDGET" \
+  || { echo "[ERRO] o widget não entra pelo NSExtensionMain (Package.swift, linkerSettings do alvo RiverBridgeWidget)"; exit 1; }
+ENTRADA_WIDGET="$(otool -l "$WIDGET_BIN" | awk '/LC_MAIN/{f=1} f&&/entryoff/{print $2; exit}')"
+MAIN_WIDGET="$(nm "$WIDGET_BIN" | awk '$3=="_main"{print $1}')"
+[ -n "$ENTRADA_WIDGET" ] && [ -n "$MAIN_WIDGET" ] && [ "$ENTRADA_WIDGET" != "$((0x$MAIN_WIDGET - 0x100000000))" ] \
+  || { echo "[ERRO] o LC_MAIN do widget aponta para o main do Swift (entrada $ENTRADA_WIDGET, main $MAIN_WIDGET)"; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

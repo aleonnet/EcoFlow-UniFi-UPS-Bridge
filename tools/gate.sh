@@ -1095,13 +1095,37 @@ S78_FALTA=""
 for peca in 'PlugIns/RiverBridgeWidget.appex' 'com.apple.widgetkit-extension' \
             'com.apple.security.app-sandbox' 'com.apple.security.application-groups' \
             'codesign -d --entitlements :- "$APPEX"' 'GRUPO%%.*}" = "$TEAM_ID"' \
-            'assinar "$APPEX" "$DIREITOS_WIDGET"' 'assinar "$APP" "$DIREITOS_APP"'; do
+            'assinar "$APPEX" "$DIREITOS_WIDGET"' 'assinar "$APP" "$DIREITOS_APP"' \
+            'external _NSExtensionMain (from Foundation)' 'LC_MAIN'; do
     grep -qF -- "$peca" "$RAIZ/tools/build-app.sh" || S78_FALTA="$S78_FALTA | $peca"
 done
 if [ -z "$S78_FALTA" ]; then
     ok "S78 empacotador: o widget nasce em PlugIns, em caixa de areia, com o grupo, e as provas dos direitos"
 else
     erro "S78 empacotador sem:$S78_FALTA"
+fi
+
+# S79 — o executável do widget entra pelo NSExtensionMain (0.10.1). Não é prova de
+# texto: é o binário que a S6 acabou de construir. Sem a flag de ligação o
+# pluginkit registrava o widget e a galeria de widgets nunca o listava (dono, no
+# Mac mini, 2026-09-06); medido nos widgets do Dropover, do Excel e do Teams que
+# o LC_MAIN deles aponta para o stub de _NSExtensionMain, não para o main do Swift.
+S79_BIN="$APP_DIR/.build/debug/RiverBridgeWidget"
+if [ -x "$S79_BIN" ]; then
+    S79_ENTRADA="$(otool -l "$S79_BIN" | awk '/LC_MAIN/{f=1} f&&/entryoff/{print $2; exit}')"
+    S79_MAIN="$(nm "$S79_BIN" | awk '$3=="_main"{print $1}')"
+    # `nm | grep -q` NÃO: o grep fecha o cano, o nm morre de SIGPIPE e o pipefail
+    # conta isso como falha (medido: a cena nasceu vermelha com o binário certo).
+    S79_NM="$(nm -m "$S79_BIN")"
+    if grep -q 'external _NSExtensionMain (from Foundation)' <<< "$S79_NM" \
+       && [ -n "$S79_ENTRADA" ] && [ -n "$S79_MAIN" ] \
+       && [ "$S79_ENTRADA" != "$((0x$S79_MAIN - 0x100000000))" ]; then
+        ok "S79 widget: o LC_MAIN entra pelo NSExtensionMain (entrada $S79_ENTRADA ≠ main $((0x$S79_MAIN - 0x100000000)))"
+    else
+        erro "S79 widget: o executável entra pelo main do Swift, não pelo NSExtensionMain (Package.swift, linkerSettings)"
+    fi
+else
+    erro "S79 widget: binário de depuração ausente ($S79_BIN) — a S6 não o construiu?"
 fi
 
 # S76 — o app só pede recarga do widget em mudança de SIGNIFICADO (0.10.0; o

@@ -400,6 +400,28 @@ e os intervalos dizem quantas recargas o sistema honrou.
 4. O que só o dono pode medir: o PowerManager em modo **Local** (linhas 7b/8 da bancada) e uma queda de
    energia real com a proteção armada (B42/B43).
 
+### 5d. O widget não aparecia na galeria (2026-09-06, 20h40) — 0.10.1
+
+O dono procurou "river" na galeria de widgets do mini: **lista vazia** (captura na conversa). Medido no
+mini no ato: `pluginkit -m -v -i com.river.bridge-ui.widget` → registrado (0.10.0, em `/Applications`); o
+app rodando; nenhum relatório de queda do widget; **nada** de `chronod`, `pkd`, `lsd` ou `NotificationCenter`
+sobre ele no registro (nem em `--info --debug`). Comparado nesta máquina com três widgets de terceiros que
+aparecem na galeria (Dropover, Excel, Teams): os três têm `_NSExtensionMain` do Foundation como símbolo
+importado e o `LC_MAIN` aponta para o **stub** dele (não para o `_main` do Swift, que também existe); o
+nosso entrava pelo `_main`. Correção de crença: **registrar no `pluginkit` não é aparecer na galeria** —
+a 0.10.0 tomou o registro como prova de que o widget existia para o sistema.
+
+Conserto (0.10.1): `linkerSettings: [.unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"])]`
+no alvo `RiverBridgeWidget` (`Package.swift`); medido no binário reconstruído: `nm -m` traz
+`(undefined) external _NSExtensionMain (from Foundation)` e o `LC_MAIN` (entryoff 447980) cai no stub
+(`adrp/ldr`), não no `_main`. O empacotador recusa binário sem isso (`nm`/`otool`, em `build-app.sh`);
+cena **S79** no gate mede o binário do build de depuração; S78 ganhou as duas peças de texto.
+
+**Precisa do dono:** instalar a 0.10.1 (ou eu instalo por ssh, como nas anteriores) e abrir a galeria de
+widgets de novo — é a única prova que conta; não há proxy medível no mini (o `chronod` não tem contêiner
+nem registra descoberta). Se ainda não aparecer, a próxima medição é o `log stream` do `chronod` **enquanto**
+a galeria abre.
+
 ## 6. Prompts prontos
 
 Funcionou:

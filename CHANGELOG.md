@@ -9,6 +9,18 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-09-06
+
+### Corrigido
+- **O widget não aparecia na galeria de widgets do macOS** (o dono procurou "river" na galeria
+  do Mac mini e a lista veio vazia, com o `pluginkit` dizendo que a extensão estava registrada).
+  Causa: o executável da extensão entrava pelo `main` do Swift; uma extensão entra pelo
+  `NSExtensionMain` do Foundation — medido nos widgets do Dropover, do Excel e do Teams
+  (`LC_MAIN` → stub de `_NSExtensionMain`). O alvo `RiverBridgeWidget` ganha a flag de
+  ligação em `Package.swift`; o empacotador recusa um binário sem ela (`nm`/`otool`); cena S79
+  no gate mede o binário construído. Registrar no `pluginkit` não é aparecer na galeria — a
+  crença da 0.10.0 estava errada e fica emendada no handoff.
+
 ## [0.10.0] — 2026-09-06
 
 ### Adicionado
