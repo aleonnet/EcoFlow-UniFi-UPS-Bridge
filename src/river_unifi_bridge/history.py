@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import contextlib
+import csv
+import datetime as _dt
 import sqlite3
 import time
 
@@ -151,6 +153,45 @@ class HistoryStore:
             for r in rows
         ]
 
+    # -- exportação em CSV (0.9.0: "Compartilhar…" no app) ------------------------
+    # O serviço é o dono do SQLite e das colunas; o app só empacota. `csv.writer`
+    # da biblioteca padrão cuida do escape. Ordem cronológica, `ts_iso` no fuso
+    # local do serviço, e o `ts` cru ao lado para quem quiser somar.
+
+    COLUNAS_AMOSTRAS = ("ts_iso", "ts", "estado", "carga_pct", "autonomia_s", "uso_pct", "potencia_w")
+    COLUNAS_EVENTOS = ("ts_iso", "ts", "tipo", "dispositivo", "detalhe")
+
+    @staticmethod
+    def _iso_local(ts: int) -> str:
+        return _dt.datetime.fromtimestamp(ts).astimezone().isoformat(timespec="seconds")
+
+    def export_samples_csv(self, ts_from: int, ts_to: int, escreve) -> int:
+        """Escreve as amostras da faixa como CSV em `escreve(str)`; devolve as linhas."""
+        saida = _Escritor(escreve)
+        writer = csv.writer(saida)
+        writer.writerow(self.COLUNAS_AMOSTRAS)
+        n = 0
+        with self._connect() as conn:
+            for r in conn.execute(
+                "SELECT ts, state, charge, runtime, load, power_w FROM samples"
+                " WHERE ts >= ? AND ts <= ? ORDER BY ts", (ts_from, ts_to)):
+                writer.writerow((self._iso_local(r[0]), r[0], r[1], r[2], r[3], r[4], r[5]))
+                n += 1
+        return n
+
+    def export_events_csv(self, ts_from: int, ts_to: int, escreve) -> int:
+        saida = _Escritor(escreve)
+        writer = csv.writer(saida)
+        writer.writerow(self.COLUNAS_EVENTOS)
+        n = 0
+        with self._connect() as conn:
+            for r in conn.execute(
+                "SELECT ts, type, detail, device FROM events"
+                " WHERE ts >= ? AND ts <= ? ORDER BY ts", (ts_from, ts_to)):
+                writer.writerow((self._iso_local(r[0]), r[0], r[1], r[3], r[2]))
+                n += 1
+        return n
+
     def recent_events(self, limit: int = 50) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -208,3 +249,10 @@ class HistoryStore:
             self._falhou("prune", exc)
             return 0
         return a + b
+
+
+class _Escritor:
+    """O alvo do `csv.writer`: só precisa de `write(str)`."""
+
+    def __init__(self, escreve) -> None:
+        self.write = escreve

@@ -86,6 +86,55 @@ async def test_state_reflects_snapshot(client, server):
     assert (await resp.json())["power"]["state"] == "ONLINE"
 
 
+async def test_state_publishes_the_serial_details(client, server):
+    """0.9.0: o que a serial entrega a mais (capacidade, temperaturas, tempo para
+    carga completa) viaja no bloco `outlets`, tal qual, até o app."""
+    server.state.update_snapshot({"power": {"state": "ONLINE"}, "battery": {}, "outlets": {
+        "total_w": 41.2, "input_solar_dc_w": 12.5, "design_capacity_mah": 12800,
+        "time_to_full_minutes": None, "battery_temperature_c": 30.0,
+        "system_temperature_c": 21.0, "temperatures_c": [21.0, 30.0, 25.0, 25.0]}})
+    body = await (await client.get("/v1/state", headers=client.auth)).json()
+    assert body["outlets"]["design_capacity_mah"] == 12800
+    assert body["outlets"]["time_to_full_minutes"] is None
+    assert body["outlets"]["system_temperature_c"] == 21.0
+    assert body["outlets"]["temperatures_c"] == [21.0, 30.0, 25.0, 25.0]
+
+
+async def test_events_csv_has_the_columns(client, server):
+    """`GET /v1/events/log.csv`: cabeçalho fixo, ordem cronológica, UTF-8 com BOM,
+    e o dono do evento (a instância) numa coluna própria."""
+    server.history.record_event("POWER_LOSS", "estado=ON_BATTERY carga=42", ts=1_700_000_100)
+    server.history.record_event("UDR7_ARMED", "nome com, vírgula", ts=1_700_000_000, device="udr7")
+    resp = await client.get("/v1/events/log.csv", headers=client.auth)
+    assert resp.status == 200
+    assert resp.content_type == "text/csv"
+    texto = await resp.text()
+    assert texto.startswith("\ufeff")
+    linhas = texto.lstrip("\ufeff").splitlines()
+    assert linhas[0] == "ts_iso,ts,tipo,dispositivo,detalhe"
+    assert linhas[1].split(",")[1:4] == ["1700000000", "UDR7_ARMED", "udr7"]   # o mais antigo primeiro
+    assert '"nome com, vírgula"' in linhas[1]                                     # escape do csv
+    assert linhas[2].split(",")[1:4] == ["1700000100", "POWER_LOSS", ""]
+    assert "attachment" in resp.headers["Content-Disposition"]
+
+
+async def test_samples_csv_has_the_columns(client, server):
+    server.history.record_sample({"power": {"state": "ONLINE", "output_power_w": 41.2, "load_percent": None},
+                                  "battery": {"charge_percent": 88.0, "runtime_seconds": 3600.0}},
+                                 ts=1_700_000_000)
+    resp = await client.get("/v1/history/samples.csv?from=1699999999&to=1700000001", headers=client.auth)
+    linhas = (await resp.text()).lstrip("\ufeff").splitlines()
+    assert linhas[0] == "ts_iso,ts,estado,carga_pct,autonomia_s,uso_pct,potencia_w"
+    assert linhas[1].split(",")[1:] == ["1700000000", "ONLINE", "88.0", "3600.0", "", "41.2"]
+    fora = await client.get("/v1/history/samples.csv?from=1700000001", headers=client.auth)
+    assert len((await fora.text()).lstrip("\ufeff").splitlines()) == 1     # só o cabeçalho
+
+
+async def test_csv_routes_need_the_token(client):
+    assert (await client.get("/v1/events/log.csv")).status == 401
+    assert (await client.get("/v1/history/samples.csv")).status == 401
+
+
 async def test_put_config_unknown_key_400_names_key(client):
     resp = await client.put("/v1/config", json={"NAO_EXISTE": "1"}, headers=client.auth)
     assert resp.status == 400

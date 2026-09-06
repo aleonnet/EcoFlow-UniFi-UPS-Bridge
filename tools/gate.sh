@@ -733,6 +733,18 @@ cena_mutacao S70 src/river_unifi_bridge/river_serial.py \
     "            leitura.temperatura_sistema_c = float(sensores[_SENSOR_SISTEMA])" \
     "            leitura.temperatura_sistema_c = float(sensores[_SENSOR_BATERIA])" \
     tests/unit/test_river_serial.py::test_the_four_temperatures_and_their_names
+# S71 — `battery.capacity.nominal` é em Ah no dicionário do NUT; a serial fala em
+# mAh (0.9.0). Mutante: publica os mAh crus → o Home Assistant mostraria 12800 Ah.
+cena_mutacao S71 src/river_unifi_bridge/nut_publicacao.py \
+    '        _poe(variaveis, "battery.capacity.nominal", _texto(capacidade_mah / 1000, 1))' \
+    '        _poe(variaveis, "battery.capacity.nominal", _texto(capacidade_mah, 1))' \
+    tests/unit/test_nut_publicacao.py::test_capacity_comes_out_in_ah
+# S72 — o CSV de eventos leva o dono do evento (a instância) numa coluna própria
+# (0.9.0). Mutante: a coluna some → quem lê o arquivo não sabe de que aparelho é.
+cena_mutacao S72 src/river_unifi_bridge/history.py \
+    "                writer.writerow((self._iso_local(r[0]), r[0], r[1], r[3], r[2]))" \
+    "                writer.writerow((self._iso_local(r[0]), r[0], r[1], None, r[2]))" \
+    tests/unit/test_api.py::test_events_csv_has_the_columns
 
 # --- 0.8.0: a UX que o dono determinou, inteira -------------------------------
 

@@ -13,6 +13,8 @@ Recusas de negócio: `{"erro": "<mensagem>", "motivo": "<código>"}`.
 | GET | `/v1/state` | snapshot corrente (nunca valores inventados; `null` honesto) |
 | GET | `/v1/events` | SSE: `event: state` e `event: event` (bridge + eventos de dispositivo; estes levam `device` e `device_name` no payload). Desde a 0.4.0 cada evento leva `seq`, um número que só cresce: o servidor entrega a partir do último `seq` enviado, então a fila cheia (100) deixou de congelar a entrega no centésimo evento, e o app usa o `seq` como identidade da linha |
 | GET | `/v1/events/log?from=&to=&types=&limit=&device=` | histórico persistido; `device` filtra pelo id da instância; cada linha traz `device` (`null` para eventos do bridge e para os gravados antes da 0.3.0) |
+| GET | `/v1/events/log.csv?from=&to=` | (0.9.0) o registro de eventos da faixa como CSV (`ts_iso,ts,tipo,dispositivo,detalhe`), cronológico, UTF-8 com BOM, `Content-Disposition: attachment`. É o que o **Compartilhar…** da barra de Eventos empacota |
+| GET | `/v1/history/samples.csv?from=&to=` | (0.9.0) as amostras cruas da faixa (`ts_iso,ts,estado,carga_pct,autonomia_s,uso_pct,potencia_w`), uma por leitura do serviço; mesmo formato do CSV de eventos |
 | GET | `/v1/health` | elos da cadeia + `plugins[]` (`id`, `type`, `name`, `state`, `detail`); o alias `udr7`/`udr7_detail` espelha a instância `udr7` e é **permanente** (o instalador o lê). Desde a 0.4.0 a lista sai **desde o boot** e sobrevive à falha de leitura do UPS (ela é configuração, não telemetria), e há `last_tick_error`: erro de SOFTWARE no ciclo (um dispositivo que levantou exceção), separado de `last_error`, que é do NUT |
 | GET | `/v1/config` | as 31 chaves da allowlist, em minúsculas (0.4.0: saíram `UNIFI_HOST`, `UNIFI_VERIFY_TLS`, `EMULATE_MODEL`, `READ_ONLY`, que não tinham consumidor — 33 → 29; entraram `RIVER_SERIAL_ENABLED` e `RIVER_SERIAL_PORT`, da leitura pela porta serial — 29 → 31; `.env` instalado com chave aposentada só gera aviso) |
 | PUT | `/v1/config` | validar → autorizar → gravar `.env` → aplicar a quente. Chaves `UDR7_*`/`PROTECT_*` (via legada, D10) são traduzidas para a instância `udr7` e gravadas nos dois. Desde a 0.8.0 as três travas (`UDR7_ARM_ALLOWED`, `RIVER_POWEROFF_ALLOWED`, `DEVICE_CMD_ALLOWED`) são interruptores da tela e **aplicam a quente**; fechar a de armamento com uma instância armada → 409 `armado` (o antigo 400 `chave_somente_arquivo` deixou de existir) |
@@ -71,8 +73,22 @@ serial do mesmo cabo), o serviço a lê a cada ciclo e publica:
 ```json
 "outlets": {"total_w": 110.6, "input_w": 110.6, "input_ac_w": 110.6,
             "input_solar_dc_w": 0.0, "ac_w": 110.6, "dc_w": 0.0,
-            "usb_a_w": 0.0, "usb_c_w": 0.0, "line_frequency_hz": 60.0}
+            "usb_a_w": 0.0, "usb_c_w": 0.0, "line_frequency_hz": 60.0,
+            "design_capacity_mah": 12800, "time_to_full_minutes": null,
+            "battery_temperature_c": 34.0, "system_temperature_c": 34.0,
+            "temperatures_c": [34.0, 34.0, 25.0, 25.0]}
 ```
+
+Desde a 0.9.0 o bloco traz também o que mais a serial entrega (fonte: o projeto r3pcomms,
+lido em 2026-09-06; o quadro acima é o real, do aparelho do dono a 100 % na tomada):
+`design_capacity_mah` (capacidade de projeto), `temperatures_c` (os quatro sensores, na ordem
+do aparelho; `[1]` é a bateria e `[0]` o sistema, segundo o arquivo de Home Assistant do autor
+do r3pcomms — os outros dois não têm nome em fonte nenhuma), e `time_to_full_minutes`.
+**Grau de certeza do tempo para carga completa:** o r3pcomms marca a sentinela "não está
+carregando" com interrogação; o nosso quadro real a confirma (aparelho cheio → `null`); um
+valor em minutos com o aparelho carregando ainda **não foi medido** por nós. `battery.temperature_c`
+no bloco `battery` continua sendo o sensor da bateria. Sem nome no dicionário do NUT, o tempo
+para carga completa e a entrada solar/DC **não** são publicados ao NUT — só aqui e na tela.
 
 `outlets` é `null` quando ninguém respondeu — e aí `power.output_power_w` também é `null`, e a
 tela mostra "—". `source.usb_cdc` diz se a leitura desta volta veio da porta serial. As duas

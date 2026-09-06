@@ -17,6 +17,7 @@ import json
 import os
 from dataclasses import replace
 import threading
+import time
 
 from aiohttp import web
 
@@ -189,6 +190,10 @@ class ApiServer:
         app.router.add_get("/v1/events/log", self._h_events_log)
         app.router.add_delete("/v1/events/log", self._h_events_delete)
         app.router.add_get("/v1/history", self._h_history)
+        # 0.9.0: os registros em CSV, para o "Compartilhar…" do app. A ficha é o
+        # middleware `auth`, como em toda rota.
+        app.router.add_get("/v1/events/log.csv", self._h_events_log_csv)
+        app.router.add_get("/v1/history/samples.csv", self._h_samples_csv)
         app.router.add_get("/v1/health", self._h_health)
         app.router.add_get("/v1/config", self._h_config_get)
         app.router.add_put("/v1/config", self._h_config_put)
@@ -615,6 +620,30 @@ class ApiServer:
         except ValueError as exc:
             return web.json_response({"erro": str(exc)}, status=400)
         return web.json_response({"rows": rows})
+
+    async def _h_events_log_csv(self, request: web.Request) -> web.StreamResponse:
+        return await self._csv(request, "eventos.csv", self.history.export_events_csv)
+
+    async def _h_samples_csv(self, request: web.Request) -> web.StreamResponse:
+        return await self._csv(request, "amostras.csv", self.history.export_samples_csv)
+
+    async def _csv(self, request: web.Request, nome: str, exporta) -> web.StreamResponse:
+        """Um CSV inteiro da faixa `from`..`to` (padrão: tudo até agora), em UTF-8
+        com BOM — é o que faz o Numbers e o Excel abrirem os acentos certos."""
+        q = request.query
+        try:
+            ts_from = int(q.get("from", "0"))
+            ts_to = int(q.get("to", str(int(time.time()))))
+        except ValueError as exc:
+            return web.json_response({"erro": str(exc)}, status=400)
+        pedacos: list[str] = []
+        # O SQLite é síncrono e a faixa pode ter dias de amostras: fora do laço.
+        await asyncio.to_thread(exporta, ts_from, ts_to, pedacos.append)
+        corpo = "\ufeff" + "".join(pedacos)
+        return web.Response(
+            text=corpo, content_type="text/csv", charset="utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+        )
 
     async def _h_events_delete(self, request: web.Request) -> web.Response:
         # `to` is mandatory by design: an accidental parameterless DELETE must
