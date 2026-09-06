@@ -48,6 +48,7 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | `2026-09-02-0105-pesquisa-api-local-console-udr7.md` | proposto | A rota de desligamento local do console (a do botão **Shut Down**), medida e lida no aparelho; o que fecha as portas da via nativa; e o que continua sendo premissa |
 | `decisions/2026-09-02-2123-validacao-estado-e-programa-de-frentes.md` | aceito | **Validação medida** do repositório e do Mac mini contra os três objetivos do dono; correções de registro; o programa de frentes F0–F6 |
 | `decisions/2026-09-02-2124-wifi-do-river-fechado.md` | aceito | Wi‑Fi do River só fala com a nuvem: frente fechada; nuvem-para-visibilidade e BLE viram frentes próprias |
+| `decisions/2026-09-06-1800-o-bluetooth-e-lido-pela-sessao-do-usuario.md` | proposto | O rádio Bluetooth é lido por um filho do River Bridge na sessão do usuário, nunca pelo serviço root: por ssh o macOS nega (`DENIED_BY_UNKNOWN`); como filho de app assinado com a chave de uso a varredura passa (medido) |
 | `plans/2026-09-02-2150-handoff-programa-de-frentes.md` | superado por `plans/2026-09-03-1730-…` | Handoff do programa de frentes (F0 e F1 executados, release 0.2.0) |
 | `decisions/2026-09-03-1700-dispositivos-por-instancia.md` | proposto | **Dispositivos protegidos por instância** (0.3.0): as 16 decisões, a matriz de compatibilidade com a 0.2.0, o que foi medido nesta máquina e o bloco a medir no mini |
 | `guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md` | aceito | **Runbook** da proteção do UDR7 como instância: preparar, medir, armar em 3 passos, desarmar, recuperar, reverter para a 0.2.0 |
@@ -74,6 +75,8 @@ Gates da casa: `../.roadworthy/gates`. Checagem da árvore: `docs-check.sh docs 
 | `plans/2026-09-06-1215-a-folha-do-river-e-compartilhar-os-registros-0-9-0-banca.md` | aceito | A revisão fria do plano da 0.9.0: rodada 1 reprovada (três bloqueadores de levantamento, corrigidos), rodada 2 aprovada |
 | `plans/2026-09-06-1500-o-widget-do-macos-0-10-0.md` | aceito | **O plano da 0.10.0**: o widget do macOS (WidgetKit) — o `.appex` no pacote com sandbox e grupo de aplicativos, o retrato gravado pelo app, a linha do tempo dentro do orçamento da Apple, a receita provada nesta máquina |
 | `plans/2026-09-06-1500-o-widget-do-macos-0-10-0-banca.md` | aceito | A revisão fria do plano da 0.10.0: rodada 1 com cinco bloqueadores de levantamento (corrigidos), rodada 2 com um mecânico (corrigido no ato) |
+| `plans/2026-09-06-1800-o-segundo-river-por-bluetooth-0-11-0.md` | proposto | **O plano da 0.11.0**: o River da sala lido por Bluetooth pelo programa (filho Python na sessão do usuário, porque o consentimento de Bluetooth do macOS não chega a um serviço root — medido) e publicado pelo serviço na tela, nos eventos e no NUT; conta EcoFlow uma vez (só o User ID fica) |
+| `plans/2026-09-06-1800-o-segundo-river-por-bluetooth-0-11-0-banca.md` | proposto | A revisão fria do plano da 0.11.0 |
 | `API_LOCAL_20260831.md` | superado por `reference/api-local.md` | Contrato da API local até a 0.2.0 (sem as rotas de dispositivos) |
 | `INSTALACAO_UMA_LINHA_20260901.md` | — | O instalador em uma linha: contrato 0/100, abertura, fecho |
 | `PESQUISA_ARQUITETURA_PLUGINS_20260901.md` | — | Benchmarks da arquitetura de plugins e o parecer que originou a frente |
