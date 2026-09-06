@@ -254,24 +254,27 @@ PUT /v1/devices/udr7 {"dry_run": false} → {"device": {..., "dry_run": false, .
 segundos (padrão NUT): 149.940 s = 41 h 39 min (o que o River Bridge mostra). O PowerManager
 trata como minutos: 149.940 min = 2.499 h = 104 d 3 h — exatamente o exibido. Defeito deles.
 
-## 5. Próximo passo, na ordem
+## 5. Estado final desta noite/manhã (2026-09-06, 11h20) e o próximo passo
 
-(A 0.8.2 já foi instalada pelo dono e lê o River — §4b. O roteiro abaixo vale para a 0.8.3.)
+**Mini:** 0.8.6 do disco publicado (Gatekeeper: Notarized Developer ID), serviço + leitor + servidor como
+root, interface aberta; PowerManager em Remoto lendo pelo nosso servidor sem tirar o cabo; UDR7 com
+endereço, alcance provado e **proteção armada** (corte 2 %, limiar 5 %). Reiniciar o serviço com a
+proteção armada é recusado pela cerca (`{"motivo": "armado"}`): o caminho é ensaio ligado → reiniciar →
+ensaio desligado, como feito para trocar 0.8.5 → 0.8.6 sem nova autorização.
 
-1. **Dono:** arrastar a 0.8.2 para o Lixo no mini. **Eu:** medir que nada ficou
-   (`pgrep -fl river-bridge`, `ls "/Library/Application Support/river-unifi-bridge"`,
-   `launchctl print system/com.river.unifi-bridge`) — é a aceitação 1 do plano da 0.8.0. Com a
-   0.8.2 o interruptor em Itens de Início de Sessão FICA ligado (defeito conhecido, §4c); é a
-   0.8.3 que o apaga — e é a bancada dela que prova: diário com `ajudante_do_registro` e
-   `unregister=ok`, e o interruptor desligado/ausente na lista.
-   (Por que o Lixo antes de instalar por cima: substituir pelo Finder põe o pacote antigo
-   no Lixo e o novo no lugar; o vigia não dispara nesse caso por desenho, mas o estado
-   antigo ficaria. O teste limpo é Lixo → medir → instalar.)
-2. **Dono:** baixar a 0.8.3, arrastar, abrir, Permitir. **Eu:** `pgrep -fl "usbhid-ups|river-bridge-upsd"`
-   como root, `LIST UPS` e `LIST VAR river-bridge` por `nc 127.0.0.1 3493`, `tail` do diário
-   (agora com bytes), `GET /v1/health` com `cabo.lendo == true`.
-3. Então as aceitações 5, 7, 7b, 8, 9 do plano da 0.8.0 (travas, cabo com o PowerManager,
-   rede), o Home Assistant (login do dono ou os valores da tela), e o Lixo de novo.
+**Releases:** 0.8.0 … 0.8.6, todas assinadas e notarizadas (credencial no chaveiro de arquivo,
+`RUB_NOTARY_KEYCHAIN`).
+
+**Próximo passo (frentes pedidas pelo dono, cada uma com plano e banca):**
+1. **B49 — folha de detalhe do River** lendo tudo o que a serial entrega (capacidade mAh, 4 temperaturas,
+   tempo para carga completa, entrada solar/DC publicada; firmware só se um comando HID próprio não
+   disputar o cabo com o leitor — medir; flags não).
+2. **B48 — widget do macOS** (WidgetKit, `Contents/PlugIns`, grupo de aplicativos, retrato gravado pelo
+   programa).
+3. **B39 — segundo River por BLE** pela sessão do usuário (TCC não atende serviço root), com a
+   biblioteca de `rabits/ha-ef-ble` (River 3 Plus coberto; exige User ID da conta; uma conexão BLE por vez).
+4. O que só o dono pode medir: o PowerManager em modo **Local** (linhas 7b/8 da bancada) e uma queda de
+   energia real com a proteção armada (B42/B43).
 
 ## 6. Prompts prontos
 
