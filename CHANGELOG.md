@@ -9,6 +9,10 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+- A frase "Mova o River Bridge para Aplicativos" diz também o caso da translocação do Gatekeeper
+  (pacote em quarentena copiado para Aplicativos sem o Finder abre de `AppTranslocation`, medido
+  no Mac mini em 2026-09-06): mover com o Finder para outra pasta e de volta.
+
 ## [0.8.4] — 2026-09-06
 
 Medido no Mac mini, com a 0.8.3 instalada por cima do registro herdado da 0.8.2 (habilitado,

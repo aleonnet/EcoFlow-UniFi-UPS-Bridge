@@ -179,11 +179,23 @@ open -a "River Bridge" → 8 s → status=enabled e launchd com o job   ← SEM 
                                                                         na mesma máquina não pergunta outra vez (medido)
 ```
 
+== 2026-09-06, 08h20 — instalação FINAL pelo disco publicado (v0.8.4, sha ea4cd16a…)
+cópia por scp → Lixo: unregister=ok, status_depois=notRegistered, parada_deliberada
+curl do DMG; xattr quarentena forçada; spctl -t open → accepted, Notarized Developer ID
+cp -R para /Applications (quarentena vai junto); spctl --assess → accepted, Notarized Developer ID
+open → a interface abriu de /private/var/folders/…/AppTranslocation/… (translocação do Gatekeeper:
+  pacote em quarentena copiado SEM o Finder) → "Mova o River Bridge para Aplicativos", nada registrado (correto)
+xattr -dr com.apple.quarantine (o que o arrastar pelo Finder faz) → open → interface de /Applications,
+  status=enabled sem pedir autorização, serviço + leitor + servidor como root, version 0.8.4, health ok
+```
+
 **O que isso muda no roteiro:** o ciclo inteiro (Lixo → reinstalar → abrir) fecha sem clique
 nenhum quando o programa já foi autorizado uma vez nesta máquina. A autorização é pedida só na
 primeira instalação de todas (ou depois de o dono desligar o item nos Ajustes do Sistema).
 
-**Release 0.8.4 bloqueada na notarização (2026-09-06, 01h25):** "No Keychain password item
+**Release 0.8.4 publicada às 08h15 (sha ea4cd16a…)** depois de o dono guardar a credencial no
+chaveiro de arquivo; `RUB_NOTARY_KEYCHAIN` nos scripts e a conferência antes de montar (d17e8c2).
+Registro do bloqueio, para a história: "No Keychain password item
 found for profile: river-bridge" — a credencial do notarytool sumiu do chaveiro pela segunda
 vez (login.keychain-db reescrito à 01h16; zero itens em qualquer chaveiro). Só a senha de app
 do dono a recria. Para não sumir de novo, guardar num chaveiro de ARQUIVO em vez do de

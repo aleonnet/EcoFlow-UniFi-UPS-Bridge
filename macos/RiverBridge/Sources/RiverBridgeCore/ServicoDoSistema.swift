@@ -140,7 +140,10 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
     /// O programa está rodando de fora de Aplicativos (do disco de instalação,
     /// de Downloads…): um serviço registrado dali apontaria para um caminho que
     /// some ao ejetar o disco ou mover o arquivo. Nada é registrado até ele
-    /// estar em Aplicativos.
+    /// estar em Aplicativos. Inclui a translocação do Gatekeeper: um pacote em
+    /// quarentena copiado para Aplicativos SEM o Finder abre de
+    /// `/private/var/folders/…/AppTranslocation/…` (medido no Mac mini,
+    /// 2026-09-06); mover com o Finder desfaz — e a frase diz isso.
     case foraDeAplicativos
 
     public var titulo: String { titulo(emPortugues: L10n.cachedIsPT) }
@@ -221,9 +224,11 @@ public enum EstadoDoServico: String, Sendable, CaseIterable {
         case .foraDeAplicativos:
             return pt
                 ? "O programa está aberto de fora da pasta Aplicativos. Arraste-o para "
-                  + "Aplicativos e abra-o de lá."
+                  + "Aplicativos com o Finder e abra-o de lá. Se ele já estiver lá, mova-o "
+                  + "com o Finder para outra pasta e de volta."
                 : "The app is running from outside the Applications folder. Drag it to "
-                  + "Applications and open it from there."
+                  + "Applications with the Finder and open it from there. If it is already "
+                  + "there, move it with the Finder to another folder and back."
         }
     }
 
