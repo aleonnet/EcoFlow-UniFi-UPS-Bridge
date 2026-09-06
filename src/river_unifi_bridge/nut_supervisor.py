@@ -10,13 +10,38 @@ Por que isto existe, medido no Mac mini em 2026-09-04:
 3. **O aplicativo da EcoFlow mata leitores pelo NOME do processo**: o pacote dele
    traz `pkill -9 usbhid-ups` e `pkill -9 upsd`, rodados como root ao abrir.
 
-Como filhos do nosso serviço, os três problemas somem: sobem quando o serviço
-sobe (que é do sistema, logo no boot), param e voltam sem root, e nascem com nome
-próprio (`river-bridge-ups`), fora da mira daquele `pkill`.
+Como filhos do nosso serviço, os dois primeiros problemas somem: sobem quando o
+serviço sobe (que é do sistema, logo no boot) e param e voltam sem root.
+
+O terceiro tinha uma resposta que caiu. Até a 0.8.1 o LEITOR também nascia com
+nome próprio (`river-bridge-ups`, via `exec -a`), fora da mira do `pkill`. O NUT
+2.8.5 recusa isso — medido no Mac mini em 2026-09-05, lançando o leitor do pacote
+exatamente como o supervisor lança:
+
+    Error: UPS [river-office] is for driver 'usbhid-ups', but I'm 'river-bridge-ups'!
+
+O leitor morre na hora, o servidor sobe e não acha o soquete dele, e a tela diz
+"o leitor não está no ar". E não é coisa do 2.8.5: a conferência está em
+`drivers/main.c` do NUT nas versões 2.7.4, 2.8.0 e 2.8.5 (lido no código-fonte em
+2026-09-05: `fatalx(EXIT_FAILURE, "Error: UPS [%s] is for driver '%s', but I'm
+%s!")`). Ou seja, o leitor com nome trocado NUNCA subiu — a medição de 2026-09-04
+viu o nome no `ps`, não uma leitura; as leituras daquele dia vinham, com toda a
+probabilidade, do leitor do Homebrew que o instalador de então tinha registrado
+à parte (os dois agentes sobrando removidos do mini em 2026-09-05) — isso não foi
+medido. Então o leitor nasce com o nome de fábrica, e o `pkill` do aplicativo da
+EcoFlow é tratado como o que é: uma queda do leitor, que este supervisor relança
+com recuo. Com o cabo automático (cabo_automatico.py) e sem proteção armada, é
+uma corrida: o vigia olha a lista de processos a cada 5 s, o aplicativo deles roda
+o `pkill` logo depois do pedido de senha, e quem chega primeiro depende de quanto
+o dono demora a digitar — não foi medido. Nas duas ordens o desfecho é o mesmo:
+o leitor para (pausado por nós, ou morto por eles e tolerado por `pausar`) e
+volta quando o aplicativo deles fecha. Com proteção armada o cabo não é largado,
+o `pkill` derruba o leitor e o supervisor o relança. O SERVIDOR continua com nome próprio (`river-bridge-upsd`):
+o `upsd` não confere o próprio nome, e o `pkill -9 upsd` deles não o alcança.
 
 O nome próprio é dado por `exec -a` do shell, que escolhe o `argv[0]` do processo:
-medido em 2026-09-04, `ps -o comm=` mostra `river-bridge-ups` e o `pkill` pelo nome
-de fábrica não o alcança. É o caminho portátil no macOS sem reescrever o binário.
+medido em 2026-09-04, `ps -o comm=` mostra o nome escolhido. É o caminho portátil
+no macOS sem reescrever o binário.
 """
 
 from __future__ import annotations
@@ -29,9 +54,10 @@ import threading
 import time
 from dataclasses import dataclass
 
-# Nomes próprios. Não são enfeite: é o que tira os nossos processos da mira do
-# `pkill -9 usbhid-ups` que o aplicativo do fabricante executa como root.
-NOME_DRIVER = "river-bridge-ups"
+# Nome próprio do SERVIDOR. Não é enfeite: é o que o tira da mira do `pkill -9
+# upsd` que o aplicativo do fabricante executa como root. O leitor não tem um:
+# o NUT 2.8.5 exige que o nome do processo seja o do driver do `ups.conf`
+# (ver o alto do arquivo).
 NOME_SERVIDOR = "river-bridge-upsd"
 
 # Onde o Homebrew instala o NUT no Apple Silicon. Caminho estável (`opt`), não a
@@ -153,8 +179,14 @@ class NutSupervisor:
         return ["/bin/sh", "-c", f"exec -a {nome} '{binario}' {partes}"]
 
     def _lancar(self, argv: list[str]):
-        """Um filho, com o ambiente que diz ao NUT onde estão configuração e estado."""
-        return self._spawn(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        """Um filho, com o ambiente que diz ao NUT onde estão configuração e estado.
+
+        A saída de erro do filho vai para a NOSSA (o diário do serviço): até a
+        0.8.1 ela ia para o nada, e o motivo de o leitor morrer na partida
+        (a recusa de nome do NUT 2.8.5) ficou invisível no Mac mini até ser
+        reproduzido à mão (2026-09-05). Um filho que morre tem de dizer por quê.
+        """
+        return self._spawn(argv, stdout=subprocess.DEVNULL, stderr=None,
                            env=self._ambiente)
 
     # -- ciclo de vida ------------------------------------------------------
@@ -170,9 +202,11 @@ class NutSupervisor:
         if self._clock() < self._proxima_tentativa:
             return
         if self._driver is None or self._driver.poll() is not None:
+            # Nome de fábrica, direto, sem shell: o NUT 2.8.5 recusa o leitor
+            # cujo nome não é o do `driver` do ups.conf (ver o alto do arquivo).
             self._driver = self._lancar(
-                self._comando(NOME_DRIVER, f"{self._prefixo}/bin/usbhid-ups",
-                              "-a", self._ups, "-u", self._usuario, "-F"))
+                [f"{self._prefixo}/bin/usbhid-ups",
+                 "-a", self._ups, "-u", self._usuario, "-F"])
             self._log("INFO", "nut_driver_iniciado", pid=self._driver.pid, ups=self._ups)
             # O servidor procura o soquete do driver e reclama se ele ainda não
             # existe — então ele sobe na volta SEGUINTE do laço. Dormir aqui

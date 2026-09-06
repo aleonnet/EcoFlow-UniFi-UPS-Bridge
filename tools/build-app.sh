@@ -8,7 +8,7 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$RAIZ/macos/RiverBridge"
 DIST="$PKG/dist"
 APP="$DIST/River Bridge.app"
-VERSAO="0.8.1"
+VERSAO="0.8.2"
 
 # ── o serviço dentro do pacote (0.7.0) ────────────────────────────────────────
 # Por que o interpretador vem junto: medido em 2026-09-05 neste macOS 26.6.2 —
@@ -232,6 +232,10 @@ cat > "$APP/Contents/Library/LaunchDaemons/com.river.unifi-bridge.plist" <<'PLIS
              pacote assinado pode ser escrito em tempo de execução -->
         <key>PYTHONDONTWRITEBYTECODE</key><string>1</string>
     </dict>
+    <!-- O serviço escreve o diário na saída PADRÃO (service.py, _log). Sem esta
+         chave o diário ia para o nada: no Mac mini, em 2026-09-05, o arquivo
+         tinha zero bytes enquanto o leitor do no-break morria na partida. -->
+    <key>StandardOutPath</key><string>/Library/Logs/river-unifi-bridge.log</string>
     <key>StandardErrorPath</key><string>/Library/Logs/river-unifi-bridge.log</string>
 </dict>
 </plist>

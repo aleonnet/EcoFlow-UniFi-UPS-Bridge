@@ -71,28 +71,50 @@ if [ -n "$PERFIL" ]; then
 fi
 
 cp -R "$APP" "$PALCO/"
-# Um LEIA-ME ao lado do programa, na janela do disco: as três coisas que o dono
-# não tem como adivinhar. Desde a 0.8.0 nada aqui pede terminal: o NUT vai
-# dentro do pacote, o disco é assinado e notarizado, e o Lixo remove tudo.
+# Um LEIA-ME ao lado do programa, na janela do disco, nas duas línguas da tela
+# (o dono pediu as duas e um texto revisto, 2026-09-05): as três coisas que
+# quem instala não tem como adivinhar. Nada aqui pede terminal.
 cat > "$PALCO/LEIA-ME.txt" <<'TXT'
-River Bridge — o que saber antes de arrastar
-============================================
+River Bridge — antes de arrastar
+================================
 
-1. ARRASTE o River Bridge para a pasta Aplicativos, ao lado, e abra-o DE LA.
-   Aberto daqui do disco (ou de Downloads), ele so mostra "Mova o River Bridge
-   para Aplicativos" e nao registra nada — o servico precisa de um lugar fixo.
+1. Arraste o River Bridge para a pasta Aplicativos, ao lado, e abra-o de lá.
+   Aberto daqui do disco, ele só pede para ser movido: o serviço que vigia a
+   energia precisa de um lugar fixo para subir com o computador.
 
-2. AO ABRIR, o macOS pergunta se o River Bridge pode rodar em segundo plano:
-   clique em Permitir (pede a sua senha de administrador). Se a notificacao
-   passar, o aviso no topo da tela leva ao mesmo interruptor, em Ajustes do
-   Sistema > Geral > Itens de Inicio de Sessao. E a unica autorizacao que o
-   macOS pede — para todo servico que sobe com o computador — e a unica senha
-   que voce digita. Tudo o que o River Bridge precisa ja esta dentro dele.
+2. Na primeira abertura, o macOS pergunta se o River Bridge pode rodar em
+   segundo plano. Clique em Permitir e digite a sua senha de administrador.
+   É a única autorização e a única senha de toda a instalação. Se a
+   notificação passar, o aviso no topo da tela tem o botão que leva ao mesmo
+   interruptor (Ajustes do Sistema › Geral › Itens de Início de Sessão).
 
-3. PARA REMOVER, arraste o programa para o Lixo. O servico percebe, para de
-   vigiar, apaga a chave do console, as senhas e o historico, e se desregistra
-   sozinho. (Em Ajustes > Servico, "Remover completamente" faz o mesmo sem
-   jogar o programa fora.)
+3. Para remover, arraste o programa para o Lixo. O serviço percebe, para de
+   vigiar, apaga a chave do console, as senhas e o histórico, e se desregistra
+   sozinho. Em Ajustes › Serviço, "Remover completamente" faz o mesmo sem
+   jogar o programa fora.
+
+Tudo o que o River Bridge precisa já está dentro dele.
+TXT
+cat > "$PALCO/READ-ME.txt" <<'TXT'
+River Bridge — before you drag
+==============================
+
+1. Drag River Bridge to the Applications folder next to it, and open it from
+   there. Opened from this disk, it only asks to be moved: the service that
+   watches the power needs a fixed place to start with the computer.
+
+2. On the first launch, macOS asks whether River Bridge may run in the
+   background. Click Allow and type your administrator password. It is the
+   only authorization and the only password in the whole installation. If the
+   notification slips by, the notice at the top of the window has the button
+   that leads to the same switch (System Settings › General › Login Items).
+
+3. To remove it, drag the app to the Trash. The service notices, stops
+   watching, erases the console key, the passwords and the history, and
+   unregisters itself. In Settings › Service, "Remove completely" does the
+   same without throwing the app away.
+
+Everything River Bridge needs is already inside it.
 TXT
 # O atalho para /Applications é o que faz o arrastar funcionar. Sem ele a janela
 # teria só o programa, e o dono teria de achar a pasta sozinho.
@@ -112,7 +134,7 @@ hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MONTAGEM" "$DMG" \
 falhou=""
 [ -d "$MONTAGEM/River Bridge.app" ] || falhou="o programa não está no disco"
 [ -L "$MONTAGEM/Aplicativos" ] || falhou="${falhou:-falta o atalho para Aplicativos}"
-[ -f "$MONTAGEM/LEIA-ME.txt" ] || falhou="${falhou:-falta o LEIA-ME}"
+[ -f "$MONTAGEM/LEIA-ME.txt" ] && [ -f "$MONTAGEM/READ-ME.txt" ] || falhou="${falhou:-falta o LEIA-ME ou o READ-ME}"
 codesign --verify --deep --strict "$MONTAGEM/River Bridge.app" 2>/dev/null \
   || falhou="${falhou:-a assinatura não verifica dentro do disco}"
 hdiutil detach -quiet "$MONTAGEM" && MONTAGEM=""

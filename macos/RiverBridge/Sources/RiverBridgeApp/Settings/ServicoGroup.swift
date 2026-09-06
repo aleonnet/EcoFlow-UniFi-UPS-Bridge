@@ -58,24 +58,30 @@ struct ServicoGroup: View {
                 // lixeira riscada contradizia a frase (visto na captura de 2026-09-05).
                 Aviso(tom: .neutro, texto: RemocaoCompleta.avisoDoLixo, simbolo: "trash")
             }
-            SettingsRows.divider
-            HStack(spacing: Espaco.medio) {
-                if estado.precisaRegistrar {
-                    Button(AcaoDoServico.registrar.rotulo, action: registrarDeNovo)
-                        .buttonStyle(.borderedProminent)
+            // A linha de botões só existe quando há botão: no estado "mova para
+            // Aplicativos" sobrava uma divisória com nada embaixo (captura de
+            // 2026-09-05).
+            if estado.precisaRegistrar || estado.acaoNaAbertura == .abrirAjustesDoSistema
+                || estado.podeRemover {
+                SettingsRows.divider
+                HStack(spacing: Espaco.medio) {
+                    if estado.precisaRegistrar {
+                        Button(AcaoDoServico.registrar.rotulo, action: registrarDeNovo)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(trabalhando)
+                    }
+                    if estado.acaoNaAbertura == .abrirAjustesDoSistema {
+                        Button(AcaoDoServico.abrirAjustesDoSistema.rotulo) {
+                            SMAppService.openSystemSettingsLoginItems()
+                        }
+                    }
+                    Spacer()
+                    if estado.podeRemover {
+                        Button(L10n.t("Remover completamente", "Remove completely"), role: .destructive) {
+                            perguntandoSeRemove = true
+                        }
                         .disabled(trabalhando)
-                }
-                if estado.acaoNaAbertura == .abrirAjustesDoSistema {
-                    Button(AcaoDoServico.abrirAjustesDoSistema.rotulo) {
-                        SMAppService.openSystemSettingsLoginItems()
                     }
-                }
-                Spacer()
-                if estado.podeRemover {
-                    Button(L10n.t("Remover completamente", "Remove completely"), role: .destructive) {
-                        perguntandoSeRemove = true
-                    }
-                    .disabled(trabalhando)
                 }
             }
         }

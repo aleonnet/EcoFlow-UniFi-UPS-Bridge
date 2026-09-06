@@ -1,6 +1,6 @@
 # Handoff — 0.7.0 publicada: a ponte virou driver do NUT, e o disco existe
 
-status: aceito
+status: superado por 2026-09-05-2330-handoff-0-8-2-o-leitor-recusado-pelo-nut.md
 data: 2026-09-05
 supera: 2026-09-04-1140-handoff-0-5-0-o-servico-manda-no-river.md
 

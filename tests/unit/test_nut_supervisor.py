@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from river_unifi_bridge.nut_supervisor import (
-    NOME_DRIVER, NOME_SERVIDOR, RECUO_MAXIMO, EstadoDoCabo, NutSupervisor,
+    NOME_SERVIDOR, RECUO_MAXIMO, EstadoDoCabo, NutSupervisor,
 )
 
 
@@ -68,21 +68,46 @@ def _sobe_tudo(sup):
     sup.vigiar()
 
 
-def test_the_processes_are_born_with_our_own_name(sup):
-    """O aplicativo da EcoFlow mata `usbhid-ups` e `upsd` pelo nome, como root.
+def test_o_leitor_nasce_com_o_nome_de_fabrica_e_direto(sup, tmp_path):
+    """O NUT 2.8.5 recusa um leitor cujo nome não é o do `driver` do ups.conf.
 
-    Com nome próprio, ele não nos alcança — e essa é a razão de existir do
-    `exec -a` aqui, não estética.
+    Medido no Mac mini em 2026-09-05, com o lançamento idêntico ao do supervisor:
+    "Error: UPS [river-office] is for driver 'usbhid-ups', but I'm
+    'river-bridge-ups'!" — e o leitor morria na partida. Então ele nasce com o
+    nome de fábrica, chamado direto (sem shell, sem `exec -a`).
     """
     _sobe_tudo(sup)
     assert len(sup.lancados) == 2
-    comando_driver = sup.lancados[0].argv[-1]
+    argv = sup.lancados[0].argv
+    assert argv == [f"{tmp_path}/bin/usbhid-ups", "-a", "river-office",
+                    "-u", "alessandro", "-F"]
+    assert not any("exec -a" in parte for parte in argv)
+    assert sup.estado().lendo is True
+
+
+def test_o_servidor_nasce_com_nome_proprio(sup):
+    """O aplicativo da EcoFlow mata `upsd` pelo nome, como root.
+
+    Com nome próprio ele não alcança o servidor — e o `upsd` não confere o
+    próprio nome (medido em 2026-09-05: "Network UPS Tools river-bridge-upsd
+    2.8.5 release", escutando). É a razão de existir do `exec -a` aqui.
+    """
+    _sobe_tudo(sup)
     comando_servidor = sup.lancados[1].argv[-1]
-    assert f"exec -a {NOME_DRIVER} " in comando_driver
-    assert "usbhid-ups" in comando_driver and "'-a' 'river-office'" in comando_driver
     assert f"exec -a {NOME_SERVIDOR} " in comando_servidor
     assert "upsd" in comando_servidor
-    assert sup.estado().lendo is True
+
+
+def test_a_saida_de_erro_dos_filhos_vai_para_o_diario(sup):
+    """Um filho que morre tem de dizer por quê, no NOSSO diário.
+
+    Até a 0.8.1 a saída de erro ia para o nada, e a recusa de nome do NUT 2.8.5
+    ficou invisível no Mac mini até ser reproduzida à mão (2026-09-05).
+    `stderr=None` = herda a nossa, que o launchd grava no diário.
+    """
+    _sobe_tudo(sup)
+    for filho in sup.lancados:
+        assert filho.kwargs["stderr"] is None
 
 
 def test_a_process_that_dies_comes_back_after_the_backoff(sup):

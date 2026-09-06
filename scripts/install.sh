@@ -45,7 +45,7 @@
 # Fora do gate, os defaults valem.
 set -Eeuo pipefail
 
-VERSAO="0.8.1"
+VERSAO="0.8.2"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${RUB_PREFIX:-/usr/local/river-unifi-bridge}"
 LDIR="${RUB_LAUNCHD_DIR:-/Library/LaunchDaemons}"
@@ -388,8 +388,9 @@ detectar_river || true
 #
 # Dois cuidados que vêm de medição, não de gosto:
 #  · O aplicativo da EcoFlow, ao abrir, roda `pkill -9 usbhid-ups` e `pkill -9 upsd`
-#    como root (lido dentro do pacote dele). Por isso os nossos processos nascem
-#    com NOME PRÓPRIO, via `exec -a`: o pkill dele casa por nome e não nos alcança.
+#    como root (lido dentro do pacote dele). Por isso os nossos processos nascem assim:
+#    o servidor com NOME PRÓPRIO, via `exec -a` (o pkill dele casa por nome e não o
+#    alcança); o leitor com o nome de fábrica, porque o NUT 2.8.5 recusa outro (0.8.2).
 #  · A configuração do NUT só é ESCRITA se ainda não existir. Quem já configurou à
 #    mão continua com a dele; o instalador nunca sobrescreve essa escolha.
 NUT_PREFIX="${RUB_NUT_PREFIX:-/opt/homebrew/opt/nut}"
@@ -470,8 +471,9 @@ instalar_leitura_river() {
   # (src/river_unifi_bridge/nut_supervisor.py), não o launchd. Três motivos
   # medidos no Mac mini em 2026-09-04: programa de usuário não sobe sem alguém
   # logado; serviço do sistema só o root pausa, e pausar é preciso para emprestar
-  # o cabo ao aplicativo da EcoFlow; e o nome próprio dos processos os tira da
-  # mira do `pkill -9 usbhid-ups` que aquele aplicativo roda como root.
+  # o cabo ao aplicativo da EcoFlow; e o `pkill -9 usbhid-ups` que aquele aplicativo
+  # roda como root vira uma queda que o serviço relança (o servidor ainda escapa
+  # dele pelo nome próprio; o leitor não pode: o NUT exige o nome de fábrica, 0.8.2).
   #
   # Os registros que a 0.4.1 chegou a criar são removidos aqui, para não existirem
   # dois donos do mesmo cabo.
@@ -489,8 +491,9 @@ instalar_leitura_river() {
   # Leitor solto continua com o cabo, e o serviço não conseguiria abrir o
   # aparelho. São dois casos, e antes só o primeiro era coberto:
   #   1. sessão manual ou instalação antiga, com o nome de fábrica do NUT;
-  #   2. FILHO ÓRFÃO de um serviço nosso que morreu sem levá-los junto — esse
-  #      nasce com o nome próprio do `exec -a` e escapava do filtro antigo.
+  #   2. FILHO ÓRFÃO de um serviço nosso que morreu sem levá-los junto. Desde a
+  #      0.8.2 o leitor tem o nome de fábrica (caso 1 o alcança); as duas linhas
+  #      com nome próprio ficam pelos órfãos do servidor e de versões anteriores.
   pkill -f "usbhid-ups -a $ups" 2>/dev/null || true
   pkill -f "upsd -u $SERVICE_USER -F" 2>/dev/null || true
   pkill -f "river-bridge-ups -a $ups" 2>/dev/null || true

@@ -32,6 +32,14 @@ Como filhos do nosso serviço, os três problemas somem de uma vez: sobem quando
 por `exec -a`, que escolhe o nome do processo: medido em 2026-09-04, o processo
 aparece como `river-bridge-ups` e o `pkill` pelo nome de fábrica não o alcança.
 
+> **Emenda de 2026-09-05 (0.8.2):** o nome próprio vale só para o servidor. O leitor com
+> nome trocado nunca chegou a ler: o NUT recusa um driver cujo nome não é o do `ups.conf`
+> ("Error: UPS [river-office] is for driver 'usbhid-ups', but I'm 'river-bridge-ups'!",
+> medido no Mac mini; a conferência está em `drivers/main.c` das versões 2.7.4, 2.8.0 e
+> 2.8.5). A medição acima viu o nome no `ps`, não uma leitura. Desde a 0.8.2 o leitor nasce
+> com o nome de fábrica e o `pkill` do aplicativo da EcoFlow vira uma queda que o supervisor
+> relança. Ver `docs/plans/2026-09-05-2330-handoff-0-8-2-o-leitor-recusado-pelo-nut.md`.
+
 Duas cercas que a revisão fria exigiu, ambas com defeito plantado no portão:
 
 - **Recuo entre tentativas.** Com o cabo solto, o serviço lançava dois processos a cada volta

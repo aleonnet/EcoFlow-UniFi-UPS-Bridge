@@ -184,13 +184,8 @@ struct SettingsView: View {
                 // ninguém está vigiando a energia, e nenhum outro ajuste desta
                 // tela tem efeito nenhum.
                 ServicoGroup()
-                // Logo depois do serviço: é a conta que ele criou, e o dono só
-                // precisa dela quando o serviço já está no ar.
-                HomeAssistantGroup()
-                // As três travas como interruptores (0.8.0): é aqui que os atos
-                // que mexem na energia passam a existir — na tela e no Home
-                // Assistant. Antes eram linhas do arquivo do serviço.
-                TravasGroup()
+                // Logo depois do serviço, como nos Ajustes do Sistema: aparência e idioma
+                // são o primeiro ajuste de qualquer programa.
                 SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
                     HStack(spacing: Espaco.medio) {
                         Image(systemName: "circle.lefthalf.filled")
@@ -245,83 +240,6 @@ struct SettingsView: View {
                     .background(RoundedRectangle(cornerRadius: Raio.cartao, style: .continuous)
                         .fill(Cor.atencao.opacity(0.12)))
                 }
-
-                SettingsRows.group(L10n.t("Alarmes", "Alarms")) {
-                    SettingsRows.presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
-                              value: $powerLossDelay, presets: [0, 3, 6, 10, 30, 60])
-                    .comDica(L10n.t("Quanto tempo o River precisa ficar na bateria antes de o serviço tratar isso como queda de energia. Serve para piscadas curtas não virarem alarme.",
-                                "How long the River must stay on battery before the service treats it as a power loss. Keeps brief flickers from becoming alarms."))
-                    SettingsRows.divider
-                    SettingsRows.presetRow("bolt.badge.checkmark.fill", L10n.t("Energia restaurada", "Power restored"),
-                              value: $restoreDelay, presets: [0, 5, 10, 30, 60])
-                    .comDica(L10n.t("Quanto tempo a energia precisa estar de volta antes de o serviço declarar que voltou. Zero avisa na hora.",
-                                "How long power must be back before the service declares it restored. Zero announces it at once."))
-                    SettingsRows.divider
-                    SettingsRows.presetRow("antenna.radiowaves.left.and.right.slash", L10n.t("Comunicação perdida", "Comm lost"),
-                              value: $commLossDelay, presets: [5, 15, 30, 60, 300])
-                    .comDica(L10n.t("Quanto tempo sem resposta do River até a tela dizer que perdemos contato com ele.",
-                                "How long without an answer from the River until the screen says we lost contact with it."))
-                    SettingsRows.divider
-                    SettingsRows.sliderRow("battery.25percent", L10n.t("Bateria baixa", "Low battery"),
-                              value: $lowBattery, range: 5...50, unit: "%", accent: accent)
-                    .comDica(L10n.t("Em que nível de bateria o SERVIÇO registra o alerta de bateria baixa. É o alerta desta tela, não um ajuste do aparelho.",
-                                "At what battery level the SERVICE records its low-battery alert. This is this app's alert, not a device setting."))
-                }
-                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
-
-                SettingsRows.group(L10n.t("Coleta", "Sampling")) {
-                    SettingsRows.presetRow("timer", L10n.t("Intervalo de leitura", "Poll interval"),
-                              value: $pollInterval, presets: [1, 2, 5, 10, 30, 60])
-                    .comDica(L10n.t("De quanto em quanto tempo o serviço lê o River. Mais curto reage mais rápido a uma queda; mais longo pesa menos na máquina.",
-                                "How often the service reads the River. Shorter reacts faster to an outage; longer is lighter on the machine."))
-                }
-                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
-
-                SettingsRows.group(L10n.t("Histórico", "History")) {
-                    HStack(spacing: Espaco.medio) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .frame(width: 26)
-                            .foregroundStyle(.secondary)
-                        Text(L10n.t("Manter histórico", "Keep history"))
-                            .font(.system(.body, design: .rounded))
-                            .fixedSize()
-                        Spacer()
-                        Picker("", selection: $retentionDays) {
-                            Text(L10n.t("7 dias", "7 days")).tag(7)
-                            Text(L10n.t("30 dias", "30 days")).tag(30)
-                            Text(L10n.t("90 dias", "90 days")).tag(90)
-                            Text(L10n.t("1 ano", "1 year")).tag(365)
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    .comDica(L10n.t("Por quanto tempo os números e os eventos ficam guardados neste Mac. O que passa disso é apagado sozinho, uma vez por hora.",
-                                 "How long readings and events are kept on this Mac. Anything older is deleted automatically, once an hour."))
-                    SettingsRows.divider
-                    HStack(spacing: Espaco.medio) {
-                        Image(systemName: "trash")
-                            .frame(width: 26)
-                            .foregroundStyle(.secondary)
-                        Text(L10n.t("Eventos gravados", "Stored events"))
-                            .font(.system(.body, design: .rounded))
-                            .fixedSize()
-                        Spacer()
-                        // HIG destructive-in-a-list: red TEXT, not a filled
-                        // block (the solid capsule clashed — owner's print).
-                        Button(role: .destructive) {
-                            showClearDialog = true
-                        } label: {
-                            Text(L10n.t("Limpar eventos…", "Clear events…"))
-                                .foregroundStyle(Cor.perigo)
-                                .frame(minHeight: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    .comDica(L10n.t("Apaga a linha do tempo guardada neste Mac. Os números dos gráficos continuam; só os eventos saem.",
-                                 "Clears the timeline stored on this Mac. The chart readings stay; only the events go."))
-                }
-                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
 
                 SettingsRows.group(L10n.t("River", "River")) {
                     SettingsRows.textRow("barcode", L10n.t("Número de série esperado do River", "Expected River serial number"),
@@ -455,6 +373,94 @@ struct SettingsView: View {
                     if !store.devices.isEmpty { SettingsRows.divider }
                     addRow
                 }
+
+                // As três travas como interruptores (0.8.0): é aqui que os atos
+                // que mexem na energia passam a existir — na tela e no Home
+                // Assistant. Antes eram linhas do arquivo do serviço.
+                TravasGroup()
+
+                SettingsRows.group(L10n.t("Alarmes", "Alarms")) {
+                    SettingsRows.presetRow("bolt.slash.fill", L10n.t("Queda de energia", "Power loss"),
+                              value: $powerLossDelay, presets: [0, 3, 6, 10, 30, 60])
+                    .comDica(L10n.t("Quanto tempo o River precisa ficar na bateria antes de o serviço tratar isso como queda de energia. Serve para piscadas curtas não virarem alarme.",
+                                "How long the River must stay on battery before the service treats it as a power loss. Keeps brief flickers from becoming alarms."))
+                    SettingsRows.divider
+                    SettingsRows.presetRow("bolt.badge.checkmark.fill", L10n.t("Energia restaurada", "Power restored"),
+                              value: $restoreDelay, presets: [0, 5, 10, 30, 60])
+                    .comDica(L10n.t("Quanto tempo a energia precisa estar de volta antes de o serviço declarar que voltou. Zero avisa na hora.",
+                                "How long power must be back before the service declares it restored. Zero announces it at once."))
+                    SettingsRows.divider
+                    SettingsRows.presetRow("antenna.radiowaves.left.and.right.slash", L10n.t("Comunicação perdida", "Comm lost"),
+                              value: $commLossDelay, presets: [5, 15, 30, 60, 300])
+                    .comDica(L10n.t("Quanto tempo sem resposta do River até a tela dizer que perdemos contato com ele.",
+                                "How long without an answer from the River until the screen says we lost contact with it."))
+                    SettingsRows.divider
+                    SettingsRows.sliderRow("battery.25percent", L10n.t("Bateria baixa", "Low battery"),
+                              value: $lowBattery, range: 5...50, unit: "%", accent: accent)
+                    .comDica(L10n.t("Em que nível de bateria o SERVIÇO registra o alerta de bateria baixa. É o alerta desta tela, não um ajuste do aparelho.",
+                                "At what battery level the SERVICE records its low-battery alert. This is this app's alert, not a device setting."))
+                }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
+
+                SettingsRows.group(L10n.t("Coleta", "Sampling")) {
+                    SettingsRows.presetRow("timer", L10n.t("Intervalo de leitura", "Poll interval"),
+                              value: $pollInterval, presets: [1, 2, 5, 10, 30, 60])
+                    .comDica(L10n.t("De quanto em quanto tempo o serviço lê o River. Mais curto reage mais rápido a uma queda; mais longo pesa menos na máquina.",
+                                "How often the service reads the River. Shorter reacts faster to an outage; longer is lighter on the machine."))
+                }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
+
+                SettingsRows.group(L10n.t("Histórico", "History")) {
+                    HStack(spacing: Espaco.medio) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .frame(width: 26)
+                            .foregroundStyle(.secondary)
+                        Text(L10n.t("Manter histórico", "Keep history"))
+                            .font(.system(.body, design: .rounded))
+                            .fixedSize()
+                        Spacer()
+                        Picker("", selection: $retentionDays) {
+                            Text(L10n.t("7 dias", "7 days")).tag(7)
+                            Text(L10n.t("30 dias", "30 days")).tag(30)
+                            Text(L10n.t("90 dias", "90 days")).tag(90)
+                            Text(L10n.t("1 ano", "1 year")).tag(365)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    .comDica(L10n.t("Por quanto tempo os números e os eventos ficam guardados neste Mac. O que passa disso é apagado sozinho, uma vez por hora.",
+                                 "How long readings and events are kept on this Mac. Anything older is deleted automatically, once an hour."))
+                    SettingsRows.divider
+                    HStack(spacing: Espaco.medio) {
+                        Image(systemName: "trash")
+                            .frame(width: 26)
+                            .foregroundStyle(.secondary)
+                        Text(L10n.t("Eventos gravados", "Stored events"))
+                            .font(.system(.body, design: .rounded))
+                            .fixedSize()
+                        Spacer()
+                        // HIG destructive-in-a-list: red TEXT, not a filled
+                        // block (the solid capsule clashed — owner's print).
+                        Button(role: .destructive) {
+                            showClearDialog = true
+                        } label: {
+                            Text(L10n.t("Limpar eventos…", "Clear events…"))
+                                .foregroundStyle(Cor.perigo)
+                                .frame(minHeight: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .comDica(L10n.t("Apaga a linha do tempo guardada neste Mac. Os números dos gráficos continuam; só os eventos saem.",
+                                 "Clears the timeline stored on this Mac. The chart readings stay; only the events go."))
+                }
+                .disabled(configFailed)   // sem os valores do serviço, editar seria escrever no escuro
+
+                // Por último: é para OUTRO sistema, e o dono vem aqui uma vez, com o
+                // serviço já no ar e as travas decididas. A ordem desta tela é a do uso:
+                // o que se olha sempre em cima, o que se ajusta uma vez embaixo (o dono
+                // viu aparência e idioma no fim da tela, 2026-09-05).
+                HomeAssistantGroup()
 
                 // Auto-save is SILENT on success (macOS/iOS settings
                 // convention — owner 2026-08-31): only errors and the

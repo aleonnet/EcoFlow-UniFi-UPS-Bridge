@@ -9,6 +9,38 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-09-05
+
+O dono instalou a 0.8.1 no Mac mini como usuário, autorizou, e a tela ficou em "o leitor não
+está no ar". Medido por ssh, com o leitor do pacote lançado à mão exatamente como o
+supervisor lança:
+
+    Error: UPS [river-office] is for driver 'usbhid-ups', but I'm 'river-bridge-ups'!
+
+### Corrigido
+- **O leitor do no-break nasce com o nome de fábrica.** Desde a 0.5.0 ele nascia como
+  `river-bridge-ups` (via `exec -a`) para escapar do `pkill -9 usbhid-ups` que o aplicativo
+  da EcoFlow roda como root. O NUT recusa um leitor cujo nome não é o do `driver` do
+  `ups.conf` — a conferência está no código-fonte dele nas versões 2.7.4, 2.8.0 e 2.8.5
+  (lido em 2026-09-05) — e ele morria na partida; o leitor com nome trocado nunca subiu, e
+  a medição da 0.5.0 viu o nome no `ps`, não uma leitura. Agora é chamado direto, com o nome
+  dele; o `pkill` deles vira uma queda que o supervisor relança com recuo. Com o cabo
+  automático é uma corrida entre a nossa pausa (o vigia olha a cada 5 s) e o `pkill` deles
+  (logo depois do pedido de senha), e o desfecho é o mesmo nas duas ordens: o leitor para e
+  volta quando o aplicativo deles fecha; com proteção armada, o leitor cai e volta. O servidor continua com nome próprio (`river-bridge-upsd`):
+  o `upsd` não confere o próprio nome. Refutação nova no portão (S65).
+- **O diário do serviço voltou a existir no pacote.** O serviço escreve na saída padrão e o
+  lançador do pacote só capturava a de erro: `/Library/Logs/river-unifi-bridge.log` tinha
+  zero bytes. O plist passa a gravar as duas. E a saída de erro do leitor e do servidor vai
+  para o diário, em vez de para o nada (S65b): um filho que morre diz por quê.
+
+### Mudado
+- **LEIA-ME do disco nas duas línguas e revisto** (`LEIA-ME.txt` e `READ-ME.txt`, com
+  acentos): mover para Aplicativos, Permitir, Lixo.
+- **Ajustes na ordem do uso:** Serviço, Aparência e idioma, River, Consumo por tomada,
+  Dispositivos protegidos, Travas, Alarmes, Coleta, Histórico, Home Assistant. O que se olha
+  sempre em cima; o que se ajusta uma vez, embaixo.
+
 ## [0.8.1] — 2026-09-05
 
 O que o dono viu ao abrir a 0.8.0 no Mac mini, como usuário: a autorização do serviço

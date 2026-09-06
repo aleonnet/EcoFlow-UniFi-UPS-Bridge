@@ -127,6 +127,18 @@ EOF
 # S4 — obrigatórias desativadas em config.py → test_config TEM de reprovar.
 cena_mutacao S4 src/river_unifi_bridge/config.py "if missing:" "if False:" \
     tests/unit/test_config.py::test_missing_required_key_fails
+# S65 — o leitor do NUT nasce com o nome de fábrica, direto (0.8.2). Mutante:
+# volta a lançá-lo por `exec -a river-bridge-ups` (o NUT 2.8.5 recusa: "UPS
+# [river-office] is for driver 'usbhid-ups', but I'm 'river-bridge-ups'!",
+# medido no Mac mini em 2026-09-05) → o teste TEM de reprovar.
+cena_mutacao S65 src/river_unifi_bridge/nut_supervisor.py \
+    '[f"{self._prefixo}/bin/usbhid-ups",' \
+    '["/bin/sh", "-c", "exec -a river-bridge-ups " + f"{self._prefixo}/bin/usbhid-ups",' \
+    tests/unit/test_nut_supervisor.py::test_o_leitor_nasce_com_o_nome_de_fabrica_e_direto
+# S65b — a saída de erro dos filhos vai para o diário. Mutante: de volta ao nada.
+cena_mutacao S65b src/river_unifi_bridge/nut_supervisor.py \
+    'stdout=subprocess.DEVNULL, stderr=None,' 'stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,' \
+    tests/unit/test_nut_supervisor.py::test_a_saida_de_erro_dos_filhos_vai_para_o_diario
 # S4b — bind 127.0.0.1 → 0.0.0.0 em api.py.
 cena_mutacao S4b src/river_unifi_bridge/api.py 'BIND_HOST = "127.0.0.1"' 'BIND_HOST = "0.0.0.0"' \
     tests/unit/test_api.py::test_bind_host_is_loopback_constant
@@ -1002,11 +1014,12 @@ else
     tail -3 /tmp/gate_inst_1.log /tmp/gate_inst_2.log
 fi
 
-# S9k — a leitura do River entra como serviço do SISTEMA, com nome próprio.
+# S9k — a leitura do River é do SERVIÇO, e o instalador não deixa LaunchDaemon de NUT.
 # Medido em 2026-09-04: agente do usuário não sobe sem alguém logado (o mini
-# ficou uma hora sem vigia depois de um reinício), e o aplicativo da EcoFlow mata
-# processos chamados `usbhid-ups`/`upsd` com root. Os dois plists têm de existir,
-# apontar para o binário do NUT e nascer com o nome próprio no `exec -a`.
+# ficou uma hora sem vigia depois de um reinício). Quem lança o leitor e o
+# servidor é o supervisor do serviço (o servidor com nome próprio no `exec -a`;
+# o leitor com o nome de fábrica, que o NUT exige — S65); aqui a cena confere que
+# NENHUM plist de NUT sobra e que a configuração do dono fica intocada.
 # A configuração só é escrita quando falta: o segundo install NÃO a reescreve.
 echo "# marca do dono" >> "$INST/nutetc/ups.conf" 2>/dev/null || echo "# marca do dono" > "$INST/nutetc/ups.conf"
 env $INSTALL_ENV "$RAIZ/scripts/install.sh" --consent-homebrew >/tmp/gate_inst_9k.log 2>&1
