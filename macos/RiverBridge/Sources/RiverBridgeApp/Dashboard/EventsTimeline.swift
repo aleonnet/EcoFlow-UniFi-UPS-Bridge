@@ -328,6 +328,7 @@ struct EventDetailInline: View {
 /// type chips (token/scope pattern — Mail/Finder). Multi-select; empty
 /// selection = everything.
 struct EventsFilterBar: View {
+    var store: TelemetryStore
     /// Ids dos chips ligados; a lista de chips (4 do bridge + 1 por instância)
     /// vem de fora, das instâncias correntes.
     @Binding var chipIDs: Set<String>
@@ -395,6 +396,10 @@ struct EventsFilterBar: View {
                 .padding(Espaco.fio)
                 .glassEffect(.regular, in: Capsule())
                 .fixedSize()
+                // "Compartilhar…" (0.9.0): o pacote leva o MESMO recorte que a
+                // lista mostra (dono: "salvar e compartilhar em .csv compactado").
+                CompartilharRegistros(store: store, period: period, customFrom: customFrom,
+                                      customTo: customTo, narrow: narrow)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {

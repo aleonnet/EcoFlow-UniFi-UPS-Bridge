@@ -59,6 +59,29 @@ public struct APIClient: Sendable {
         return try JSONCoding.decoder().decode(HistoryResponse.self, from: try await run(req))
     }
 
+    /// GET /v1/events/log.csv — o registro de eventos da faixa, em CSV (0.9.0).
+    public func eventsLogCSV(from: Int = 0, to: Int? = nil) async throws -> Data {
+        try await csv("v1/events/log.csv", from: from, to: to)
+    }
+
+    /// GET /v1/history/samples.csv — as amostras cruas da faixa, em CSV (0.9.0).
+    public func samplesCSV(from: Int = 0, to: Int? = nil) async throws -> Data {
+        try await csv("v1/history/samples.csv", from: from, to: to)
+    }
+
+    private func csv(_ path: String, from: Int, to: Int?) async throws -> Data {
+        var components = URLComponents(
+            url: endpoint.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        var items = [URLQueryItem(name: "from", value: String(from))]
+        if let to { items.append(.init(name: "to", value: String(to))) }
+        components.queryItems = items
+        var req = request(path)
+        req.url = components.url
+        // Um CSV de dias de amostras pode passar dos 5 s do padrão.
+        req.timeoutInterval = 60
+        return try await run(req)
+    }
+
     /// GET /v1/events/log — persisted log, newest first.
     public func eventsLog(from: Int? = nil, to: Int? = nil,
                           types: [String] = [], limit: Int = 200,
