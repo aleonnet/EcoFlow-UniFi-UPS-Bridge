@@ -12,7 +12,18 @@ cria sensor para variável que ele conhece pelo nome. As que usamos aqui:
 - `outlet.count`, `outlet.n.desc`, `outlet.n.id`, `outlet.n.realpower`,
   `outlet.n.switchable` — a coleção de tomadas
 - `battery.charge`, `battery.runtime`, `battery.voltage`, `battery.charge.low`
+- `battery.capacity.nominal` — "Nominal battery capacity (Ah)" (nut-names, 0.9.0):
+  a capacidade de projeto que a serial entrega em mAh, dividida por mil
+- `battery.temperature` — "Battery temperature (degrees C)" — e `ups.temperature` —
+  "UPS temperature (degrees C)": desde a 0.9.0 são DOIS sensores da serial, o da
+  bateria e o do sistema; antes o segundo repetia o primeiro
 - `device.type`, `device.mfr`, `device.model`, `device.serial`, `ups.status`
+
+O que a serial entrega e **não** tem nome no dicionário fica fora daqui de
+propósito: tempo até a carga completa e entrada solar/DC. Um nome inventado o
+Home Assistant ignora, e a casa não inventa nome (lido em `docs/nut-names.txt`
+do NUT em 2026-09-06: nada de "time to full", nada de entrada DC separada). Os
+dois vão à API local e à tela.
 
 Medido no código do Home Assistant em 2026-09-05 (`components/nut/__init__.py`,
 `outlet_numbers_from_status`): as tomadas só aparecem se houver `outlet.count`
@@ -94,7 +105,13 @@ def variaveis_do_river(snap) -> dict[str, str]:
     _poe(variaveis, "battery.runtime", _texto(snap.runtime_seconds, 0))
     _poe(variaveis, "battery.voltage", _texto(snap.voltage_v, 2))
     _poe(variaveis, "battery.temperature", _texto(snap.temperature_c, 1))
-    _poe(variaveis, "ups.temperature", _texto(snap.temperature_c, 1))
+    # O sensor do sistema vem da serial; sem ela, o que há é a temperatura da
+    # bateria, e é ela que continua saindo (como antes da 0.9.0).
+    sistema = (tomadas or {}).get("system_temperature_c")
+    _poe(variaveis, "ups.temperature", _texto(sistema if sistema is not None else snap.temperature_c, 1))
+    capacidade_mah = (tomadas or {}).get("design_capacity_mah")
+    if capacidade_mah is not None:
+        _poe(variaveis, "battery.capacity.nominal", _texto(capacidade_mah / 1000, 1))
 
     _poe(variaveis, "ups.load", _texto(snap.load_percent, 0))
     _poe(variaveis, "ups.realpower", _texto(snap.output_power_w, 1))

@@ -112,6 +112,35 @@ def test_the_total_watts_come_from_the_serial_port_when_it_answered():
     assert variaveis_do_river(snapshot(com_tomadas=True))["ups.realpower"] == "41.2"
 
 
+def snapshot_com_detalhes_da_serial():
+    snap = snapshot(com_tomadas=True, **{"battery.temperature": "30"})
+    snap.outlets = dict(TOMADAS, design_capacity_mah=12800, time_to_full_minutes=90,
+                        battery_temperature_c=30.0, system_temperature_c=21.0,
+                        temperatures_c=[21.0, 30.0, 25.0, 25.0], input_solar_dc_w=12.5)
+    return snap
+
+
+def test_capacity_comes_out_in_ah():
+    """`battery.capacity.nominal` é em Ah no dicionário do NUT; a serial fala em mAh."""
+    assert variaveis_do_river(snapshot_com_detalhes_da_serial())["battery.capacity.nominal"] == "12.8"
+    assert "battery.capacity.nominal" not in variaveis_do_river(snapshot(com_tomadas=True))
+
+
+def test_the_two_temperatures_have_their_own_sensors():
+    """Bateria e sistema são sensores diferentes; sem serial, o sistema repete a bateria."""
+    saida = variaveis_do_river(snapshot_com_detalhes_da_serial())
+    assert saida["battery.temperature"] == "30.0"
+    assert saida["ups.temperature"] == "21.0"
+    sem_serial = variaveis_do_river(snapshot(**{"battery.temperature": "30"}))
+    assert sem_serial["ups.temperature"] == "30.0"
+
+
+def test_what_has_no_nut_name_is_not_invented():
+    """Tempo até a carga completa e entrada solar não têm nome no dicionário: não saem."""
+    saida = variaveis_do_river(snapshot_com_detalhes_da_serial())
+    assert not any("full" in k or "solar" in k or "dc" in k.split(".") for k in saida)
+
+
 # -- o dispositivo protegido como aparelho próprio -----------------------------
 
 def test_a_protected_device_carries_the_power_situation_of_the_river():
