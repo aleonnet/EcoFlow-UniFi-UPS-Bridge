@@ -9,6 +9,29 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-06
+
+### Adicionado
+- **O widget do macOS.** Na galeria de widgets aparece "River Bridge" em dois tamanhos: o pequeno
+  com o anel de carga, a porcentagem, a fonte (na tomada / na bateria) e a autonomia; o médio com
+  a entrada da rede e o consumo também. É uma extensão de WidgetKit dentro do pacote
+  (`Contents/PlugIns/RiverBridgeWidget.appex`), em caixa de areia, que lê o **retrato** que o app
+  grava no contêiner do grupo de aplicativos `8A47D8UNV2.com.river.bridge` (Team ID + nome, sem
+  registro na Apple). O app grava o retrato só quando o conteúdo muda e pede recarga só em
+  mudança de significado (fonte, bateria baixa, serviço caindo ou voltando, degrau de 10 pontos de
+  carga); o periódico é da linha do tempo do próprio widget (a cada 30 min — 48 pedidos por dia,
+  dentro do orçamento de 40 a 70 que a Apple documenta). Retrato com mais de 2 min mostra a hora;
+  com mais de 30 min, ou sem app, o widget mostra traço e "abra o River Bridge" — dado velho não é
+  presente. O empacotador monta e assina a extensão com os direitos (caixa de areia + grupo) e o
+  app com o grupo, e prova as onze chaves do Info.plist, os direitos lidos da assinatura e que o
+  Team ID da identidade é o prefixo do grupo. Medido nesta máquina: `pluginkit` registra
+  `com.river.bridge-ui.widget`; o retrato nasce com os dados do River. O que o widget grava:
+  `recargas.log` no contêiner, uma linha por recarga atendida, para medir o que o sistema honra.
+
+### Mudado
+- A escala de espaço e raio (`Espaco`, `Raio`) e a paleta do estado de energia passam para o
+  núcleo: o widget é outro alvo e desenha com os mesmos valores (fixados por teste).
+
 ## [0.9.0] — 2026-09-06
 
 ### Adicionado

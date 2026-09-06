@@ -88,6 +88,10 @@ Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige l
 "Permitir armar a proteção" (Ajustes › Travas, com confirmação), desligar o ensaio na folha do
 dispositivo e confirmar, e só é aceito com o RIVER real no NUT e a conexão provada — o simulador
 nunca consegue armar. O instalador recusa atualizar o serviço enquanto houver um dispositivo armado.
+**Widget** (0.10.0): botão direito na mesa › Editar widgets › River Bridge — o anel de carga, a
+fonte, a autonomia e, no médio, a entrada da rede e o consumo. O widget mostra o último retrato
+que o app gravou: com o app fechado por mais de meia hora, ele diz "abra o River Bridge".
+
 Na tela Energia, clicar no anel de autonomia abre a **folha do River** (0.9.0): tudo o que o
 aparelho publica pela porta serial — capacidade de projeto, entrada da rede e solar/DC, cada
 tomada, tempo para carga completa, temperatura da bateria e do sistema, frequência. Na barra de

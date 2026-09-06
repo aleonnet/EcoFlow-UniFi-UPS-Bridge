@@ -149,11 +149,15 @@ struct VistaPequena: View {
         VStack(spacing: Espaco.pequeno) {
             Anel(leitura: leitura)
             VStack(spacing: Espaco.fio) {
-                Text(leitura.vivo == nil ? "—" : "\(leitura.fonteTexto) · \(leitura.autonomiaTexto)")
-                    .font(.caption.weight(.medium))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                // Sem leitura viva, o anel já mostra o traço: a linha de baixo
+                // fica só para o que fazer (o rodapé).
+                if leitura.vivo != nil {
+                    Text("\(leitura.fonteTexto) · \(leitura.autonomiaTexto)")
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
                 if let rodape = leitura.rodape {
                     Text(rodape).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }

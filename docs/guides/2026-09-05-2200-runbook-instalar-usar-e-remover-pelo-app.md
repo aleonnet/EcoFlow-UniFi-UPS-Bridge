@@ -115,6 +115,16 @@ monta um `.zip` com `eventos.csv`, `amostras.csv` e `diario.log` do recorte esco
 no Numbers e no Excel com os acentos certos. Quando o diário do serviço não estiver legível
 nesta conta, o pacote vai sem ele e o rodapé do botão diz isso.
 
+## 4c. O widget (0.10.0)
+
+Com o River Bridge em Aplicativos e aberto ao menos uma vez, o widget aparece na galeria: botão
+direito na mesa › **Editar widgets** › procure **River Bridge** (dois tamanhos). O pequeno mostra o
+anel de carga, a porcentagem, a fonte e a autonomia; o médio acrescenta a entrada da rede e o
+consumo. O widget lê o retrato que o app grava a cada mudança; com o app aberto, atualiza sozinho
+em até 30 min e na hora quando a fonte muda, a bateria fica baixa ou o serviço cai. Se o retrato
+tem mais de 2 min, aparece a hora em que foi lido; com mais de 30 min (o app fechado), aparece
+traço e "abra o River Bridge".
+
 ## 5. Remover
 
 **Arraste o programa para o Lixo.** O serviço percebe (em até uma volta do laço), para o
