@@ -26,4 +26,14 @@ amarrado pelo nome, com `sections-round1` e o veredito, vive fora de `docs/` por
 Avisos W1–W3 (nomes de atributo da `eflib` vs. nomes protobuf; o nome do River na frase do evento; o teste de
 `mesmo_river` tem de nascer com o `.env` vazio) e notas N1–N5 entram na rodada 2 sem rodada própria.
 
-## Rodada 2 — (a preencher)
+## Rodada 2 (2026-09-06, ~21h15) — APPROVED
+
+Os oito bloqueadores caíram, cada um conferido no código pelo revisor (função inteira, `git grep` pelos consumidores,
+`compileall` da `eflib` embutida, a regex dos eventos sobre ela). Avisos e notas da rodada 1 caíram. Um aviso novo,
+aplicado no ato sem rodada: **W4** — a legenda do histograma (`LegendaDeEventos.swift:46-54`) rotula evento sem tipo
+de dispositivo sem nome; com dois Rivers BLE as barras ficariam iguais → `chaves(…, rivers:)` e o rótulo pelo
+`NomesDosRiversBle` (D7, Changes). Duas notas mecânicas aplicadas: o HEAD ao gravar é `496a3e7` (N6) e a hora do
+arquivo da varredura é 18h00 (N7).
+
+O plano segue **`proposto`** até a palavra do dono (as três perguntas abertas são dele, e o River de 127 V chega em
+2026-09-07).

@@ -417,10 +417,25 @@ no alvo `RiverBridgeWidget` (`Package.swift`); medido no binário reconstruído:
 (`adrp/ldr`), não no `_main`. O empacotador recusa binário sem isso (`nm`/`otool`, em `build-app.sh`);
 cena **S79** no gate mede o binário do build de depuração; S78 ganhou as duas peças de texto.
 
-**Precisa do dono:** instalar a 0.10.1 (ou eu instalo por ssh, como nas anteriores) e abrir a galeria de
-widgets de novo — é a única prova que conta; não há proxy medível no mini (o `chronod` não tem contêiner
+**Medido depois (21h10–21h20):** `v0.10.1` publicada e notarizada (`release-0101.log`, sha256 do DMG
+`6ee270ca…`); no mini: DMG conferido, Gatekeeper `Notarized Developer ID`, o pacote 0.10.0 movido para
+`/private/tmp/rb-0101/old-0100.app` (não para o Lixo — o vigia do pacote apagaria o estado), 0.10.1 em
+`/Applications`, app relançado, `pluginkit` → `com.river.bridge-ui.widget(0.10.1)`, serviço reiniciado pelo
+protocolo de ensaio (`dry_run` true → restart → `version 0.10.1`, nut ok → `dry_run` false → `armado_nao_verificado`).
+A primeira tentativa deixou o DMG montado (o `awk` do ponto de montagem falhou); desmontado à mão.
+
+**Precisa do dono:** abrir a galeria de widgets de novo — é a única prova que conta; não há proxy medível no mini (o `chronod` não tem contêiner
 nem registra descoberta). Se ainda não aparecer, a próxima medição é o `log stream` do `chronod` **enquanto**
 a galeria abre.
+
+### 5e. O plano da 0.11.0 (o segundo River por Bluetooth) — proposto, revisado, à espera do dono (21h30)
+
+`docs/plans/2026-09-06-1800-o-segundo-river-por-bluetooth-0-11-0.md` (rodada 1 reprovada com oito bloqueadores
+de levantamento meu; rodada 2 aprovada — `…-banca.md` e `~/.claude/plans/….review.md`). **Zero código.** O que
+espera o dono: as três perguntas do plano (River de 127 V vinculado à conta; o celular perde o Bluetooth com ele
+enquanto lemos; e-mail/senha uma vez no mini) e a palavra de aprovação. A medição de alcance é com o aparelho de
+127 V, que chega em 2026-09-07. Sobras no mini: `/private/tmp/river-ble-prova/` (app-prova, já autorizado no
+Bluetooth) e `/private/tmp/rb-0101/` (DMG e o pacote 0.10.0 antigo) — `rm -rf` dos dois quando quiser.
 
 ## 6. Prompts prontos
 
