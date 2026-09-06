@@ -511,10 +511,11 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
             ponte.iniciar()
 
         # O cabo do River é um só, e o aplicativo do fabricante também o quer.
-        # Ligado, o serviço larga quando aquele aplicativo abre e retoma quando
-        # ele fecha — sem botão nenhum, só o aviso na tela. Com proteção armada,
-        # não larga: seria ficar cego para a queda justamente com o desligamento
-        # automático ligado.
+        # Ligado, o serviço cede quando aquele aplicativo TOMA o cabo (modo
+        # Local: ele mata o nosso leitor) e retoma quando ele fecha; em modo
+        # Remoto ele lê pelo nosso servidor e o cabo fica (0.8.5). Sem botão
+        # nenhum, só o aviso na tela. Com proteção armada, não cede: seria ficar
+        # cego para a queda justamente com o desligamento automático ligado.
         if supervisor is not None and cfg.river_cabo_automatico:
             cabo = CaboAutomatico(
                 supervisor, log=_log,

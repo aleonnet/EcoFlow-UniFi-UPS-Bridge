@@ -30,13 +30,13 @@ probabilidade, do leitor do Homebrew que o instalador de então tinha registrado
 à parte (os dois agentes sobrando removidos do mini em 2026-09-05) — isso não foi
 medido. Então o leitor nasce com o nome de fábrica, e o `pkill` do aplicativo da
 EcoFlow é tratado como o que é: uma queda do leitor, que este supervisor relança
-com recuo. Com o cabo automático (cabo_automatico.py) e sem proteção armada, é
-uma corrida: o vigia olha a lista de processos a cada 5 s, o aplicativo deles roda
-o `pkill` logo depois do pedido de senha, e quem chega primeiro depende de quanto
-o dono demora a digitar — não foi medido. Nas duas ordens o desfecho é o mesmo:
-o leitor para (pausado por nós, ou morto por eles e tolerado por `pausar`) e
-volta quando o aplicativo deles fecha. Com proteção armada o cabo não é largado,
-o `pkill` derruba o leitor e o supervisor o relança. O SERVIDOR continua com nome próprio (`river-bridge-upsd`):
+com recuo. Desde a 0.8.5 o cabo automático (cabo_automatico.py) usa exatamente
+essa queda como sinal: o aplicativo deles em modo Local mata o leitor (`pkill`),
+o supervisor conta a queda (`quedas_do_driver`), e o vigia cede o cabo na olhada
+seguinte; em modo Remoto ele não toca no leitor e o cabo fica. Não há mais
+corrida entre a nossa pausa e o `pkill` deles: o `pkill` vem primeiro, sempre.
+Com proteção armada o cabo não é cedido, o `pkill` derruba o leitor e o
+supervisor o relança. O SERVIDOR continua com nome próprio (`river-bridge-upsd`):
 o `upsd` não confere o próprio nome, e o `pkill -9 upsd` deles não o alcança.
 
 O nome próprio é dado por `exec -a` do shell, que escolhe o `argv[0]` do processo:
@@ -165,6 +165,11 @@ class NutSupervisor:
         # virar tempestade de processos. Cada falha seguida espera mais, até o teto.
         self._falhas = 0
         self._proxima_tentativa = float("-inf")
+        # Quantas vezes o LEITOR morreu sem ser pausado por nós. É o sinal que o
+        # cabo automático lê: o aplicativo da EcoFlow em modo Local mata o leitor
+        # (`pkill -9 usbhid-ups`, lido no pacote dele); em modo Remoto não toca
+        # nele (medido no Mac mini em 2026-09-06: 120 s aberto, leitor de pé).
+        self._quedas_do_driver = 0
 
     # -- o que existe na máquina -------------------------------------------
     @property
@@ -241,6 +246,7 @@ class NutSupervisor:
                 # leitor nunca mais voltava.
                 if nome == "driver":
                     self._driver = None
+                    self._quedas_do_driver += 1
                 else:
                     self._servidor = None
                 caiu = True
@@ -325,6 +331,11 @@ class NutSupervisor:
             self._parar(self._driver)
             self._servidor = None
             self._driver = None
+
+    @property
+    def quedas_do_driver(self) -> int:
+        """Quantas vezes o leitor morreu por conta própria (não por pausa nossa)."""
+        return self._quedas_do_driver
 
     def estado(self) -> EstadoDoCabo:
         with self._lock:

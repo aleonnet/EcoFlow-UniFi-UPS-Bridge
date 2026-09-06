@@ -110,6 +110,20 @@ def test_a_saida_de_erro_dos_filhos_vai_para_o_diario(sup):
         assert filho.kwargs["stderr"] is None
 
 
+def test_a_queda_do_leitor_e_contada_para_o_cabo_automatico(sup):
+    """O cabo automático lê este contador: o aplicativo da EcoFlow em modo Local
+    mata o leitor, e é essa morte que diz "ele quer o cabo". Pausa nossa não conta."""
+    _sobe_tudo(sup)
+    assert sup.quedas_do_driver == 0
+    sup.lancados[0].morre(rc=-9)
+    sup.vigiar()
+    assert sup.quedas_do_driver == 1
+    sup.relogio["agora"] += 60
+    sup.vigiar()                                   # relançou
+    sup.pausar("pedido do dono")
+    assert sup.quedas_do_driver == 1, "pausar não é queda"
+
+
 def test_a_process_that_dies_comes_back_after_the_backoff(sup):
     """Leitor que morre volta — mas com recuo, para não virar tempestade.
 

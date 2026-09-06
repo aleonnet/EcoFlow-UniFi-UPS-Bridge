@@ -247,8 +247,9 @@ public struct APIClient: Sendable {
                                   body: Data("{}".utf8)))
     }
 
-    /// Quem está com o cabo agora. Só leitura: o cabo vai e volta sozinho quando o
-    /// aplicativo do fabricante abre e fecha — a tela informa, não manda.
+    /// Quem está com o cabo agora. Só leitura: o cabo vai sozinho quando o
+    /// aplicativo do fabricante o toma (modo Local) e volta quando ele fecha; em
+    /// Remoto ele lê pelo nosso servidor e o cabo fica — a tela informa, não manda.
     public func riverCabo() async throws -> EstadoDoCabo {
         try JSONCoding.decoder().decode(EstadoDoCabo.self, from: try await run(request("v1/river/cabo")))
     }

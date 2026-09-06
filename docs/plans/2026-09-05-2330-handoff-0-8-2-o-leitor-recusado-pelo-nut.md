@@ -204,6 +204,30 @@ proteção de dados: `xcrun notarytool store-credentials river-bridge --keychain
 `--keychain` também no `submit` (release.sh/build-dmg.sh precisam ganhar essa opção). A tag
 local `v0.8.4` da tentativa foi apagada; o commit a74c005 está em main.
 
+## 4e. O PowerManager em modo Remoto — medido (2026-09-06, 09h30–09h50), e a 0.8.5
+
+O dono, com o PowerManager em Remoto: "por que não permitimos ambos?".
+
+```
+== o que o aplicativo deles grava (…/PowerManagerSettings/alessandro/settings.ini)
+[connectModeParam] mode=remote nutIP=127.0.0.1 nutPort=3493 nutUser=powermanager nutPassword=river-local upsName=river-office
+                   localUpsName=nutdev1 (o NUT que ELE traz, para o modo Local: ups.conf [nutdev1] usbhid-ups; upsd LISTEN 127.0.0.1 3493; upsmon primary)
+== o registro DELE, em Remoto (…/MacOS/log/2026-09-06.log)
+09:43:58 "…/nut-server/bin/upsc" ("river-office@127.0.0.1:3493") → battery.charge: 100 … battery.runtime: 151740 …   (a cada 1 s)
+== do nosso lado, com o cabo automático desligado para medir
+LIST CLIENT river-office → vazio (o `upsc` não faz LOGIN; foi por isso que eu disse "não conecta" — errado: conecta a cada segundo)
+120 s com o aplicativo aberto: usbhid-ups e river-bridge-upsd vivos; nenhum `run.sh with administrator privileges` (o modo Local o dispara)
+== a conta que ele usa, testada por mim no nosso servidor
+USERNAME powermanager / PASSWORD river-local / LOGIN river-office → OK; LOGIN river-bridge → OK; pelo 192.168.1.13 → OK (a rede está ABERTA: o dono ligou o interruptor)
+```
+
+**Conclusão:** em Remoto ele lê pelo NOSSO servidor e não toca no leitor; em Local ele mata o
+leitor e sobe o NUT dele. A 0.8.4 cedia o cabo (parando leitor e servidor) só porque o
+aplicativo abriu — em Remoto isso cegava os dois. **0.8.5:** o cabo só é cedido quando o
+nosso leitor cai com o aplicativo aberto (o supervisor conta as quedas; referência = olhada
+anterior). Cenas S67/S67b. Para ele mostrar os watts por tomada: apontar o Remoto dele para
+`river-bridge` (a mesma conta serve; `LOGIN river-bridge` → OK).
+
 ## 5. Próximo passo, na ordem
 
 (A 0.8.2 já foi instalada pelo dono e lê o River — §4b. O roteiro abaixo vale para a 0.8.3.)

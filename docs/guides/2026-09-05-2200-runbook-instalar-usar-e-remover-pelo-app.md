@@ -77,15 +77,30 @@ escreveu), o interruptor fica desligado e explica: ele não reescreve o que é s
 
 ## 4. O cabo do River e o aplicativo da EcoFlow
 
-O River aceita um leitor por vez. Desde a 0.8.0 isto não tem botão:
+O River tem um cabo, e o aplicativo da EcoFlow (PowerManager) tem dois modos, gravados por
+ele em `Communication mode`:
 
-- abriu o **PowerManager** da EcoFlow → o serviço larga o cabo em até 5 s e avisa na linha
-  do tempo;
-- fechou → o serviço retoma e avisa.
+- **Remoto** (`Remote`): ele lê pelo **nosso** servidor do no-break — a cada segundo, com a
+  conta `powermanager` / `river-local` que o serviço cria (medido no Mac mini em
+  2026-09-06: o registro dele mostra `upsc river-office@127.0.0.1:3493` a cada 1 s). Ele não
+  toca no cabo, e **os dois leem ao mesmo tempo**. Para ele mostrar os watts por tomada,
+  aponte-o para o aparelho `river-bridge` em vez de `river-office` (é o nosso aparelho que
+  tem `outlet.N.realpower`); a mesma conta serve.
+- **Local**: ele mata o nosso leitor (`pkill -9 usbhid-ups`, lido no pacote dele) e sobe o
+  NUT que ele traz. O serviço percebe a queda do leitor com o aplicativo aberto e **cede** o
+  cabo (leitor e servidor param), com o aviso na linha do tempo; quando o aplicativo fecha, o
+  serviço retoma sozinho. O compromisso: qualquer queda do leitor com o aplicativo aberto
+  conta como pedido — inclusive o River desligado com o aplicativo aberto em Remoto; nesse caso
+  o serviço cede até ele fechar e volta sozinho. Tempo até ceder, pela leitura do código, ≈ 8 s
+  no pior caso (a queda é vista em 2 s; o vigia olha a cada 5 s).
 
-Com **proteção armada** o cabo não é largado (seria ficar cego para a queda justamente com o
-desligamento automático ligado); a linha do tempo diz por quê. Ajustes › River mostra quem
-está com o cabo. Para desligar o automático: `RIVER_CABO_AUTOMATICO=0` no arquivo do serviço.
+Até a 0.8.4 o cabo era cedido só porque o aplicativo abriu — e em modo Remoto isso deixava
+os dois sem leitura (o dono perguntou "por que não permitimos ambos?", 2026-09-06).
+
+Com **proteção armada** o cabo não é cedido (seria ficar cego para a queda justamente com
+o desligamento automático ligado); a linha do tempo diz por quê. O topo da tela Energia mostra
+quem está com o cabo. Para desligar o automático: `RIVER_CABO_AUTOMATICO=0` no arquivo do
+serviço (pede reinício).
 
 ## 5. Remover
 
@@ -116,7 +131,8 @@ Lixo é medido na bancada, não afirmado aqui.
 | 4 | ligar "Permitir mandar nos dispositivos"; `LIST CMD udr7` | `load.off` e `shutdown.reboot` |
 | 5 | ligar "Aceitar o Home Assistant pela rede"; de outra máquina, `nc <mac> 3493` | `LIST UPS` responde |
 | 6 | no Home Assistant, adicionar a integração NUT em `river-bridge` e em `udr7` | sensores com os watts por tomada; o roteador como aparelho com as ações |
-| 7 | abrir o PowerManager da EcoFlow | o cabo sai sozinho, com o aviso na linha do tempo |
-| 8 | fechar o PowerManager | o cabo volta sozinho, com o aviso |
-| 9 | armar a proteção e abrir o PowerManager | o cabo **não** sai, e o aviso diz por quê |
+| 7 | abrir o PowerManager em modo **Remoto** | o cabo fica: leitor e servidor seguem, o PowerManager lê pelo nosso servidor (o registro dele: `upsc … 127.0.0.1:3493`), nenhum aviso |
+| 7b | abrir o PowerManager em modo **Local** | ele mata o leitor; o serviço cede o cabo na olhada seguinte (≈ 8 s no pior caso pela leitura do código: 2 s para ver a queda + até 5 s do vigia; a bancada mede), com o aviso na linha do tempo |
+| 8 | fechar o PowerManager (modo Local) | o cabo volta sozinho, com o aviso |
+| 9 | armar a proteção e abrir o PowerManager em modo **Local** | o cabo **não** sai, e o aviso diz por quê (em Remoto não há aviso: ele não pediu o cabo) |
 | 10 | arrastar o programa para o Lixo | nenhum processo, nenhuma pasta de estado, job desregistrado, e o interruptor "River Bridge" desligado em Ajustes do Sistema › Itens de Início de Sessão (diário: `ajudante_do_registro … unregister=ok`) |

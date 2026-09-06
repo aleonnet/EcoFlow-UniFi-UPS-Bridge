@@ -86,7 +86,8 @@ public struct HealthChain: Codable, Equatable, Sendable {
     /// Quem está com o cabo do River. `nil` em serviço que não cuida do leitor.
     ///
     /// Está no health porque o cabo passou a ir e voltar SOZINHO (o aplicativo
-    /// da EcoFlow abriu, o serviço larga): sem isto, quem abrisse o programa
+    /// da EcoFlow tomou o cabo, o serviço cede; em Remoto ele lê pelo nosso
+    /// servidor e o cabo fica): sem isto, quem abrisse o programa
     /// depois da troca via tudo parado, sem nenhuma explicação de por quê.
     public var cabo: EstadoDoCabo?
     public var ha: String?

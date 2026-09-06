@@ -81,7 +81,7 @@ do usuário do serviço). O jeito normal de editar é pelo app → **Ajustes**; 
 | API local | `UI_API_ENABLED`, `UI_API_PORT`, `HISTORY_RETENTION_DAYS` | porta da API (35493) e retenção do histórico |
 | River (núcleo da proteção) | `UDR7_EXPECTED_SERIAL`, `UDR7_CUTOFF_PERCENT` | número de série esperado do RIVER e corte físico da saída — valem para todos os dispositivos protegidos (Ajustes → River) |
 | As três travas | `UDR7_ARM_ALLOWED`, `RIVER_POWEROFF_ALLOWED`, `DEVICE_CMD_ALLOWED` | interruptores em **Ajustes › Travas** (desde a 0.8.0), com confirmação ao ligar; aplicam a quente. Fechadas, o ato não existe — nem na tela, nem no Home Assistant |
-| O River como aparelho | `RIVER_SERIAL_ENABLED`, `RIVER_SERIAL_PORT`, `RIVER_NUT_MANAGED`, `RIVER_CABO_AUTOMATICO` | consumo por tomada pela porta serial do mesmo cabo; quem cuida do leitor do no-break (por padrão, o próprio serviço); o cabo indo e voltando sozinho quando o aplicativo da EcoFlow abre e fecha (ligado por padrão) |
+| O River como aparelho | `RIVER_SERIAL_ENABLED`, `RIVER_SERIAL_PORT`, `RIVER_NUT_MANAGED`, `RIVER_CABO_AUTOMATICO` | consumo por tomada pela porta serial do mesmo cabo; quem cuida do leitor do no-break (por padrão, o próprio serviço); o cabo cedido sozinho quando o aplicativo da EcoFlow o toma (modo Local) e retomado quando ele fecha; em modo Remoto ele lê pelo nosso servidor e o cabo fica (ligado por padrão) |
 | Espelho da instância `udr7` | `PROTECT_UDR7`, `PROTECT_DRY_RUN`, `UDR7_*` restantes, `UDR7_NAME` | desde a 0.3.0 os dispositivos são instâncias em `devices.json`, editadas pelo app; este bloco é lido uma vez na migração e depois só espelha a instância `udr7` |
 
 Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige ligar a trava

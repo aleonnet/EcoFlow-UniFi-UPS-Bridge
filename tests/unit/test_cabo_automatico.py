@@ -37,6 +37,11 @@ class SupervisorFalso:
     def __init__(self, *, pausado_pelo_dono=False):
         self.acoes: list[str] = []
         self.pausado_pelo_dono = pausado_pelo_dono
+        # Quantas vezes o leitor morreu por conta própria (o `pkill` deles).
+        self.quedas_do_driver = 0
+
+    def leitor_morto_pelo_aplicativo_deles(self):
+        self.quedas_do_driver += 1
 
     def estado(self):
         return EstadoDoCabo(lendo=not self.pausado_pelo_dono,
@@ -65,21 +70,68 @@ def montar(*, aberto=False, armada=False, supervisor=None):
     return cabo, sup, estado, avisos
 
 
-def test_the_cable_goes_over_when_the_vendor_app_opens():
-    """Sem botão nenhum: o aplicativo abriu, o cabo passa."""
+def test_the_cable_goes_over_when_the_vendor_app_takes_it():
+    """Sem botão nenhum: o aplicativo abriu em modo Local, matou o leitor
+    (`pkill -9 usbhid-ups`, lido no pacote dele), o cabo passa."""
     cabo, sup, estado, avisos = montar()
     cabo.vigiar()
     assert sup.acoes == []                       # ninguém aberto, nada acontece
     estado["aberto"] = True
     estado["agora"] += 10
     cabo.vigiar()
-    assert sup.acoes == ["pausar:o aplicativo da EcoFlow abriu"]
+    assert sup.acoes == [], "abriu mas ainda não tomou o cabo: nada a ceder"
+    sup.leitor_morto_pelo_aplicativo_deles()
+    estado["agora"] += 10
+    cabo.vigiar()
+    assert sup.acoes == ["pausar:o aplicativo da EcoFlow tomou o cabo"]
     assert avisos[0][0] == EV_LARGADO
+
+
+def test_o_cabo_fica_quando_o_aplicativo_nao_o_pede():
+    """Modo Remoto (medido no Mac mini, 2026-09-06: 120 s aberto, leitor de pé):
+    o aplicativo abriu e fechou sem tocar no leitor. O cabo fica, os dois leem,
+    e a linha do tempo não ganha evento nenhum — não há o que avisar."""
+    cabo, sup, estado, avisos = montar(aberto=True)
+    for _ in range(6):
+        estado["agora"] += 10
+        cabo.vigiar()
+    assert sup.acoes == []
+    estado["aberto"] = False
+    estado["agora"] += 10
+    cabo.vigiar()
+    assert sup.acoes == [] and avisos == []
+
+
+def test_uma_queda_entre_duas_olhadas_ainda_conta_como_pedido():
+    """O `pkill` deles pode vir antes de o aplicativo ser visto aberto: a
+    referência é a olhada ANTERIOR, e a queda entre as duas ainda é dele."""
+    cabo, sup, estado, avisos = montar()
+    cabo.vigiar()                                 # olhada 1: fechado, 0 quedas
+    sup.leitor_morto_pelo_aplicativo_deles()      # o pkill deles
+    estado["aberto"] = True
+    estado["agora"] += 10
+    cabo.vigiar()                                 # olhada 2: aberto, 1 queda
+    assert sup.acoes == ["pausar:o aplicativo da EcoFlow tomou o cabo"]
+
+
+def test_uma_queda_antiga_nao_e_pedido():
+    """O leitor caiu ontem por outro motivo e voltou; hoje o aplicativo abre em
+    modo Remoto. A queda antiga não pode contar como pedido de cabo."""
+    cabo, sup, estado, _avisos = montar()
+    sup.leitor_morto_pelo_aplicativo_deles()
+    cabo.vigiar()                                 # fechado; a queda fica para trás
+    estado["aberto"] = True
+    estado["agora"] += 10
+    cabo.vigiar()
+    assert sup.acoes == []
 
 
 def test_the_cable_comes_back_when_the_vendor_app_closes():
     """Fechou, travou ou morreu: o serviço volta a vigiar sozinho."""
     cabo, sup, estado, avisos = montar(aberto=True)
+    cabo.vigiar()
+    sup.leitor_morto_pelo_aplicativo_deles()
+    estado["agora"] += 10
     cabo.vigiar()
     estado["aberto"] = False
     estado["agora"] += 10
@@ -93,14 +145,29 @@ def test_the_cable_is_never_handed_over_while_a_protection_is_armed():
     justamente com o desligamento automático ligado."""
     cabo, sup, estado, avisos = montar(aberto=True, armada=True)
     cabo.vigiar()
+    sup.leitor_morto_pelo_aplicativo_deles()      # ele pediu o cabo
+    estado["agora"] += 10
+    cabo.vigiar()
     assert sup.acoes == []
     assert avisos[0][0] == EV_MANTIDO
     assert "proteção armada" in avisos[0][1]
 
 
+def test_com_protecao_armada_e_o_aplicativo_em_remoto_nao_ha_aviso_nenhum():
+    """Em Remoto ele não pede o cabo; o aviso "mantive o cabo" seria mentira
+    (bloqueador da revisão fria da 0.8.5)."""
+    cabo, sup, estado, avisos = montar(aberto=True, armada=True)
+    for _ in range(4):
+        estado["agora"] += 10
+        cabo.vigiar()
+    assert sup.acoes == [] and avisos == []
+
+
 def test_the_refusal_is_said_once_per_opening_not_every_five_seconds():
     """O aviso é para o dono ler, não para encher a linha do tempo."""
-    cabo, _sup, estado, avisos = montar(aberto=True, armada=True)
+    cabo, sup, estado, avisos = montar(aberto=True, armada=True)
+    cabo.vigiar()
+    sup.leitor_morto_pelo_aplicativo_deles()
     for _ in range(5):
         estado["agora"] += 10
         cabo.vigiar()
@@ -110,10 +177,13 @@ def test_the_refusal_is_said_once_per_opening_not_every_five_seconds():
 def test_after_disarming_the_cable_finally_goes_over():
     cabo, sup, estado, avisos = montar(aberto=True, armada=True)
     cabo.vigiar()
+    sup.leitor_morto_pelo_aplicativo_deles()      # ele pediu o cabo
+    estado["agora"] += 10
+    cabo.vigiar()                                 # armada: mantém e avisa
     estado["armada"] = False
     estado["agora"] += 10
-    cabo.vigiar()
-    assert sup.acoes == ["pausar:o aplicativo da EcoFlow abriu"]
+    cabo.vigiar()                                 # desarmou: agora cede
+    assert sup.acoes == ["pausar:o aplicativo da EcoFlow tomou o cabo"]
     assert [e for e, _ in avisos] == [EV_MANTIDO, EV_LARGADO]
 
 
@@ -125,6 +195,9 @@ def test_what_the_owner_lent_by_hand_is_not_taken_back_by_us():
     """
     sup = SupervisorFalso(pausado_pelo_dono=True)
     cabo, _sup, estado, avisos = montar(aberto=True, supervisor=sup)
+    cabo.vigiar()
+    sup.leitor_morto_pelo_aplicativo_deles()
+    estado["agora"] += 10
     cabo.vigiar()
     estado["aberto"] = False
     estado["agora"] += 10
@@ -153,6 +226,9 @@ def test_a_search_that_blows_up_brings_the_cable_back_instead_of_keeping_it():
     É o lado seguro: na dúvida, o serviço volta a vigiar a energia.
     """
     cabo, sup, estado, _avisos = montar(aberto=True)
+    cabo.vigiar()
+    sup.leitor_morto_pelo_aplicativo_deles()
+    estado["agora"] += 10
     cabo.vigiar()
     assert sup.acoes[-1].startswith("pausar")
     cabo._procurar = lambda _p: False    # como se a busca tivesse falhado

@@ -707,6 +707,20 @@ cena_mutacao S46b src/river_unifi_bridge/cabo_automatico.py \
     tests/unit/test_cabo_automatico.py::test_the_cable_comes_back_when_the_vendor_app_closes \
     tests/unit/test_cabo_automatico.py::test_a_search_that_blows_up_brings_the_cable_back_instead_of_keeping_it
 
+# S67 — o cabo só é cedido quando o aplicativo da EcoFlow o TOMA (o leitor cai),
+# não só porque ele abriu: em modo Remoto ele lê pelo nosso servidor e não toca
+# no leitor (medido no Mac mini em 2026-09-06). Mutante: cede ao abrir, como
+# a 0.8.4 — e os dois ficariam sem leitura.
+cena_mutacao S67 src/river_unifi_bridge/cabo_automatico.py \
+    "        if self._quedas_do_driver() <= self._quedas_ao_abrir:" \
+    "        if False:" \
+    tests/unit/test_cabo_automatico.py::test_o_cabo_fica_quando_o_aplicativo_nao_o_pede
+# S67b — a queda entre duas olhadas ainda conta (a referência é a olhada anterior).
+cena_mutacao S67b src/river_unifi_bridge/cabo_automatico.py \
+    "            self._quedas_ao_abrir = self._quedas_na_olhada_anterior" \
+    "            self._quedas_ao_abrir = self._quedas_do_driver()" \
+    tests/unit/test_cabo_automatico.py::test_uma_queda_entre_duas_olhadas_ainda_conta_como_pedido
+
 # --- 0.8.0: a UX que o dono determinou, inteira -------------------------------
 
 # S57 — o padrão do aplicativo da EcoFlow casa a INTERFACE e não o daemon deles,

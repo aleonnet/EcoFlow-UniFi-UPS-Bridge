@@ -9,9 +9,27 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.5] — 2026-09-06
+
+O dono, com o PowerManager em modo Remoto: "por que não permitimos ambos?". Medido no Mac
+mini: em Remoto o aplicativo da EcoFlow lê pelo **nosso** servidor (`upsc
+river-office@127.0.0.1:3493` a cada segundo, no registro dele) e não toca no leitor; em Local
+ele mata o leitor (`pkill -9 usbhid-ups`) e sobe o NUT que traz. A 0.8.4 cedia o cabo só
+porque o aplicativo abriu — e em Remoto isso cegava os dois.
+
+### Mudado
+- **O cabo só é cedido quando o aplicativo da EcoFlow o toma.** O sinal é a queda do nosso
+  leitor com o aplicativo aberto (o supervisor conta as quedas; a referência é a olhada
+  anterior, para uma queda entre duas olhadas ainda contar). Em Remoto o cabo fica e os dois
+  leem; em Local o cabo é cedido na olhada seguinte à queda (≈ 8 s no pior caso pela leitura
+  do código) e volta quando ele fecha. Cenas S67 e S67b. Abrir e fechar sem tomar o cabo não
+  gera evento na linha do tempo, com ou sem proteção armada: não há o que avisar. O
+  compromisso: qualquer queda do leitor com o aplicativo aberto conta como pedido de cabo.
 - A frase "Mova o River Bridge para Aplicativos" diz também o caso da translocação do Gatekeeper
   (pacote em quarentena copiado para Aplicativos sem o Finder abre de `AppTranslocation`, medido
   no Mac mini em 2026-09-06): mover com o Finder para outra pasta e de volta.
+- Guia: o que cada modo do PowerManager faz, e como apontá-lo para `river-bridge` para ver os
+  watts por tomada.
 
 ## [0.8.4] — 2026-09-06
 

@@ -136,8 +136,9 @@ class SharedState:
     def set_cabo(self, estado: dict | None) -> None:
         """Quem está com o cabo do River, para a TELA saber sem perguntar.
 
-        O cabo agora vai e volta sozinho (o aplicativo da EcoFlow abriu, o
-        serviço larga). Sem isto no health, a única pista era uma linha na lista
+        O cabo agora vai e volta sozinho (o aplicativo da EcoFlow tomou o cabo
+        em modo Local, o serviço cede; em modo Remoto ele lê pelo nosso
+        servidor e o cabo fica). Sem isto no health, a única pista era uma linha na lista
         de eventos — e quem abrisse o programa depois da troca via tudo parado,
         sem nenhuma explicação de por quê.
         """

@@ -85,9 +85,11 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     # Assistant receber o mesmo que o app mostra. Ver nut_servico.py.
     "RIVER_NUT_PUBLICA": (bool, False, True, None),
     "RIVER_NUT_APARELHO": (str, False, "river-bridge", None),
-    # O cabo do River é um só, e dois programas o querem. Ligado, o serviço larga
-    # o cabo quando o aplicativo do fabricante abre e retoma quando ele fecha —
-    # sem botão na tela (ver cabo_automatico.py). Nunca larga com proteção armada.
+    # O cabo do River é um só, e dois programas o querem. Ligado, o serviço cede
+    # o cabo quando o aplicativo do fabricante o TOMA (modo Local: ele mata o
+    # nosso leitor) e retoma quando ele fecha; em modo Remoto ele lê pelo nosso
+    # servidor e o cabo fica (0.8.5). Sem botão na tela (ver cabo_automatico.py).
+    # Nunca cede com proteção armada.
     #
     # Nasce LIGADO: é a ordem do dono ("ao abrir o PowerManager ele tem de
     # funcionar, sem botão"). O que se mediu antes não contradiz: em modo Local
