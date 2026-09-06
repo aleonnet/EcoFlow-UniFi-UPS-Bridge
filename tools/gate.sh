@@ -1087,6 +1087,23 @@ if [ -d "$APP_DIR" ]; then
         oEstadoArmadoNaoAcusaAlcance
 fi
 
+# S78 — o empacotador monta o widget como o sistema exige (0.10.0): o .appex em
+# PlugIns, o ponto de extensão do WidgetKit, caixa de areia, o grupo de
+# aplicativos, e as provas (direitos lidos da assinatura; Team ID = prefixo do
+# grupo). Molde S44/S64: o texto do script tem de conter cada peça.
+S78_FALTA=""
+for peca in 'PlugIns/RiverBridgeWidget.appex' 'com.apple.widgetkit-extension' \
+            'com.apple.security.app-sandbox' 'com.apple.security.application-groups' \
+            'codesign -d --entitlements :- "$APPEX"' 'GRUPO%%.*}" = "$TEAM_ID"' \
+            'assinar "$APPEX" "$DIREITOS_WIDGET"' 'assinar "$APP" "$DIREITOS_APP"'; do
+    grep -qF -- "$peca" "$RAIZ/tools/build-app.sh" || S78_FALTA="$S78_FALTA | $peca"
+done
+if [ -z "$S78_FALTA" ]; then
+    ok "S78 empacotador: o widget nasce em PlugIns, em caixa de areia, com o grupo, e as provas dos direitos"
+else
+    erro "S78 empacotador sem:$S78_FALTA"
+fi
+
 # S76 — o app só pede recarga do widget em mudança de SIGNIFICADO (0.10.0; o
 # WidgetKit dá 40–70 recargas por dia). Mutante: pede sempre.
 if [ -d "$APP_DIR" ]; then

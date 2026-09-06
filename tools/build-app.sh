@@ -36,6 +36,9 @@ BIN="$PKG/.build/release/RiverBridge"
 # pacote vai para o Lixo (remocao.py). Mora em Contents/MacOS, como o programa.
 AJUDANTE="$PKG/.build/release/river-bridge-servico"
 [ -x "$AJUDANTE" ] || { echo "[ERRO] binário não encontrado: $AJUDANTE"; exit 1; }
+# O widget do macOS (0.10.0): o executável do .appex, montado mais abaixo.
+WIDGET_BIN="$PKG/.build/release/RiverBridgeWidget"
+[ -x "$WIDGET_BIN" ] || { echo "[ERRO] binário não encontrado: $WIDGET_BIN"; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -63,6 +66,77 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+
+# ── o widget vai DENTRO do pacote (0.10.0) ────────────────────────────────────
+# Um widget do macOS é uma extensão (.appex) em Contents/PlugIns, em caixa de
+# areia, que só alcança o app pelo contêiner do grupo de aplicativos. A receita
+# foi lida num widget de terceiro instalado nesta máquina (Dropover, App Store) e
+# nos da Apple (Stocks), e PROVADA em 2026-09-06 com um appex mínimo dentro deste
+# pacote assinado com Developer ID: o `pluginkit` o registra. As onze chaves do
+# Info.plist são as do Dropover; a versão é a do app; `LSMinimumSystemVersion` a
+# do app. O grupo é `<Team ID>.<nome>` — sem registro na Apple ("You don't need
+# to register app groups that use this format", doc do direito
+# com.apple.security.application-groups) — e o Team ID da identidade de
+# assinatura TEM de ser o prefixo da constante do Core (RetratoDoWidget.grupo):
+# a prova está mais abaixo, junto da assinatura.
+mkdir -p "$DIST/.cache"
+GRUPO="$(grep -o 'static let grupo = "[^"]*"' "$PKG/Sources/RiverBridgeCore/RetratoDoWidget.swift" | sed 's/.*= "//; s/"$//')"
+[ -n "$GRUPO" ] || { echo "[ERRO] não achei RetratoDoWidget.grupo no Core"; exit 1; }
+APPEX="$APP/Contents/PlugIns/RiverBridgeWidget.appex"
+mkdir -p "$APPEX/Contents/MacOS" "$APPEX/Contents/Resources"
+cp "$WIDGET_BIN" "$APPEX/Contents/MacOS/RiverBridgeWidget"
+cat > "$APPEX/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key><string>RiverBridgeWidget</string>
+    <key>CFBundleIdentifier</key><string>com.river.bridge-ui.widget</string>
+    <key>CFBundleName</key><string>River Bridge</string>
+    <key>CFBundleDisplayName</key><string>River Bridge</string>
+    <key>CFBundlePackageType</key><string>XPC!</string>
+    <key>CFBundleShortVersionString</key><string>${VERSAO}</string>
+    <key>CFBundleVersion</key><string>${VERSAO}</string>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleSupportedPlatforms</key><array><string>MacOSX</string></array>
+    <key>LSMinimumSystemVersion</key><string>26.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string>
+    </dict>
+</dict>
+</plist>
+EOF
+plutil -lint "$APPEX/Contents/Info.plist" >/dev/null || { echo "[ERRO] Info.plist do widget inválido"; exit 1; }
+# Prova: as onze chaves, com os valores que o sistema confere.
+for par in "CFBundleExecutable=RiverBridgeWidget" "CFBundleIdentifier=com.river.bridge-ui.widget" \
+           "CFBundlePackageType=XPC!" "CFBundleShortVersionString=${VERSAO}" "CFBundleVersion=${VERSAO}" \
+           "CFBundleInfoDictionaryVersion=6.0" "LSMinimumSystemVersion=26.0" \
+           "NSExtension:NSExtensionPointIdentifier=com.apple.widgetkit-extension" "CFBundleSupportedPlatforms:0=MacOSX" \
+           "CFBundleName=River Bridge" "CFBundleDisplayName=River Bridge"; do
+  chave="${par%%=*}"; esperado="${par#*=}"
+  lido="$(/usr/libexec/PlistBuddy -c "Print :${chave}" "$APPEX/Contents/Info.plist" 2>/dev/null || true)"
+  [ "$lido" = "$esperado" ] || { echo "[ERRO] Info.plist do widget: $chave = '$lido' (esperado '$esperado')"; exit 1; }
+done
+# Os direitos: a extensão em caixa de areia com o grupo; o app só com o grupo.
+DIREITOS_WIDGET="$DIST/.cache/widget.entitlements"
+DIREITOS_APP="$DIST/.cache/app.entitlements"
+cat > "$DIREITOS_WIDGET" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>com.apple.security.app-sandbox</key><true/>
+    <key>com.apple.security.application-groups</key><array><string>${GRUPO}</string></array>
+</dict></plist>
+EOF
+cat > "$DIREITOS_APP" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>com.apple.security.application-groups</key><array><string>${GRUPO}</string></array>
+</dict></plist>
+EOF
+echo "│ widget: PlugIns/RiverBridgeWidget.appex (grupo ${GRUPO})"
 
 # ── o serviço vai DENTRO do pacote ───────────────────────────────────────────
 # Assim, jogar o App no Lixo leva o serviço junto — hoje ele mora em
@@ -261,11 +335,15 @@ PLIST
 # enforcement, library validation, hard, kill, and debugging restrictions."
 # O carimbo de tempo (`--timestamp`) exige rede; ad-hoc não o aceita.
 IDENTIDADE="${RUB_SIGN_IDENTITY:--}"
+# `assinar ALVO [DIREITOS]`: o segundo argumento é o arquivo de direitos (0.10.0:
+# o widget leva caixa de areia + grupo; o app, o grupo). Ad-hoc também os aceita.
 assinar() {
+  local direitos=()
+  [ -n "${2:-}" ] && direitos=(--entitlements "$2")
   if [ "$IDENTIDADE" = "-" ]; then
-    codesign --force --sign - "$1" >/dev/null 2>&1
+    codesign --force ${direitos[@]+"${direitos[@]}"} --sign - "$1" >/dev/null 2>&1
   else
-    codesign --force --options runtime --timestamp --sign "$IDENTIDADE" "$1" >/dev/null 2>&1
+    codesign --force --options runtime --timestamp ${direitos[@]+"${direitos[@]}"} --sign "$IDENTIDADE" "$1" >/dev/null 2>&1
   fi
 }
 assinar_de_dentro_para_fora() {
@@ -277,20 +355,37 @@ assinar_de_dentro_para_fora() {
   done < <(find "$RES/python" "$RES/libs" "$RES/nut" -type f \
              \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0)
   assinar "$APP/Contents/MacOS/river-bridge-servico" || { echo "[ERRO] não consegui assinar o ajudante do registro"; return 1; }
-  assinar "$APP/Contents/MacOS/RiverBridge" || { echo "[ERRO] não consegui assinar o executável"; return 1; }
-  assinar "$APP" || { echo "[ERRO] não consegui assinar o pacote"; return 1; }
-  echo "│ assinados $assinados Mach-O aninhados + ajudante + executável + pacote ($([ "$IDENTIDADE" = "-" ] && echo ad-hoc || echo "$IDENTIDADE"))"
+  # O widget: o binário e depois o pacote da extensão, os dois com os direitos dele.
+  assinar "$APPEX/Contents/MacOS/RiverBridgeWidget" "$DIREITOS_WIDGET" || { echo "[ERRO] não consegui assinar o executável do widget"; return 1; }
+  assinar "$APPEX" "$DIREITOS_WIDGET" || { echo "[ERRO] não consegui assinar o widget"; return 1; }
+  assinar "$APP/Contents/MacOS/RiverBridge" "$DIREITOS_APP" || { echo "[ERRO] não consegui assinar o executável"; return 1; }
+  assinar "$APP" "$DIREITOS_APP" || { echo "[ERRO] não consegui assinar o pacote"; return 1; }
+  echo "│ assinados $assinados Mach-O aninhados + ajudante + widget + executável + pacote ($([ "$IDENTIDADE" = "-" ] && echo ad-hoc || echo "$IDENTIDADE"))"
 }
 assinar_de_dentro_para_fora || exit 1
 codesign --verify --deep --strict "$APP" 2>/dev/null \
   || { echo "[ERRO] a assinatura do pacote não verifica depois de embutir o serviço"; exit 1; }
+# Prova dos direitos (0.10.0): a extensão em caixa de areia com o grupo; o app
+# com o grupo. É o que o sistema confere ao abrir o contêiner.
+DIREITOS_LIDOS_WIDGET="$(codesign -d --entitlements :- "$APPEX" 2>/dev/null | plutil -p - 2>/dev/null || true)"
+grep -q '"com.apple.security.app-sandbox" => true' <<< "$DIREITOS_LIDOS_WIDGET" \
+  || { echo "[ERRO] o widget não está em caixa de areia"; exit 1; }
+grep -qF "\"$GRUPO\"" <<< "$DIREITOS_LIDOS_WIDGET" \
+  || { echo "[ERRO] o widget não tem o grupo $GRUPO"; exit 1; }
+codesign -d --entitlements :- "$APP" 2>/dev/null | plutil -p - 2>/dev/null | grep -qF "\"$GRUPO\"" \
+  || { echo "[ERRO] o app não tem o grupo $GRUPO"; exit 1; }
 if [ "$IDENTIDADE" != "-" ]; then
+  # O Team ID da identidade é o prefixo do grupo: a extensão só abre o
+  # contêiner se a assinatura trouxer o mesmo Team ID que o nome do grupo.
+  TEAM_ID="$(sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p' <<< "$IDENTIDADE")"
+  [ "${GRUPO%%.*}" = "$TEAM_ID" ] \
+    || { echo "[ERRO] o grupo $GRUPO não começa com o Team ID da identidade ($TEAM_ID)"; exit 1; }
   # Prova: o executável e um Mach-O aninhado saíram com o runtime endurecido e
   # a autoridade certa — é o que a notarização vai conferir, arquivo a arquivo.
   # A saída é capturada ANTES de procurar: `grep -q` fecha o cano ao achar, o
   # `codesign` morre de SIGPIPE e o `pipefail` acusava erro numa assinatura boa
   # (medido em 2026-09-05, na primeira execução com o certificado de verdade).
-  for prova in "$APP/Contents/MacOS/RiverBridge" "$APP/Contents/MacOS/river-bridge-servico" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
+  for prova in "$APP/Contents/MacOS/RiverBridge" "$APP/Contents/MacOS/river-bridge-servico" "$APPEX/Contents/MacOS/RiverBridgeWidget" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
     LAUDO="$(codesign -dv --verbose=2 "$prova" 2>&1 || true)"
     grep -q 'flags=.*runtime' <<< "$LAUDO" \
       || { echo "[ERRO] sem runtime endurecido: $prova"; exit 1; }
@@ -316,4 +411,4 @@ rm -rf "$PROVA" "$MARCA"
 codesign --verify --deep --strict "$APP" 2>/dev/null \
   || { echo "[ERRO] a assinatura não verifica DEPOIS de o serviço rodar"; exit 1; }
 echo "│ bundle: $APP ($(du -sh "$APP" | cut -f1))"
-echo "[OK] River Bridge.app montado (v${VERSAO}) com o serviço dentro"
+echo "[OK] River Bridge.app montado (v${VERSAO}) com o serviço e o widget dentro"
