@@ -15,6 +15,10 @@ let package = Package(
         // A mão do serviço sobre o próprio registro (SMAppService.unregister),
         // chamada pelo serviço quando o pacote vai para o Lixo (0.8.3).
         .executable(name: "river-bridge-servico", targets: ["RiverBridgeServico"]),
+        // O widget do macOS (0.10.0): o executável do .appex que o empacotador
+        // monta em Contents/PlugIns. Um alvo do SwiftPM basta (medido em
+        // 2026-09-06: `@main struct: Widget` compila e liga o WidgetKit nativo).
+        .executable(name: "RiverBridgeWidget", targets: ["RiverBridgeWidget"]),
     ],
     targets: [
         .target(name: "RiverBridgeCore"),
@@ -23,6 +27,10 @@ let package = Package(
             dependencies: ["RiverBridgeCore"]
         ),
         .executableTarget(name: "RiverBridgeServico"),
+        .executableTarget(
+            name: "RiverBridgeWidget",
+            dependencies: ["RiverBridgeCore"]
+        ),
         .testTarget(
             name: "RiverBridgeCoreTests",
             dependencies: ["RiverBridgeCore"]

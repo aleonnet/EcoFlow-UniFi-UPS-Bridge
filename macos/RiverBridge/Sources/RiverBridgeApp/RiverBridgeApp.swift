@@ -4,6 +4,7 @@
 
 import RiverBridgeCore
 import SwiftUI
+import WidgetKit
 
 /// Dock-icon reopen (owner 2026-08-31), via the documented AppKit hook
 /// applicationShouldHandleReopen(_:hasVisibleWindows:): clicking the Dock
@@ -37,7 +38,11 @@ private struct MenuBarLabelHost: View {
 
 @main
 struct RiverBridgeApp: App {
-    @State private var store = TelemetryStore()
+    // O retrato do widget (0.10.0) vai para o contêiner do grupo, e o pedido
+    // de recarga é o do WidgetKit — o Core não o conhece.
+    @State private var store = TelemetryStore(
+        retrato: RetratoDoWidget.url(),
+        aoRecarregarWidget: { WidgetCenter.shared.reloadTimelines(ofKind: RetratoDoWidget.kind) })
     @State private var prefs = AppPrefs.shared
     @NSApplicationDelegateAdaptor(ReopenDelegate.self) private var reopenDelegate
 
@@ -83,6 +88,8 @@ struct RiverBridgeApp: App {
                     applyAppearance()
                 }
                 .onChange(of: prefs.themeMode) { applyAppearance() }
+                // O widget fala o idioma do app: regrava o retrato na troca.
+                .onChange(of: prefs.language) { store.gravarRetrato() }
         }
         // `--seam-largura N` existe para a CAPTURA: até aqui não havia mecanismo
         // para fotografar a janela estreita (as capturas antigas a 414 pt eram
