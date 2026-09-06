@@ -93,7 +93,10 @@ public struct RetratoDoWidget: Codable, Equatable, Sendable {
         let mudouBaixa = anterior.bateriaBaixa != novo.bateriaBaixa
         let mudouServico = anterior.servicoNoAr != novo.servicoNoAr
         let cruzouDegrau = degrau(anterior.cargaPct) != degrau(novo.cargaPct)
-        return mudouFonte || mudouBaixa || mudouServico || cruzouDegrau
+        // O idioma também: o widget desenha no idioma do retrato, e ficar meia
+        // hora na língua velha depois da troca seria o app mentindo por omissão.
+        let mudouIdioma = anterior.emPortugues != novo.emPortugues
+        return mudouFonte || mudouBaixa || mudouServico || cruzouDegrau || mudouIdioma
     }
 
     private static func degrau(_ carga: Double?) -> Int {

@@ -56,6 +56,30 @@ private func retrato(_ json: String, carga: Double? = nil, agora: Date = t0) thr
     var morto = base; morto.servicoNoAr = false
     #expect(RetratoDoWidget.deveRecarregar(anterior: base, novo: morto))                     // serviço
     #expect(RetratoDoWidget.deveRecarregar(anterior: base, novo: try retrato(naTomada, carga: 89)))    // degrau 90 → 80
+    var ingles = base; ingles.emPortugues = false
+    #expect(RetratoDoWidget.deveRecarregar(anterior: base, novo: ingles))                    // idioma
+}
+
+@Test @MainActor func aHoraDoRetratoEADaUltimaLeituraConfirmadaNaoDaUltimaMudanca() throws {
+    // Revisão fria da 0.10.0: com o conteúdo estável, a hora tem de avançar a
+    // cada 2 min (sem pedir recarga), senão o widget acusa velhice com o app aberto.
+    let pasta = FileManager.default.temporaryDirectory.appendingPathComponent("retrato-hora-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: pasta) }
+    let url = pasta.appendingPathComponent(RetratoDoWidget.nomeDoArquivo)
+    var recargas = 0
+    let store = TelemetryStore(arguments: [], environment: [:], retrato: url, aoRecarregarWidget: { recargas += 1 })
+    store.apply(SSEMessage(event: "state", data: naTomada))
+    let recargasDepoisDoPrimeiro = recargas
+    // O relógio do teste anda DEPOIS do `apply` (que gravou com a hora real).
+    let base = Date.now.addingTimeInterval(10)
+    store.gravarRetrato(agora: base)
+    let primeiro = try #require(RetratoDoWidget.ler(de: url))
+    store.gravarRetrato(agora: base.addingTimeInterval(60))               // 1 min: nada muda
+    #expect(RetratoDoWidget.ler(de: url)?.quando == primeiro.quando)
+    store.gravarRetrato(agora: base.addingTimeInterval(3 * 60))           // 3 min: a hora avança…
+    let depois = try #require(RetratoDoWidget.ler(de: url)?.quando)
+    #expect(abs(depois.timeIntervalSince(base.addingTimeInterval(3 * 60))) < 1)   // (ISO 8601 sem fração)
+    #expect(recargas == recargasDepoisDoPrimeiro)                          // …sem pedir recarga
 }
 
 @Test func idadeDoRetratoNasTresFaixas() throws {

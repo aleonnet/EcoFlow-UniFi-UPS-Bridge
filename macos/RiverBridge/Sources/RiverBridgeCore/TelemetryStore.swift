@@ -213,13 +213,18 @@ public final class TelemetryStore {
 
     // MARK: - O retrato do widget (0.10.0)
 
-    /// Grava o retrato para o widget quando o CONTEÚDO mudou, e pede recarga
-    /// quando o SIGNIFICADO mudou (RetratoDoWidget.deveRecarregar). Sem destino
+    /// Grava o retrato para o widget quando o CONTEÚDO mudou — ou quando o
+    /// último gravado já tem mais de 2 min, para a hora dele ser "a última
+    /// leitura confirmada" e não "a última mudança" (revisão fria da 0.10.0:
+    /// com o River estável a 100 %, o widget dizia "às HH:MM" e, meia hora
+    /// depois, "abra o River Bridge" com o app aberto). Pede recarga só quando
+    /// o SIGNIFICADO mudou (RetratoDoWidget.deveRecarregar). Sem destino
     /// (`retrato: nil` no init) não faz nada.
     public func gravarRetrato(agora: Date = .now) {
         guard let retratoURL else { return }
         let novo = RetratoDoWidget.de(estado: latest, viva: lendoAgora, emPortugues: L10n.cachedIsPT, agora: agora)
-        if let ultimo = ultimoRetrato, ultimo.mesmoConteudo(que: novo) { return }
+        if let ultimo = ultimoRetrato, ultimo.mesmoConteudo(que: novo),
+           agora.timeIntervalSince(ultimo.quando) < IdadeDoRetrato.limiteDaHora { return }
         try? novo.gravar(em: retratoURL)
         if RetratoDoWidget.deveRecarregar(anterior: ultimoRetrato, novo: novo) { aoRecarregarWidget?() }
         ultimoRetrato = novo

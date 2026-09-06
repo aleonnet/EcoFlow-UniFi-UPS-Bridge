@@ -1108,7 +1108,7 @@ fi
 # WidgetKit dá 40–70 recargas por dia). Mutante: pede sempre.
 if [ -d "$APP_DIR" ]; then
     cena_mutacao_swift S76 Sources/RiverBridgeCore/RetratoDoWidget.swift \
-        '        return mudouFonte || mudouBaixa || mudouServico || cruzouDegrau' \
+        '        return mudouFonte || mudouBaixa || mudouServico || cruzouDegrau || mudouIdioma' \
         '        return true' \
         naoRecarregaSemMudanca
 fi
