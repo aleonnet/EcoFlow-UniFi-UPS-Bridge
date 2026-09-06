@@ -262,7 +262,7 @@ endereço, alcance provado e **proteção armada** (corte 2 %, limiar 5 %). Rein
 proteção armada é recusado pela cerca (`{"motivo": "armado"}`): o caminho é ensaio ligado → reiniciar →
 ensaio desligado, como feito para trocar 0.8.5 → 0.8.6 sem nova autorização.
 
-**Releases:** 0.8.0 … 0.8.6, todas assinadas e notarizadas (credencial no chaveiro de arquivo,
+**Releases:** 0.8.0 … 0.8.7, todas assinadas e notarizadas (credencial no chaveiro de arquivo,
 `RUB_NOTARY_KEYCHAIN`).
 
 ### 5a. A queda ao abrir 6 h / 24 h / 7 d de eventos (2026-09-06, 11h02) — 0.8.7
@@ -310,6 +310,20 @@ Varredura da classe (`git grep` de toda escala explícita nos fontes do app): a 
 categórica; as duas `chartXScale(domain:)` são contínuas (datas), e uma data fora do domínio contínuo
 **não** derruba — medido do mesmo jeito (`ImageRenderer`, barra 2 h atrás num domínio de 1 h:
 renderiza, rc 0).
+
+Bancada da 0.8.7 no mini (2026-09-06, 11h35–11h39, por mim):
+```
+gate: 148 [OK], só S15 (B17) vermelha; S68 "baseline 1 verde; cerca reprovou o defeito plantado (rc=1)"
+release v0.8.7: tools/release.sh --no-gate → publicada; DMG sha256 b8609e8a545cdeeb…
+mini: curl do DMG + SHA256SUMS → sha confere; spctl -t open → Notarized Developer ID
+rm + cp -R para /Applications; xattr -dr quarentena; Info.plist 0.8.7; spctl --assess → Notarized Developer ID
+serviço: PUT udr7 dry_run true → POST /v1/service/restart ("reinício agendado") → 12 s: health nut ok, bridge ok
+         → PUT dry_run false → health udr7 armado_nao_verificado; processo novo (início 11:37:51) de dentro do pacote,
+           pacote python do serviço 0.8.7 (medido com o python do pacote)
+app: open -a "River Bridge" --args --grafico-eventos --escopo-6h  (o recorte com os 10 eventos do cabo das 09h)
+     → 20 s depois: processo vivo; relatórios de queda em ~/Library/Logs/DiagnosticReports: 5 antes, 5 depois
+     (os três das 11h01–11h02 são os da 0.8.6, o relato do dono)
+```
 
 **Próximo passo (frentes pedidas pelo dono, cada uma com plano e banca):**
 1. **B49 — folha de detalhe do River** lendo tudo o que a serial entrega (capacidade mAh, 4 temperaturas,
