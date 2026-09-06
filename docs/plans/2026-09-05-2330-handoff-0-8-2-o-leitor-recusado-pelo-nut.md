@@ -325,10 +325,39 @@ app: open -a "River Bridge" --args --grafico-eventos --escopo-6h  (o recorte com
      (os três das 11h01–11h02 são os da 0.8.6, o relato do dono)
 ```
 
+### 5b. A 0.9.0 (2026-09-06, 12h15–14h20): a folha do River, o cartão sem apavorar, Compartilhar…
+
+Plano e revisão: `2026-09-06-1215-a-folha-do-river-e-compartilhar-os-registros-0-9-0.md` (+ `…-banca.md`).
+Plano: rodada 1 reprovada (três bloqueadores de levantamento meu), rodada 2 aprovada. Diff: rodada 1
+reprovada (caminho "serviço parado" do Compartilhar sem teste; `store` morto; pasta temporária; CSV em
+memória), rodada 2 com um bloqueador a menos (thread produtora presa quando o cliente desconecta no meio
+do CSV — corrigida com aviso + drenagem, provada por teste e S75). Gate: **155 [OK]**, só S15 (B17).
+**Correção de crença:** firmware **não existe** em fonte nenhuma (r3pcomms não o lê; "Version" é a do
+programa) — a proposta aprovada o prometia; B49 emendada.
+
+Bancada no mini, por mim:
+```
+release v0.9.0: tools/release.sh --no-gate após gate verde → publicada; DMG sha256 8b6ba320004e3ce2…
+curl DMG + SHA256SUMS → sha confere; spctl -t open → Notarized Developer ID; rm + cp -R; xattr -dr; Info.plist 0.9.0
+PUT udr7 dry_run true → POST /v1/service/restart → 14 s: health nut ok, bridge ok → PUT dry_run false → 6 s: udr7 armado_nao_verificado
+pacote python do serviço 0.9.0; processo novo (início 14:15:04)
+LIST VAR river-bridge (socket python; `nc` do macOS devolve vazio para este servidor):
+  battery.capacity.nominal "12.8" · battery.temperature "33.0" · ups.temperature "32.0" · input.realpower "69.7" · driver.version "0.9.0"
+GET /v1/state .outlets: design_capacity_mah 12800 · time_to_full_minutes null (states ["ONLINE"], sem carga em curso — esperado)
+  · battery_temperature_c 33.0 · system_temperature_c 32.0 · temperatures_c [32, 33, 25, 25] · input_solar_dc_w 0.0
+GET /v1/events/log.csv?from=0 → text/csv; charset=utf-8, attachment, BOM (ef bb bf), cabeçalho ts_iso,ts,tipo,dispositivo,detalhe, 29 linhas
+GET /v1/history/samples.csv?from=0 → 193.820 linhas, 12.709.073 bytes em 0,63 s (fluxo)
+open -a "River Bridge" --args --folha-river → 20 s: viva; relatórios de queda 5 → 5
+open --args --secao saude → 15 s: viva; 5 → 5
+Compartilhar… › Salvar como… por Acessibilidade (osascript via ssh; `menu button "Compartilhar…" of UI element 1
+  of scroll area 1 of group 2 of window 1`; ⌘⇧G → ~/Desktop → ⏎ ⏎) → ~/Desktop/RiverBridge-registros-2026-09-06-1417.zip,
+  1.442.294 bytes; unzip -l: amostras.csv 12.713.033 · eventos.csv 2.863 · diario.log 19.465.693 (32,2 MB → 1,4 MB); eventos.csv no zip com BOM
+```
+Não medido nesta frente: um valor em minutos de `time_to_full_minutes` (exige o River abaixo de 100 % — a
+primeira queda real, B42/B43). O `.zip` da bancada ficou em `~/Desktop` do mini (o dono pode abrir no Numbers).
+
 **Próximo passo (frentes pedidas pelo dono, cada uma com plano e banca):**
-1. **B49 — folha de detalhe do River** lendo tudo o que a serial entrega (capacidade mAh, 4 temperaturas,
-   tempo para carga completa, entrada solar/DC publicada; firmware só se um comando HID próprio não
-   disputar o cabo com o leitor — medir; flags não).
+1. ~~B49~~ **feita na 0.9.0** (acima).
 2. **B48 — widget do macOS** (WidgetKit, `Contents/PlugIns`, grupo de aplicativos, retrato gravado pelo
    programa).
 3. **B39 — segundo River por BLE** pela sessão do usuário (TCC não atende serviço root), com a
