@@ -720,6 +720,19 @@ cena_mutacao S67b src/river_unifi_bridge/cabo_automatico.py \
     "            self._quedas_ao_abrir = self._quedas_na_olhada_anterior" \
     "            self._quedas_ao_abrir = self._quedas_do_driver()" \
     tests/unit/test_cabo_automatico.py::test_uma_queda_entre_duas_olhadas_ainda_conta_como_pedido
+# S69 — o tipo 23 da serial (tempo para carga completa) tem uma sentinela de "não
+# está carregando" (bytes 33 17). Mutante: ignora a sentinela → o quadro real a
+# 100 % viraria "5939 min" na tela e no Home Assistant.
+cena_mutacao S69 src/river_unifi_bridge/river_serial.py \
+    "            if dados[:2] != _NAO_CARREGANDO:" \
+    "            if True:" \
+    tests/unit/test_river_serial.py::test_time_to_full_is_null_when_not_charging
+# S70 — dos quatro sensores de temperatura, [0] é o sistema e [1] é a bateria
+# (0.9.0). Mutante: o sistema passa a ler o sensor da bateria.
+cena_mutacao S70 src/river_unifi_bridge/river_serial.py \
+    "            leitura.temperatura_sistema_c = float(sensores[_SENSOR_SISTEMA])" \
+    "            leitura.temperatura_sistema_c = float(sensores[_SENSOR_BATERIA])" \
+    tests/unit/test_river_serial.py::test_the_four_temperatures_and_their_names
 
 # --- 0.8.0: a UX que o dono determinou, inteira -------------------------------
 

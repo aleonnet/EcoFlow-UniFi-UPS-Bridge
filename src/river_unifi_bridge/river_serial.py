@@ -11,6 +11,35 @@ Protocolo: enquadramento, verificação e desofuscação conforme o projeto púb
 **greyltc/r3pcomms** (licença MIT, <https://github.com/greyltc/r3pcomms>), lido e
 reimplementado aqui — o crédito é dele, os defeitos são nossos.
 
+Os segmentos do quadro (r3pcomms `_r3pcomms.py`, `serial_segmenter`, lido em
+2026-09-06; o valor é o do quadro real de `tests/fixtures/river_serial_frame.hex`):
+
+    tipo  conteúdo                                  fonte / certeza
+    3     capacidade de projeto, `<I`, mAh          r3pcomms; 12800 no quadro real
+    4     quatro temperaturas `<BBBB`, °C           r3pcomms diz "a 2.ª é a bateria"; o
+                                                    arquivo de Home Assistant do autor
+                                                    (`doc/configuration.yaml`) usa [1] =
+                                                    bateria e [0] = sistema; [2] e [3]
+                                                    não têm nome em fonte nenhuma
+    7/8/9/12  carga total, entrada total, entrada   float, W (r3pcomms)
+              da rede, entrada solar/DC
+    14/16/17/18  cargas AC, 12 V, USB-A, USB-C      float, W, negativas no aparelho
+    15    frequência (`<HH`, 1.º)                   r3pcomms marca com "?"; 60 no real
+    22    série                                     ASCII
+    23    tempo para carga completa, `<HH` (1.º),   r3pcomms: bytes `33 17` = "não está
+          minutos                                   carregando" — com interrogação lá,
+                                                    CONFIRMADO pelo nosso quadro real
+                                                    (aparelho a 100 % na tomada → `33 17`).
+                                                    Um valor em minutos com o aparelho
+                                                    carregando ainda não foi medido por
+                                                    nós (é linha da bancada da primeira
+                                                    queda real); a 2.ª metade é 0 no real
+    13, 25  "Line Frequency?", "Model/Batch?"       incertos no próprio r3pcomms: não lidos
+
+Firmware não existe em fonte nenhuma (nem serial nem HID): o r3pcomms não o lê, e a
+"Version" da saída dele é a do programa. Registrado em 2026-09-06 porque uma proposta
+anterior o prometia.
+
 Só biblioteca padrão: um daemon de no-break não ganha dependência por causa de
 uma leitura de 200 bytes.
 """
@@ -51,9 +80,17 @@ _CAMPOS_W = {
     17: ("carga_usb_a_w", -1),
     18: ("carga_usb_c_w", -1),
 }
+_TIPO_CAPACIDADE = 3
 _TIPO_TEMPERATURAS = 4
 _TIPO_FREQUENCIA = 15
 _TIPO_SERIE = 22
+_TIPO_TEMPO_PARA_CARGA = 23
+# Os dois primeiros bytes do tipo 23 quando o aparelho NÃO está carregando (ver
+# a tabela do cabeçalho). Não é um número de minutos: é ausência.
+_NAO_CARREGANDO = b"\x33\x17"
+# Qual dos quatro sensores é qual (tabela do cabeçalho).
+_SENSOR_SISTEMA = 0
+_SENSOR_BATERIA = 1
 
 
 @dataclass
@@ -69,7 +106,14 @@ class LeituraRiver:
     carga_usb_a_w: float | None = None
     carga_usb_c_w: float | None = None
     frequencia_hz: float | None = None
+    # A da bateria (sensor [1]); é o que já ia para `battery.temperature`.
     temperatura_c: float | None = None
+    # A do sistema (sensor [0]) e as quatro cruas, na ordem do aparelho.
+    temperatura_sistema_c: float | None = None
+    temperaturas_c: tuple[float, ...] | None = None
+    capacidade_projeto_mah: int | None = None
+    # Minutos até a carga completa; `None` quando o aparelho não está carregando.
+    tempo_para_carga_min: int | None = None
     serie: str | None = None
 
     def to_dict(self) -> dict:
@@ -83,6 +127,11 @@ class LeituraRiver:
             "usb_a_w": self.carga_usb_a_w,
             "usb_c_w": self.carga_usb_c_w,
             "line_frequency_hz": self.frequencia_hz,
+            "design_capacity_mah": self.capacidade_projeto_mah,
+            "time_to_full_minutes": self.tempo_para_carga_min,
+            "battery_temperature_c": self.temperatura_c,
+            "system_temperature_c": self.temperatura_sistema_c,
+            "temperatures_c": list(self.temperaturas_c) if self.temperaturas_c is not None else None,
         }
 
 
@@ -141,8 +190,16 @@ def interpreta(quadro: bytes) -> LeituraRiver:
         elif tipo == _TIPO_FREQUENCIA and tamanho == 4:
             leitura.frequencia_hz = float(struct.unpack_from("<H", dados, 0)[0])
         elif tipo == _TIPO_TEMPERATURAS and tamanho == 4:
-            # Quatro sensores; o segundo é o da bateria (r3pcomms).
-            leitura.temperatura_c = float(struct.unpack("<BBBB", dados)[1])
+            sensores = struct.unpack("<BBBB", dados)
+            leitura.temperaturas_c = tuple(float(t) for t in sensores)
+            leitura.temperatura_c = float(sensores[_SENSOR_BATERIA])
+            leitura.temperatura_sistema_c = float(sensores[_SENSOR_SISTEMA])
+        elif tipo == _TIPO_CAPACIDADE and tamanho == 4:
+            leitura.capacidade_projeto_mah = struct.unpack("<I", dados)[0]
+        elif tipo == _TIPO_TEMPO_PARA_CARGA and tamanho == 4:
+            # Não carregando: ausência, não um número de minutos.
+            if dados[:2] != _NAO_CARREGANDO:
+                leitura.tempo_para_carga_min = struct.unpack_from("<H", dados, 0)[0]
         elif tipo == _TIPO_SERIE:
             leitura.serie = dados.decode("ascii", "replace").strip("\x00").strip() or None
     return leitura
