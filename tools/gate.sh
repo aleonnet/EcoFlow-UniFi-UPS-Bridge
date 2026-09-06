@@ -749,9 +749,12 @@ cena_mutacao S72 src/river_unifi_bridge/history.py \
 # revisão fria, medido: sem avisar e drenar, a thread ficava presa num `put` sem
 # leitor, com a conexão do SQLite aberta). Mutante: o consumidor deixa de drenar.
 cena_mutacao S75 src/river_unifi_bridge/api.py \
-    "            while not produtor.done():" \
-    "            while False:" \
+    "            cliente_foi.set()" \
+    "            pass" \
     tests/unit/test_api.py::test_a_client_that_leaves_mid_csv_does_not_pin_a_thread
+# (A drenagem da fila no `finally` do consumidor não tem cena própria: o `put`
+# órfão só existe quando a fila está cheia no instante da desconexão, e isso
+# não é determinístico — medido em 2026-09-06, o mutante sem drenagem passou.)
 
 # --- 0.8.0: a UX que o dono determinou, inteira -------------------------------
 

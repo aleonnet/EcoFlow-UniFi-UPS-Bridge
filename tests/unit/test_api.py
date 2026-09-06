@@ -146,7 +146,13 @@ async def test_a_client_that_leaves_mid_csv_does_not_pin_a_thread(client, server
         if server._exportacoes_em_curso == 0:
             break
         await asyncio.sleep(0.05)
-    assert server._exportacoes_em_curso == 0
+    assert server._exportacoes_em_curso == 0    # a thread terminou
+    # …e terminou CEDO: sem o aviso, ela exportaria as 6.000 linhas para ninguém.
+    assert server._ultima_exportacao_linhas < 6000
+    # …e sem deixar um `put` órfão pendurado no laço (é o que a drenagem evita).
+    await asyncio.sleep(0.1)
+    orfas = [t for t in asyncio.all_tasks() if "Queue.put" in repr(t.get_coro())]
+    assert orfas == []
 
 
 async def test_csv_routes_need_the_token(client):

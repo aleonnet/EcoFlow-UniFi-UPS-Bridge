@@ -158,6 +158,7 @@ class ApiServer:
         # Exportações de CSV com a thread produtora ainda viva (0.9.0; a cerca da
         # desconexão no meio do CSV lê este número).
         self._exportacoes_em_curso = 0
+        self._ultima_exportacao_linhas = 0
         self.env_path = env_path
         self.restart_cb = restart_cb
         # Sempre um PluginSet: é o que POST/DELETE mutam. Uma lista (fixtures) é
@@ -667,6 +668,8 @@ class ApiServer:
         class _ClienteFoi(Exception):
             pass
 
+        linhas_exportadas = [0]
+
         def produz() -> None:
             bloco: list[str] = []
 
@@ -683,6 +686,7 @@ class ApiServer:
             def escreve(texto: str) -> None:
                 if cliente_foi.is_set():
                     raise _ClienteFoi()
+                linhas_exportadas[0] += 1
                 bloco.append(texto)
                 if len(bloco) >= LINHAS_POR_BLOCO:
                     envia("".join(bloco).encode("utf-8"))
@@ -715,8 +719,11 @@ class ApiServer:
                 while not fila.empty():
                     fila.get_nowait()
                 await asyncio.sleep(0.02)
-            self._exportacoes_em_curso -= 1
             await produtor
+            # O que a última exportação fez, para a cerca da desconexão ler: a
+            # thread terminou (contador) e parou CEDO (linhas), sem tarefa órfã.
+            self._ultima_exportacao_linhas = linhas_exportadas[0]
+            self._exportacoes_em_curso -= 1
         return resp
 
     async def _h_events_delete(self, request: web.Request) -> web.Response:
