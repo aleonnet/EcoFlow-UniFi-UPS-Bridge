@@ -11,6 +11,9 @@ import SwiftUI
 
 struct FlowScene: View {
     var store: TelemetryStore
+    /// O anel é um botão: abre a folha de detalhe do River (0.9.0). Sem
+    /// closure (as capturas antigas), o anel só reage ao hover.
+    var onOpenDetail: (() -> Void)?
 
     @State private var sceneHeight: CGFloat = 330
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -73,10 +76,16 @@ struct FlowScene: View {
                 )
                 .position(left.center)
 
-                EnergyRing(store: store)
-                    .frame(width: ringRadius * 2, height: ringRadius * 2)
-                    .hoverLift(glow: accent, scale: 1.01)
-                    .position(center.center)
+                Button { onOpenDetail?() } label: {
+                    EnergyRing(store: store)
+                        .frame(width: ringRadius * 2, height: ringRadius * 2)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(L10n.t("Ver os detalhes do River", "See the River's details"))
+                .accessibilityHint(L10n.t("Abre a folha com tudo o que o River publica", "Opens the sheet with everything the River publishes"))
+                .hoverLift(glow: accent, scale: 1.01)
+                .position(center.center)
 
                 sideNode(
                     symbol: "server.rack", label: L10n.t("Equipamentos", "Equipment"),

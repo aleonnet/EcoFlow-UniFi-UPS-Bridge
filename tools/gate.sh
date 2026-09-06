@@ -1060,6 +1060,15 @@ EOF
 # medido em 2026-09-06, e foi a queda do dono ao abrir 24 h/7 d de eventos (os
 # eventos do cabo não estavam na legenda). Mutante: tira o passo que põe no
 # domínio o rótulo que nenhuma lista conhece.
+# S74 — na folha do River, tempo para carga completa sem leitura é traço, nunca
+# "0 min" (0.9.0: o serviço publica null quando o aparelho não está carregando).
+if [ -d "$APP_DIR" ]; then
+    cena_mutacao_swift S74 Sources/RiverBridgeCore/FolhaDoRiver.swift \
+        '        guard let minutes else { return "—" }' \
+        '        guard let minutes else { return "0 min" }' \
+        tempoParaCargaSemLeituraETraco
+fi
+
 if [ -d "$APP_DIR" ]; then
     cena_mutacao_swift S68 Sources/RiverBridgeCore/LegendaDeEventos.swift \
         "            let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) ?? sobra + indice" \

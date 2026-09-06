@@ -291,6 +291,10 @@ public final class TelemetryStore {
         ]
     }
 
+    /// A folha de detalhe do River (0.9.0): sempre existe; sem leitura viva é
+    /// toda traço — a última leitura não é o presente (mesma guarda de tudo).
+    public var folhaDoRiver: FolhaDoRiver { FolhaDoRiver(estado: latest, viva: lendoAgora) }
+
     public var temTensaoDaBateria: Bool {
         lendoAgora && latest?.battery?.voltageV != nil
     }

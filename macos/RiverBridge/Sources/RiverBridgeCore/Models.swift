@@ -38,6 +38,15 @@ public struct UpsState: Codable, Equatable, Sendable {
         public var usbAW: Double?
         public var usbCW: Double?
         public var lineFrequencyHz: Double?
+        /// 0.9.0 — o resto do que a serial entrega (a folha do River): capacidade
+        /// de projeto, tempo para carga completa (nulo quando não está
+        /// carregando), os sensores de temperatura da bateria e do sistema, e
+        /// os quatro crus na ordem do aparelho.
+        public var designCapacityMah: Int?
+        public var timeToFullMinutes: Int?
+        public var batteryTemperatureC: Double?
+        public var systemTemperatureC: Double?
+        public var temperaturesC: [Double]?
         // Sem CodingKeys: o decodificador da casa já converte `usb_a_w` em
         // `usbAW` (convertFromSnakeCase). Declará-las aqui em snake_case fazia o
         // par nunca casar, e a tela mostrava traço com o dado na mão.

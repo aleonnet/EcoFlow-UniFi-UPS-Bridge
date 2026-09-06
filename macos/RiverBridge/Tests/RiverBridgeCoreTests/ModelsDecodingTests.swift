@@ -40,6 +40,20 @@ private func fixtureURL(_ name: String) -> URL {
 }
 
 
+@Test func decodeTheSerialDetailsInOutlets() throws {
+    // 0.9.0: os campos novos do bloco `outlets` (o contrato em docs/reference/api-local.md).
+    let json = """
+    {"outlets": {"total_w": 110.6, "input_solar_dc_w": 0.0, "design_capacity_mah": 12800,
+                 "time_to_full_minutes": null, "battery_temperature_c": 34.0,
+                 "system_temperature_c": 25.0, "temperatures_c": [25.0, 34.0, 25.0, 25.0]}}
+    """
+    let state = try JSONCoding.decoder().decode(UpsState.self, from: Data(json.utf8))
+    #expect(state.outlets?.designCapacityMah == 12800)
+    #expect(state.outlets?.timeToFullMinutes == nil)
+    #expect(state.outlets?.systemTemperatureC == 25.0)
+    #expect(state.outlets?.temperaturesC == [25.0, 34.0, 25.0, 25.0])
+}
+
 @Test func decodeHealthWithUdr7Detail() throws {
     let data = try Data(contentsOf: fixtureURL("health_udr7"))
     let chain = try JSONCoding.decoder().decode(HealthChain.self, from: data)

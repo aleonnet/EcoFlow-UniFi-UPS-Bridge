@@ -184,6 +184,11 @@ struct EnergiaSection: View {
         ProcessInfo.processInfo.arguments.contains("--periodo-datas") ? .personalizado : .tudo
     @State private var customFrom = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
     @State private var customTo = Date.now
+    /// A folha de detalhe do River (0.9.0). `--folha-river` abre-a na partida
+    /// (captura). `hostSize` é o espaço REAL desta seção: a folha se dimensiona
+    /// por ele para nunca passar da janela (a lição das folhas de dispositivo).
+    @State private var folhaDoRiverAberta = ProcessInfo.processInfo.arguments.contains("--folha-river")
+    @State private var hostSize = CGSize(width: 1000, height: 880)
 
     // Validated pattern (onScrollGeometryChange, macOS 15+): the header is
     // TRANSPARENT at rest; material fades in ONLY while it is pinned with
@@ -200,7 +205,7 @@ struct EnergiaSection: View {
                     // fazer. Ele pergunta ao sistema em que pé o serviço está —
                     // não deduz pela presença de um arquivo.
                     AvisoDoTopo(store: store)
-                    FlowScene(store: store)
+                    FlowScene(store: store) { folhaDoRiverAberta = true }
                     ChartsView(store: store, chips: selectedChips)
                 }
                 Section {
@@ -235,6 +240,10 @@ struct EnergiaSection: View {
             geo.contentOffset.y
         } action: { _, offset in
             scrollOffset = offset
+        }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { hostSize = $0 }
+        .sheet(isPresented: $folhaDoRiverAberta) {
+            RiverDetailSheet(store: store, hostSize: hostSize) { folhaDoRiverAberta = false }
         }
         .onChange(of: store.devices, initial: true) { applyChipSeam() }
     }
