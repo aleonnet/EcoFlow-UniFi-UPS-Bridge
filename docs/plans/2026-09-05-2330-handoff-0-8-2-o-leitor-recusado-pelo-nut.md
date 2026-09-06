@@ -162,7 +162,35 @@ LIST VAR river-bridge: outlet.count 4, outlet.1.realpower 64.8, ups.status OL, b
 trava RIVER_POWEROFF_ALLOWED=1 pela API → {"aplicadas_a_quente": ["RIVER_POWEROFF_ALLOWED"]} → LIST CMD river-bridge: load.off; =0 → nenhum
 rede: PUT {"aberta": true} → {"servidor_reiniciado": true}; netstat: *.3493 LISTEN; do MacBook, LIST UPS em 192.168.1.13:3493 → river-office, river-bridge; PUT {"aberta": false} → fechou
 cabo: open -a PowerManager → 9 s: cabo {"lendo": false, "pausado": true, "motivo": "o aplicativo da EcoFlow abriu"}; pkill → 12 s: {"lendo": true}, usb ok
+== 0.8.4 (assinada) por cima, sem Lixo: rm + cópia; POST /v1/service/restart → {"version": "0.8.4"}; leitor e servidor voltam; interface aberta, health ok
+== 0.8.4 → Lixo (mv)  — A PROVA DO INTERRUPTOR
+{"event": "PACOTE_NO_LIXO_REMOVIDO", ...}
+{"event": "ajudante_do_registro_lancado", "argv": ["/bin/launchctl", "asuser", "501", "/usr/bin/sudo", "-u", "#501", ".../.Trash/River Bridge.app/.../Contents/MacOS/river-bridge-servico", "unregister"]}
+{"event": "parada_deliberada", "reason": "o pacote foi para o Lixo: estado apagado e serviço desregistrado", "apagados": 13}
+pacote=/Users/alessandro/.Trash/River Bridge.app/River Bridge.app        ← escrito pelo ajudante, de dentro do Lixo
+status=enabled
+unregister=ok
+status_depois=notRegistered                                              ← o registro nos Itens de Início de Sessão desfeito
+processos: nenhum · pasta de estado: não existe · launchd: Bad request
+== instalação final da 0.8.4 em /Applications
+river-bridge-servico status → notRegistered (o Lixo desfez)
+open -a "River Bridge" → 8 s → status=enabled e launchd com o job   ← SEM pedir autorização de novo: o macOS lembra a
+                                                                        autorização dada a este programa; unregister+register
+                                                                        na mesma máquina não pergunta outra vez (medido)
 ```
+
+**O que isso muda no roteiro:** o ciclo inteiro (Lixo → reinstalar → abrir) fecha sem clique
+nenhum quando o programa já foi autorizado uma vez nesta máquina. A autorização é pedida só na
+primeira instalação de todas (ou depois de o dono desligar o item nos Ajustes do Sistema).
+
+**Release 0.8.4 bloqueada na notarização (2026-09-06, 01h25):** "No Keychain password item
+found for profile: river-bridge" — a credencial do notarytool sumiu do chaveiro pela segunda
+vez (login.keychain-db reescrito à 01h16; zero itens em qualquer chaveiro). Só a senha de app
+do dono a recria. Para não sumir de novo, guardar num chaveiro de ARQUIVO em vez do de
+proteção de dados: `xcrun notarytool store-credentials river-bridge --keychain
+~/Library/Keychains/login.keychain-db --apple-id … --team-id 8A47D8UNV2 --password …` e usar
+`--keychain` também no `submit` (release.sh/build-dmg.sh precisam ganhar essa opção). A tag
+local `v0.8.4` da tentativa foi apagada; o commit a74c005 está em main.
 
 ## 5. Próximo passo, na ordem
 
