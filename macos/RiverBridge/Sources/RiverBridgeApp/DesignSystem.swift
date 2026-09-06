@@ -34,44 +34,8 @@ import SwiftUI
 /// ícone, abrir espaço para os botões da janela). Aquilo é geometria daquela
 /// tela, mora nela com nome próprio, e fingir que é degrau de escala esconderia
 /// a decisão em vez de nomeá-la.
-enum Espaco {
-    /// Colado.
-    static let nenhum: CGFloat = 0
-    /// Entre uma linha e a legenda dela.
-    static let fio: CGFloat = 2
-    /// Entre um ícone e o texto dele.
-    static let micro: CGFloat = 4
-    /// Entre elementos de um mesmo selo.
-    static let mini: CGFloat = 6
-    /// Entre linhas irmãs.
-    static let pequeno: CGFloat = 8
-    /// O padrão de uma linha de ajuste.
-    static let medio: CGFloat = 10
-    /// Entre blocos de uma folha.
-    static let confortavel: CGFloat = 12
-    /// Dentro de um cartão.
-    static let cartao: CGFloat = 14
-    /// Entre cartões.
-    static let largo: CGFloat = 16
-    /// Entre grupos de uma tela.
-    static let secao: CGFloat = 18
-    /// Margem de janela.
-    static let janela: CGFloat = 20
-    /// Respiro de uma folha inteira.
-    static let respiro: CGFloat = 24
-}
-
-/// Raio de canto, na mesma grade.
-enum Raio {
-    /// Um fio — divisória arredondada.
-    static let fio: CGFloat = 1
-    static let mini: CGFloat = 6
-    static let selo: CGFloat = 8
-    static let cartao: CGFloat = 12
-    static let largo: CGFloat = 14
-    static let painel: CGFloat = 16
-    static let janela: CGFloat = 18
-}
+// `Espaco` e `Raio` moram no Core (Tokens.swift) desde a 0.10.0: o widget é outro
+// alvo e usa a mesma escala — uma fonte, como a paleta (Paleta.swift).
 
 /// O tom de uma mensagem — o que ela SIGNIFICA, não a cor que ela tem.
 ///

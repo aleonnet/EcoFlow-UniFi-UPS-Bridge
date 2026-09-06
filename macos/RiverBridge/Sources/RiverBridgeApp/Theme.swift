@@ -5,19 +5,16 @@
 import RiverBridgeCore
 import SwiftUI
 
+extension Color {
+    init(paleta: Paleta.RGB) { self.init(red: paleta.r, green: paleta.g, blue: paleta.b) }
+}
+
 enum Theme {
-    static let onlineColors = [
-        Color(red: 0.20, green: 0.85, blue: 0.62),
-        Color(red: 0.10, green: 0.60, blue: 0.95),
-    ]
-    static let batteryColors = [
-        Color(red: 1.00, green: 0.72, blue: 0.25),
-        Color(red: 1.00, green: 0.42, blue: 0.22),
-    ]
-    static let lowColors = [
-        Color(red: 1.00, green: 0.36, blue: 0.36),
-        Color(red: 0.80, green: 0.12, blue: 0.30),
-    ]
+    // As triplas vivem no Core (Paleta.swift) desde a 0.10.0: o widget pinta
+    // com as mesmas. Aqui só se constrói o `Color`.
+    static let onlineColors = Paleta.tomada.map(Color.init(paleta:))
+    static let batteryColors = Paleta.bateria.map(Color.init(paleta:))
+    static let lowColors = Paleta.baixa.map(Color.init(paleta:))
 
     static func colors(onBattery: Bool, low: Bool) -> [Color] {
         low ? lowColors : (onBattery ? batteryColors : onlineColors)
