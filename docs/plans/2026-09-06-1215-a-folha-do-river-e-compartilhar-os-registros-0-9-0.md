@@ -196,3 +196,29 @@ Revisão fria do DIFF (C1–C6, cold-reviewer, 2026-09-06):
 - **Rodada 1: REJECTED** — B1 (o caminho "serviço parado" do Compartilhar sem teste: o `APIClient` nascia dentro da tela), B2 (`store` carregado por três telas sem leitor), W1 (pasta temporária nunca apagada), W2 (CSV inteiro em memória, o plano prometia fluxo), notas (nota da carga sem serial; cenas S73/S74 entre o comentário e a chamada de S68). Corrigidos: o pacote nasce no Core com as dependências injetadas (falha de rede → nada no disco, testado), sem o `store`, pastas anteriores apagadas na exportação seguinte, CSV em fluxo com contrapressão — medido no mini no ato: 192.786 amostras em 5,6 dias (uma a cada 2,5 s), ≈ 65 bytes por linha → meio gigabyte na retenção máxima de 365 dias.
 - **Rodada 2: REJECTED com um bloqueador a menos (2 → 1)** — B1 novo: cliente que desconecta no meio do CSV deixava a thread produtora presa num `put` sem leitor, com a conexão do SQLite aberta (medido pelo revisor: um worker do executor por desconexão). Resíduo mecânico do desenho já escolhido: o consumidor avisa a thread (`threading.Event`) e drena a fila no `finally`; teste `test_a_client_that_leaves_mid_csv_does_not_pin_a_thread` (6.000 linhas, lê 64 bytes e fecha; o contador de exportações em curso volta a zero) e cena S75 (mutante: o consumidor deixa de drenar). W1: falha do ditto/disco deixa de ser anunciada como falha de rede. Contagem de bloqueadores caiu; aplicado sem terceira rodada (regra 5 da casa).
 
+
+## Fecho (2026-09-06, 14h35)
+
+Impressão digital: `HEAD 1a9677f42bb1 · tree 027cae14f90b4e15` (`close.sh`, evidência em `.roadworthy/evidence.jsonl`).
+
+| Portão | Resultado |
+|---|---|
+| `tools/gate.sh` | **vermelho por UMA cena: S15** (o logo gerado do instalador diverge do gerador — B17, declarada antes desta frente); na rodada anterior sobre o mesmo código (`gate-090b.log`): 155 [OK], S68–S75 verdes |
+| `.venv/bin/pytest` | OK |
+| `cd macos/RiverBridge && swift test` | OK (107 testes) |
+| `docs-check.sh docs --since 2026-09-01` | OK |
+| `lychee --offline --root-dir . docs/` | OK |
+
+Refutação: S69–S75 (Python, mutantes plantados e reprovados) e S68/S73/S74 (Swift, `cena_mutacao_swift`)
+— cada cerca nova desta frente tem o seu mutante no gate; a drenagem da fila no CSV ficou sem cena, com
+o motivo medido (o mutante sem drenagem passa: o `put` órfão só existe com a fila cheia no instante da
+desconexão).
+
+O que ficou de fora e por quê: firmware (não existe em fonte); flags (decisão do dono); tipos 13 e 25 da
+serial (B50); um valor real de tempo para carga completa (só com o River abaixo de 100 %).
+
+**Precisa de verificação humana:** o julgamento visual final das capturas (folha PT/EN/414, Saúde
+armada, barra de Eventos) e o pacote `.zip` aberto no Numbers (`~/Desktop/RiverBridge-registros-2026-09-06-1417.zip`
+no mini). O resto foi medido no ato e está na bancada do handoff (§5b).
+
+Escopo retirado (`.roadworthy/scope`) neste fecho.
