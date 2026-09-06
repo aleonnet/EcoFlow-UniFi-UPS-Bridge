@@ -52,10 +52,16 @@ trap limpar EXIT
 # assinado, notarizado e grampeado, e a prova final é o Gatekeeper desta máquina.
 IDENTIDADE="${RUB_SIGN_IDENTITY:-}"
 PERFIL="${RUB_NOTARY_PROFILE:-}"
+# Onde o perfil mora. Sem `RUB_NOTARY_KEYCHAIN`, o notarytool procura no chaveiro
+# de proteção de dados — e dali a credencial SUMIU duas vezes (2026-09-05 e
+# 2026-09-06, "No Keychain password item found for profile"). Guardada com
+# `store-credentials … --keychain ~/Library/Keychains/login.keychain-db`, ela fica
+# num arquivo que se vê e não some; o `submit` tem de apontar para o mesmo.
+CHAVEIRO="${RUB_NOTARY_KEYCHAIN:-}"
 notarizar() {  # 1=arquivo (zip ou dmg)  2=o que é, para a mensagem
-  echo "│ notarizando $2 (xcrun notarytool submit --wait, perfil $PERFIL)"
+  echo "│ notarizando $2 (xcrun notarytool submit --wait, perfil $PERFIL${CHAVEIRO:+, chaveiro $CHAVEIRO})"
   local nota
-  nota="$(xcrun notarytool submit "$1" --keychain-profile "$PERFIL" --wait 2>&1)" \
+  nota="$(xcrun notarytool submit "$1" --keychain-profile "$PERFIL" ${CHAVEIRO:+--keychain "$CHAVEIRO"} --wait 2>&1)" \
     || { printf '%s\n' "$nota" | tail -5; erro "a notarização de $2 falhou"; }
   grep -q 'status: Accepted' <<< "$nota" \
     || { printf '%s\n' "$nota" | tail -8; erro "a Apple não aceitou $2 (veja o registro acima)"; }

@@ -23,6 +23,10 @@ registrar, que pede a senha de novo) — desnecessário.
   nada. O "Refazer o registro" saiu.
 - O ajudante do pacote (`river-bridge-servico`) aceita `register`, `status` e `unregister`.
 
+- **A credencial da notarização passa a viver num chaveiro de arquivo** (`RUB_NOTARY_KEYCHAIN`):
+  do chaveiro de proteção de dados ela sumiu duas vezes e a release parava na notarização
+  depois de meia hora de pacote. A release confere a credencial ANTES de montar.
+
 ### Bancada no Mac mini (2026-09-06, por ssh)
 - 0.8.2 no Lixo: serviço apagou os 13 itens do estado e se descarregou (diário:
   `PACOTE_NO_LIXO_REMOVIDO`, `parada_deliberada`); interruptor ficou ligado (o defeito da 0.8.2).

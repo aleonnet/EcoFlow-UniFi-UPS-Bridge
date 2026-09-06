@@ -104,7 +104,14 @@ if [ "$AD_HOC" = "0" ]; then
     || falha "o certificado '$RUB_SIGN_IDENTITY' não está no chaveiro desta máquina" 4
   [ -n "${RUB_NOTARY_PROFILE:-}" ] \
     || falha "RUB_NOTARY_PROFILE ausente: guarde a credencial com 'xcrun notarytool store-credentials <perfil>' e exporte o nome (ou --ad-hoc)" 4
-  diga "assinatura: $RUB_SIGN_IDENTITY · notarização: perfil $RUB_NOTARY_PROFILE"
+  diga "assinatura: $RUB_SIGN_IDENTITY · notarização: perfil $RUB_NOTARY_PROFILE${RUB_NOTARY_KEYCHAIN:+ em $RUB_NOTARY_KEYCHAIN}"
+  # A credencial existe MESMO? Conferir antes de montar meia hora de pacote: em
+  # 2026-09-06 a release inteira parou na notarização porque o perfil tinha
+  # sumido do chaveiro de proteção de dados. Com RUB_NOTARY_KEYCHAIN ela vive num
+  # chaveiro de arquivo (ver build-dmg.sh).
+  xcrun notarytool history --keychain-profile "$RUB_NOTARY_PROFILE" \
+      ${RUB_NOTARY_KEYCHAIN:+--keychain "$RUB_NOTARY_KEYCHAIN"} >/dev/null 2>&1 \
+    || falha "a credencial do notarytool (perfil $RUB_NOTARY_PROFILE) não responde: guarde-a de novo com 'xcrun notarytool store-credentials $RUB_NOTARY_PROFILE --keychain ~/Library/Keychains/login.keychain-db …' e exporte RUB_NOTARY_KEYCHAIN" 4
 else
   diga "AD-HOC: sem Developer ID nem notarização (a primeira abertura vai pedir 'Abrir Assim Mesmo')"
   export RUB_SIGN_IDENTITY="-"; unset RUB_NOTARY_PROFILE
