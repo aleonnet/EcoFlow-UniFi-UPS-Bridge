@@ -1,7 +1,7 @@
 # 0.9.0 — a folha do River (tudo o que a serial entrega), o cartão da proteção sem apavorar, e Compartilhar… os registros
 
-status: aceito (aprovado pelo dono em 2026-09-06, após a 2.ª rodada da revisão fria)
-data: 2026-09-06
+status: aceito
+data: 2026-09-06 (aprovado pelo dono em 2026-09-06, após a 2.ª rodada da revisão fria)
 supera (como arquivo de plano desta sessão): o plano da 0.8.0, cuja cópia canônica é `docs/plans/2026-09-05-1905-a-ux-determinada-inteira-0-8-0.md` (executado e fechado; bancada em `docs/plans/2026-09-05-2330-handoff-0-8-2-o-leitor-recusado-pelo-nut.md`).
 frente: três ordens do dono em 2026-09-06 —
 1. **B49** (proposta aprovada: *"De acordo com a proposta."*): *"Garanta que leiamos todos [os campos do r3pcomms] e proponha uma folha de detalhe"*; escopo confirmado por ele: tempo para carga completa, temperaturas separadas, capacidade de projeto, entrada solar/DC publicada; **sem** flags.
