@@ -88,6 +88,12 @@ Cada dispositivo protegido nasce desligado e em ensaio; armar de verdade exige l
 "Permitir armar a proteção" (Ajustes › Travas, com confirmação), desligar o ensaio na folha do
 dispositivo e confirmar, e só é aceito com o RIVER real no NUT e a conexão provada — o simulador
 nunca consegue armar. O instalador recusa atualizar o serviço enquanto houver um dispositivo armado.
+Na tela Energia, clicar no anel de autonomia abre a **folha do River** (0.9.0): tudo o que o
+aparelho publica pela porta serial — capacidade de projeto, entrada da rede e solar/DC, cada
+tomada, tempo para carga completa, temperatura da bateria e do sistema, frequência. Na barra de
+Eventos, **Compartilhar…** salva ou compartilha os registros do recorte (eventos e amostras em
+CSV, mais o diário do serviço) num `.zip`.
+
 O passo a passo, as medições que fazer antes e a recuperação estão nos runbooks
 ([UDR7](docs/guides/2026-09-03-1710-runbook-protecao-udr7-por-instancia.md),
 [host SSH](docs/guides/2026-09-03-1720-runbook-host-ssh.md)).

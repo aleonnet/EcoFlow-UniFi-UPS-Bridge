@@ -102,6 +102,19 @@ o desligamento automático ligado); a linha do tempo diz por quê. O topo da tel
 quem está com o cabo. Para desligar o automático: `RIVER_CABO_AUTOMATICO=0` no arquivo do
 serviço (pede reinício).
 
+## 4b. A folha do River e o Compartilhar… (0.9.0)
+
+**Clique no anel de autonomia** da tela Energia: abre a folha com tudo o que o River publica —
+modelo, série e capacidade de projeto; entrada da rede e solar/DC, cada tomada e o total; nível,
+autonomia, tempo para carga completa (só aparece enquanto carrega), temperatura da bateria e do
+sistema; frequência e situação. Traço é ausência de leitura, nunca zero.
+
+**Compartilhar…**, na barra de Eventos ao lado do recorte (Hoje / 7 d / 30 d / Tudo / Datas):
+monta um `.zip` com `eventos.csv`, `amostras.csv` e `diario.log` do recorte escolhido e abre
+**Salvar como…** ou o painel de compartilhar do macOS (Mail, Mensagens, AirDrop…). Os CSV abrem
+no Numbers e no Excel com os acentos certos. Quando o diário do serviço não estiver legível
+nesta conta, o pacote vai sem ele e o rodapé do botão diz isso.
+
 ## 5. Remover
 
 **Arraste o programa para o Lixo.** O serviço percebe (em até uma volta do laço), para o

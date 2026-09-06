@@ -9,6 +9,36 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-06
+
+### Adicionado
+- **A folha do River.** Clicar no anel de autonomia abre uma folha com tudo o que o aparelho
+  publica, em quatro grupos: Aparelho (modelo, série, capacidade de projeto), Potência (entrada da
+  rede, entrada solar/DC, tomada 120 V, saída 12 V, USB-A, USB-C, total), Bateria (nível,
+  autonomia, tempo para carga completa, temperatura da bateria, temperatura do sistema) e Rede
+  (frequência, situação). O leitor da porta serial passou a decodificar o que faltava do quadro
+  (fonte: r3pcomms): capacidade de projeto (tipo 3), as quatro temperaturas (tipo 4; `[1]` é a
+  bateria e `[0]` o sistema, pelo arquivo de Home Assistant do autor do r3pcomms) e o tempo para
+  carga completa (tipo 23; bytes `33 17` = não está carregando → nulo, confirmado pelo quadro real
+  a 100 %; um valor em minutos com o aparelho carregando ainda não foi medido). Firmware **não**
+  existe em fonte nenhuma (corrigido: a proposta anterior o prometia); *flags* ficam fora por
+  decisão do dono. No NUT: `battery.capacity.nominal` (Ah) e `ups.temperature` passa a ser o
+  sensor do sistema (antes repetia o da bateria). Tempo para carga completa e entrada solar/DC não
+  têm nome no dicionário do NUT: só na API (`outlets`) e na tela.
+- **Compartilhar… os registros.** Na barra de Eventos, ao lado do recorte de tempo: monta um
+  `.zip` com `eventos.csv`, `amostras.csv` (o serviço exporta pelas rotas novas
+  `GET /v1/events/log.csv` e `GET /v1/history/samples.csv`, UTF-8 com BOM) e `diario.log` (o
+  diário do serviço, quando legível), no recorte que a lista mostra, e então abre **Salvar como…**
+  ou o painel de compartilhar do macOS.
+
+### Corrigido
+- **O cartão da proteção não apavora mais.** O selo "Armada — alcance não verificado" era a
+  tradução ao pé da letra do nome do estado, e falsa: o alcance é provado pelo "Testar conexão".
+  Agora é "Armada". A trava de armamento aberta só é aviso quando **não** há proteção armada
+  (armada, é o esperado); "margem desconhecida (taxa não medida)" virou "tempo entre o aviso e o
+  corte ainda não medido (só numa queda real)". Todo texto de tela que ainda mandava mexer "no
+  arquivo do serviço" passou a apontar para Ajustes › Travas (relato do dono, 2026-09-06).
+
 ## [0.8.7] — 2026-09-06
 
 ### Corrigido
