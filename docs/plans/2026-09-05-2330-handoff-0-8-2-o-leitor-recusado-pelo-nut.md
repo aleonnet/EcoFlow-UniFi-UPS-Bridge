@@ -241,6 +241,19 @@ fechar → cabo {"lendo": true}; diário: "aplicativo_fechou_sem_tomar_o_cabo" (
 Falta medir, e é o dono quem alterna o modo na tela deles: **modo Local** (linhas 7b/8 da bancada):
 o leitor cai, o cabo é cedido na olhada seguinte, e volta ao fechar.
 
+## 4f. O UDR7 de ponta a ponta (2026-09-06, 10h55) e o que o PowerManager mostra errado
+
+```
+PUT /v1/devices/udr7 {"fields":{"ssh_host":"192.168.1.1"}}        (o campo estava vazio; a folha mostrava um exemplo em cinza)
+POST /v1/devices/udr7/acesso/testar → {"alcance": true, "resposta": {"model": "UniFi Dream Router 7", "firmware": "5.1.31"}, "registro": {"desligamento_disponivel": true}}
+PUT /v1/config {"UDR7_CUTOFF_PERCENT": "2"} → aplicadas_a_quente
+PUT /v1/devices/udr7 {"dry_run": false} → {"device": {..., "dry_run": false, ...}}; em seguida GET /v1/health .udr7_detail → state "armado_nao_verificado" (= armado; sem queda real ainda), alcance_verificado true, warnings [lock_open, margin_unknown]
+```
+
+**"104d03h00m" no PowerManager (Remoto):** o nosso servidor publica `battery.runtime` em
+segundos (padrão NUT): 149.940 s = 41 h 39 min (o que o River Bridge mostra). O PowerManager
+trata como minutos: 149.940 min = 2.499 h = 104 d 3 h — exatamente o exibido. Defeito deles.
+
 ## 5. Próximo passo, na ordem
 
 (A 0.8.2 já foi instalada pelo dono e lê o River — §4b. O roteiro abaixo vale para a 0.8.3.)

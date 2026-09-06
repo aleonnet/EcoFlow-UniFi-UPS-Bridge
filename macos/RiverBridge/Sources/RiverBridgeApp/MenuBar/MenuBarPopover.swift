@@ -52,9 +52,23 @@ struct MenuBarPopover: View {
                 .padding(.horizontal, Espaco.medio)
                 .padding(.vertical, Espaco.fio)
 
+            // O que ESTE aparelho publica, e nada de fileiras de traços: o River 3
+            // Plus não manda uso (%) nem tensão de saída pelo cabo (medido em
+            // 2026-09-06: o servidor do no-break não tem `ups.load` nem
+            // `output.voltage`); manda a soma das tomadas, a potência que puxa da
+            // rede e cada tomada, pela porta serial. O dono viu "Uso —" e
+            // "Saída —" no menu e chamou o que era.
             metricRow("bolt.fill", L10n.t("Carga", "Load"), store.powerText)
-            metricRow("gauge.with.needle", L10n.t("Uso", "Usage"), store.loadText)
-            metricRow("powerplug.fill", L10n.t("Saída", "Output"), store.outputVoltageText)
+            if store.temTomadas {
+                metricRow("powerplug.fill", L10n.t("Entrada da rede", "Grid input"), store.inputPowerText)
+                ForEach(store.tomadas, id: \.rotulo) { tomada in
+                    metricRow("poweroutlet.type.b", tomada.rotulo, tomada.valor)
+                }
+            }
+            if store.temUsoESaida {
+                metricRow("gauge.with.needle", L10n.t("Uso", "Usage"), store.loadText)
+                metricRow("powerplug.fill", L10n.t("Saída", "Output"), store.outputVoltageText)
+            }
 
             divider
 

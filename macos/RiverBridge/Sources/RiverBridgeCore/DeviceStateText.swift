@@ -39,7 +39,7 @@ public enum DeviceStateText {
         case "enviado": return (L10n.t("Desligamento enviado", "Shutdown sent"), .perigo)
         case "fonte_nao_real": return (L10n.t("Bloqueada — fonte não aceita", "Blocked — source not accepted"), .bloqueio)
         case "fonte_nao_local": return (L10n.t("Bloqueada — NUT não é local", "Blocked — NUT not local"), .bloqueio)
-        case "corte_nao_configurado": return (L10n.t("Bloqueada — corte do River não configurado", "Blocked — River cutoff not set"), .bloqueio)
+        case "corte_nao_configurado": return (L10n.t("Bloqueada — defina o corte do River em Ajustes › River", "Blocked — set the River cutoff in Settings › River"), .bloqueio)
         case "limiar_nao_configurado": return (L10n.t("Bloqueada — limiar não configurado", "Blocked — threshold not set"), .bloqueio)
         case "limiar_abaixo_do_corte": return (L10n.t("Bloqueada — o limiar precisa ficar acima do corte do River",
                                                       "Blocked — the threshold must sit above the River cutoff"), .bloqueio)

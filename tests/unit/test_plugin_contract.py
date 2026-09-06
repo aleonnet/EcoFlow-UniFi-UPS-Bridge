@@ -53,8 +53,8 @@ def test_contract_attributes(cls):
 def test_contract_methods(cls, cfg, tmp_path):
     """build/observe/status/drain run under the anti-spawn fence.
 
-    `udr7_cutoff_percent=0` (the default of the minimal config) matters: it makes
-    `_first_fail` return `corte_nao_configurado` BEFORE the known_hosts gate, so
+    `udr7_shutdown_percent=0` (the default of the minimal config) matters: it makes
+    `_first_fail` return `limiar_nao_configurado` BEFORE the known_hosts gate, so
     nothing tries to run ssh-keygen. It matters because `known_host_ok` only
     catches (OSError, SubprocessError) — an AssertionError from the fence would
     escape and be reported as a plugin bug.

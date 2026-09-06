@@ -49,7 +49,9 @@ _ALLOWLIST: dict[str, tuple[type, bool, object, tuple[int, int] | None]] = {
     "UDR7_SSH_USER": (str, False, "root", None),
     "UDR7_SSH_KEY": (str, False, "", None),
     "UDR7_EXPECTED_SERIAL": (str, False, "", None),
-    "UDR7_CUTOFF_PERCENT": (int, False, 0, (0, 48)),
+    # 2 % por padrão (dono, 2026-09-06): é o nível em que o River corta a saída
+    # sozinho; 0 = "não configurado" e bloqueia o armamento.
+    "UDR7_CUTOFF_PERCENT": (int, False, 2, (0, 48)),
     "UDR7_SHUTDOWN_PERCENT": (int, False, 0, (0, 50)),
     "UDR7_DISCHARGE_SECONDS_PER_PCT": (int, False, 0, (0, 3600)),
     "UDR7_RUNTIME_MINUTES": (int, False, 0, (0, 60)),
@@ -175,7 +177,7 @@ class BridgeConfig:
     udr7_ssh_user: str = "root"
     udr7_ssh_key: str = ""
     udr7_expected_serial: str = ""
-    udr7_cutoff_percent: int = 0
+    udr7_cutoff_percent: int = 2
     udr7_shutdown_percent: int = 0
     udr7_discharge_seconds_per_pct: int = 0
     udr7_runtime_minutes: int = 0

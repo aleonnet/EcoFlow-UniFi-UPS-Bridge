@@ -257,8 +257,8 @@ struct SettingsView: View {
                                            value: $cutoff, range: 0...48, unit: "%",
                                            zeroLabel: L10n.t("não configurado", "not set"), accent: accent,
                                            estreito: DeviceSheetMetrics.isNarrow(width: hostSize.width))
-                    .comDica(L10n.t("O nível em que o River corta a saída sozinho, se você o configurou no aplicativo dele. O serviço usa esse número para calcular quanto tempo ainda resta e nunca prometer mais autonomia do que existe.",
-                                "The level at which the River cuts its output on its own, if you set that in its own app. The service uses this number to work out how much time is left and never promise more runtime than exists."))
+                    .comDica(L10n.t("O nível em que o River corta a saída sozinho (2% de fábrica; mude se você o ajustou no aplicativo dele). O serviço usa esse número para calcular quanto tempo resta. Em zero, a proteção não pode ser armada.",
+                                "The level at which the River cuts its output on its own (2% by default; change it if you set it in its own app). The service uses this number to work out how much time is left. At zero, the protection cannot be armed."))
                     if riverChanged {
                         HStack {
                             Text(L10n.t("Vale para todos os dispositivos protegidos.", "Applies to every protected device."))

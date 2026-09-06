@@ -9,6 +9,25 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.6] — 2026-09-06
+
+### Mudado
+- **O corte do River nasce em 2 %** (decisão do dono, 2026-09-06): é o nível em que o River
+  corta a saída sozinho; zero continua sendo "não configurado" e bloqueia o armamento. A folha
+  do dispositivo passa a dizer onde se resolve ("Bloqueada — defina o corte do River em
+  Ajustes › River"), e a dica do controle diz o padrão e o efeito do zero.
+- **O menu de barra mostra o que o River publica.** "Uso" e "Saída" ficavam fixos em "—": o
+  River não publica uso (%) nem tensão de saída (medido: o servidor do no-break não tem
+  `ups.load` nem `output.voltage`). Entram **Entrada da rede** (o que o River puxa da tomada,
+  carregamento incluído) e as **quatro tomadas**; Uso e Saída só aparecem num no-break que os
+  publica. Teste no Core.
+
+### Bancada no Mac mini (2026-09-06, por ssh) — o UDR7 de ponta a ponta
+- Endereço do console gravado pela API; **Testar conexão** com a chave do serviço: `alcance:
+  true`, "UniFi Dream Router 7", firmware 5.1.31, desligamento disponível. Corte 2 % pela API
+  (a quente). Modo ensaio desligado: estado **armado** (`armado_nao_verificado` = armado, sem
+  queda real ainda; aviso `margin_unknown` porque a descarga por ponto não foi medida).
+
 ## [0.8.5] — 2026-09-06
 
 O dono, com o PowerManager em modo Remoto: "por que não permitimos ambos?". Medido no Mac

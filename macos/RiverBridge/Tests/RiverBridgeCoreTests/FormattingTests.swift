@@ -192,6 +192,33 @@ import Testing
 }
 
 @MainActor
+@Test func oMenuMostraOQueORiverPublicaENaoFileirasDeTracos() {
+    // O River 3 Plus não publica uso (%) nem tensão de saída — o servidor do
+    // no-break não tem `ups.load` nem `output.voltage` (medido no Mac mini em
+    // 2026-09-06). O menu de barra mostrava "Uso —" e "Saída —" fixos; o dono
+    // chamou o que era. As duas linhas só existem para um no-break que as
+    // publica; para o River entram a entrada da rede e as quatro tomadas.
+    let river = TelemetryStore()
+    river.apply(SSEMessage(event: "state", data: #"""
+    {"power": {"state": "ONLINE", "output_power_w": 83.2, "input_power_w": 85.7},
+     "battery": {"charge_percent": 100, "runtime_seconds": 149940},
+     "outlets": {"total_w": 83.2, "input_w": 85.7, "ac_w": 78.1, "dc_w": 0, "usb_a_w": 0, "usb_c_w": 0}}
+    """#))
+    #expect(river.temUsoESaida == false)
+    #expect(river.temTomadas)
+    #expect(river.inputPowerText == "86 W")
+    #expect(river.tomadas.count == 4)
+
+    let generico = TelemetryStore()
+    generico.apply(SSEMessage(event: "state", data: #"""
+    {"power": {"state": "ONLINE", "load_percent": 12, "output_voltage_v": 120.0},
+     "battery": {"charge_percent": 90}}
+    """#))
+    #expect(generico.temUsoESaida)
+    #expect(generico.temTomadas == false)
+}
+
+@MainActor
 @Test func outletsFromTheSerialPortReachTheScreen() {
     // O River publica consumo por tomada pela porta serial do próprio cabo; o
     // serviço junta isso ao estado. A tela mostra o que chegou, e "—" no que não.
