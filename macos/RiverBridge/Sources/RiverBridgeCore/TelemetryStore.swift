@@ -15,7 +15,11 @@ public enum ConnectionPhase: Equatable, Sendable {
 public final class TelemetryStore {
     public private(set) var latest: UpsState?
     public private(set) var events: [BridgeEvent] = []
-    public private(set) var phase: ConnectionPhase = .connecting
+    public private(set) var phase: ConnectionPhase = .connecting {
+        // O widget precisa saber quando o serviço cai ou volta (0.10.0). Só
+        // quando muda: `.live` chega a cada mensagem do stream.
+        didSet { if oldValue != phase { gravarRetrato() } }
+    }
     /// Increments on every applied state reading — the UI's data heartbeat.
     public private(set) var beat: Int = 0
     /// Sobe a cada limpeza de eventos. As telas que listam eventos observam este
@@ -38,6 +42,13 @@ public final class TelemetryStore {
     private var task: Task<Void, Never>?
     private var healthTask: Task<Void, Never>?
     private let client: APIClient?
+    /// Onde o retrato do widget é gravado (0.10.0). `nil` = não grava — é o
+    /// padrão, o dos testes e das cópias de mutação; o App passa o contêiner do
+    /// grupo. Sem isto a suíte escrevia no contêiner real do dono (revisão fria).
+    private let retratoURL: URL?
+    /// O App liga aqui o `WidgetCenter.reloadTimelines`; o Core não conhece o WidgetKit.
+    private let aoRecarregarWidget: (() -> Void)?
+    private var ultimoRetrato: RetratoDoWidget?
     private let seams: [String: String]
     /// `--seam-dispositivos <devices.json>` / `--seam-health <health.json>`: a
     /// screenshot run populates the screens from the SAME fixtures the tests
@@ -56,8 +67,12 @@ public final class TelemetryStore {
     /// developer's machine and pass or fail depending on who runs it.
     public init(arguments: [String] = ProcessInfo.processInfo.arguments,
                 client: APIClient? = nil,
-                environment: [String: String] = ProcessInfo.processInfo.environment) {
+                environment: [String: String] = ProcessInfo.processInfo.environment,
+                retrato: URL? = nil,
+                aoRecarregarWidget: (() -> Void)? = nil) {
         self.client = client
+        self.retratoURL = retrato
+        self.aoRecarregarWidget = aoRecarregarWidget
         let seams = DeviceNames.parseSeams(arguments)
         self.seams = seams
         self.environment = environment
@@ -115,6 +130,7 @@ public final class TelemetryStore {
         let chain = try? await api.health()
         guard mine == healthGeneration else { return }
         health = chain
+        gravarRetrato()          // o widget também mostra "sem leitura" quando o NUT falha
         // `if let`: with the service down the state disappears, but the name is
         // configuration and must stay. Without the guard it would snap back to
         // "UDR7" the moment a GET failed.
@@ -183,6 +199,7 @@ public final class TelemetryStore {
             if let state = try? decoder.decode(UpsState.self, from: data) {
                 latest = state
                 beat &+= 1
+                gravarRetrato()
             }
         case "event":
             if let event = try? decoder.decode(BridgeEvent.self, from: data) {
@@ -192,6 +209,20 @@ public final class TelemetryStore {
         default:
             break
         }
+    }
+
+    // MARK: - O retrato do widget (0.10.0)
+
+    /// Grava o retrato para o widget quando o CONTEÚDO mudou, e pede recarga
+    /// quando o SIGNIFICADO mudou (RetratoDoWidget.deveRecarregar). Sem destino
+    /// (`retrato: nil` no init) não faz nada.
+    public func gravarRetrato(agora: Date = .now) {
+        guard let retratoURL else { return }
+        let novo = RetratoDoWidget.de(estado: latest, viva: lendoAgora, emPortugues: L10n.cachedIsPT, agora: agora)
+        if let ultimo = ultimoRetrato, ultimo.mesmoConteudo(que: novo) { return }
+        try? novo.gravar(em: retratoURL)
+        if RetratoDoWidget.deveRecarregar(anterior: ultimoRetrato, novo: novo) { aoRecarregarWidget?() }
+        ultimoRetrato = novo
     }
 
     /// Só para teste: encena a queda do serviço sem abrir socket nenhum. A fase

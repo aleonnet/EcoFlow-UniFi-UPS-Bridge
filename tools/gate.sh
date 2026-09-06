@@ -1087,6 +1087,24 @@ if [ -d "$APP_DIR" ]; then
         oEstadoArmadoNaoAcusaAlcance
 fi
 
+# S76 — o app só pede recarga do widget em mudança de SIGNIFICADO (0.10.0; o
+# WidgetKit dá 40–70 recargas por dia). Mutante: pede sempre.
+if [ -d "$APP_DIR" ]; then
+    cena_mutacao_swift S76 Sources/RiverBridgeCore/RetratoDoWidget.swift \
+        '        return mudouFonte || mudouBaixa || mudouServico || cruzouDegrau' \
+        '        return true' \
+        naoRecarregaSemMudanca
+fi
+
+# S77 — retrato com mais de meia hora vira traço no widget, nunca valor velho como
+# presente (0.10.0). Mutante: o limite passa de 30 min para 30 h.
+if [ -d "$APP_DIR" ]; then
+    cena_mutacao_swift S77 Sources/RiverBridgeCore/RetratoDoWidget.swift \
+        '    public static let limiteDoTraco: TimeInterval = 30 * 60' \
+        '    public static let limiteDoTraco: TimeInterval = 30 * 3600' \
+        depoisDeMeiaHoraETraco
+fi
+
 # S74 — na folha do River, tempo para carga completa sem leitura é traço, nunca
 # "0 min" (0.9.0: o serviço publica null quando o aparelho não está carregando).
 if [ -d "$APP_DIR" ]; then
