@@ -9,6 +9,20 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.7] — 2026-09-06
+
+### Corrigido
+- **O aplicativo caía ao abrir 6 h, 24 h ou 7 dias de eventos** (relato do dono com o
+  relatório de queda, 2026-09-06: `EXC_BREAKPOINT` dentro do Charts). Causa medida: o
+  histograma de eventos dá uma cor por rótulo com domínio explícito, e a legenda só conhecia
+  os cinco eventos do no-break e os dos dispositivos; os eventos do cabo
+  (`CABO_LARGADO_AUTOMATICO`, `CABO_RETOMADO_AUTOMATICO`) entravam na barra com um rótulo
+  fora do domínio, e o Swift Charts derruba o processo nesse caso (reproduzido fora do app com
+  `ImageRenderer`: rc 133). A legenda passa a nascer dos MESMOS eventos que viram barra
+  (`LegendaDeEventos`, no Core, pura e testada): bridge, dispositivos, demais eventos do
+  serviço e, no fim, qualquer rótulo que nenhuma lista conheça — nenhuma barra fica sem cor.
+  Cena de mutação em Swift no gate (S68, com o rito novo `cena_mutacao_swift`).
+
 ## [0.8.6] — 2026-09-06
 
 ### Mudado

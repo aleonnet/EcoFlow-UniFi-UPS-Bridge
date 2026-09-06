@@ -85,7 +85,13 @@ public struct DeviceEventKind: Equatable, Sendable {
     /// Chart legend. The colour scale's DOMAIN is this string, so it has to be
     /// unique per type — with any name the user picks.
     public func short(name: String) -> String {
-        "\(name) \(L10n.t(shortPT, shortEN))"
+        short(name: name, emPortugues: L10n.cachedIsPT)
+    }
+
+    /// A mesma legenda com o idioma DADO: quem monta uma lista inteira lê o
+    /// idioma uma vez e passa-o adiante, para todos os rótulos saírem no mesmo.
+    public func short(name: String, emPortugues: Bool) -> String {
+        "\(name) \(emPortugues ? shortPT : shortEN)"
     }
 
     /// Timeline row.
@@ -296,7 +302,8 @@ public struct DeviceTypeDescriptor: Identifiable, Equatable, Sendable {
     /// Portuguese one on an English screen, 2026-09-03). UDR7 is the same in both.
     public let defaultNamePT: String
     public let defaultNameEN: String
-    public var defaultName: String { L10n.t(defaultNamePT, defaultNameEN) }
+    public var defaultName: String { defaultName(emPortugues: L10n.cachedIsPT) }
+    public func defaultName(emPortugues: Bool) -> String { emPortugues ? defaultNamePT : defaultNameEN }
     public let labelPT: String
     public let labelEN: String
     public let blurbPT: String
@@ -470,21 +477,25 @@ extension DeviceNames {
         return DeviceNames(byPluginID: names)
     }
 
-    public func name(forDevice id: String, type: DeviceTypeDescriptor? = nil) -> String {
-        byPluginID[id] ?? type?.defaultName ?? id
+    public func name(forDevice id: String, type: DeviceTypeDescriptor? = nil,
+                     emPortugues: Bool = L10n.cachedIsPT) -> String {
+        byPluginID[id] ?? type?.defaultName(emPortugues: emPortugues) ?? id
     }
 
     /// The owner of an event row. A known instance id wins; without one, a
     /// single instance of the event's type is unambiguous; otherwise the type's
-    /// default name — never a guess between two devices.
-    public func name(forEvent type: String, device: String?, devices: [DeviceInstance]) -> String {
+    /// default name — never a guess between two devices. `emPortugues`: the
+    /// language of that default name, so a caller building a whole list reads
+    /// the (global) language once and every name comes out in the same one.
+    public func name(forEvent type: String, device: String?, devices: [DeviceInstance],
+                     emPortugues: Bool = L10n.cachedIsPT) -> String {
         guard let kind = DeviceTypeRegistry.type(forEventType: type) else { return "" }
         // An owner that is no longer listed (a removed instance) keeps the type's
         // name — never another instance's (revisão fria, 2026-09-03).
-        if let device { return byPluginID[device] ?? kind.defaultName }
+        if let device { return byPluginID[device] ?? kind.defaultName(emPortugues: emPortugues) }
         let ofType = devices.filter { $0.type == kind.id }
-        if ofType.count == 1 { return name(forDevice: ofType[0].id, type: kind) }
-        return kind.defaultName
+        if ofType.count == 1 { return name(forDevice: ofType[0].id, type: kind, emPortugues: emPortugues) }
+        return kind.defaultName(emPortugues: emPortugues)
     }
 
     /// B14: two instances with the same name would collapse in the chart's

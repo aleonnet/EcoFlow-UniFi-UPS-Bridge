@@ -412,23 +412,13 @@ struct ChartsView: View {
         .padding(.trailing, Espaco.mini)
     }
 
-    /// Chart legend label per (instance, type) — distinct hues so the stacked
-    /// histogram separates types that share a color in the list (Queda × Bateria
-    /// baixa). The colour scale's DOMAIN is this text, so it has to be unique per
-    /// instance AND type: the instance goes in by its unique label (ordinal when
-    /// two share a name), and an event without an owner falls to the only
-    /// instance of its type.
+    /// O rótulo de uma barra: o mesmo que dá o domínio da escala de cor. A
+    /// regra "toda barra tem cor no domínio" e a sua prova vivem em
+    /// LegendaDeEventos (Core), porque foi um rótulo fora do domínio que
+    /// derrubou o aplicativo (2026-09-06).
     private func legendLabel(type: String, device: String?) -> String {
-        if let kind = DeviceTypeRegistry.eventKind(type) {
-            let dono = device.flatMap { uniqueLabels[$0] }
-                ?? store.deviceNames.name(forEvent: type, device: device, devices: store.devices)
-            return kind.short(name: dono)
-        }
-        // Um só vocabulário, o mesmo da linha do tempo: sem isto, cada tela
-        // tinha a sua lista e a que faltasse mostrava o nome cru na legenda.
-        return DeviceTypeRegistry.qualquerEvento(type)?.short(name: "")
-            .trimmingCharacters(in: .whitespaces)
-            ?? L10n.t("Outro", "Other")
+        LegendaDeEventos.rotulo(tipo: type, dispositivo: device, rotulosUnicos: uniqueLabels,
+                                nomes: store.deviceNames, dispositivos: store.devices)
     }
 
     // Events over time (owner 2026-08-31): stacked histogram — color = type,
@@ -440,26 +430,15 @@ struct ChartsView: View {
         }
     }
 
-    private static let bridgeTypes = ["POWER_LOSS", "POWER_RESTORED", "LOW_BATTERY", "COMM_LOST", "COMM_RESTORED"]
-
     private var uniqueLabels: [String: String] { DeviceNames.uniqueLabels(instances: store.devices) }
 
-    /// The legend and the colour domain: one entry per (instance, type) that is
-    /// PRESENT in the filtered rows, in a stable order (bridge first, then each
-    /// instance's vocabulary). Absent keys never take a hue nor a legend slot.
+    /// The legend and the colour domain: one entry per label PRESENT in the
+    /// filtered rows, in a stable order, and never one missing (Charts traps).
     private var legendKeys: [(label: String, color: Color)] {
-        let present = Set(filteredEventRows.map { legendLabel(type: $0.type, device: $0.device) })
-        var ordered: [(String, String?)] = Self.bridgeTypes.map { ($0, nil) }
-        for device in store.devices {
-            for kind in DeviceTypeRegistry.type(id: device.type)?.events ?? [] { ordered.append((kind.type, device.id)) }
-        }
-        var seen = Set<String>()
-        var out: [(label: String, color: Color)] = []
-        for (type, device) in ordered {
-            let label = legendLabel(type: type, device: device)
-            if present.contains(label), seen.insert(label).inserted { out.append((label, legendColor(type))) }
-        }
-        return out
+        LegendaDeEventos.chaves(
+            eventos: filteredEventRows.map { (tipo: $0.type, dispositivo: $0.device) },
+            nomes: store.deviceNames, dispositivos: store.devices
+        ).map { (label: $0.rotulo, color: legendColor($0.tipo)) }
     }
 
     /// Protection events share one family (purple, with red/orange for the

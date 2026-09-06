@@ -989,6 +989,59 @@ if [ -d "$APP_DIR" ]; then
     fi
 fi
 
+# Mutação em SWIFT: o mesmo rito de `cena_mutacao`, sobre o pacote do app. Copia
+# o pacote (sem o .build), planta o defeito e roda SÓ o teste que tem de reprovar.
+# Custa uma compilação limpa do Core e dos testes; é o preço de uma cerca provada.
+cena_mutacao_swift() {
+    local nome="$1" arq="$2" ancora="$3" mutante="$4" filtro="$5"
+    # Linha de base: o teste tem de existir e passar na árvore limpa. O filtro
+    # do `swift test` é uma expressão regular sobre `Módulo.função()` — um teste
+    # de função livre NÃO tem suíte no nome, e um filtro que não casa nada
+    # devolve "0 tests … passed" com rc 0 (revisão fria da 0.8.7).
+    (cd "$APP_DIR" && swift test --filter "$filtro" >"/tmp/gate_base_$nome.log" 2>&1)
+    local n
+    n="$(grep -Eo 'with [0-9]+ test' "/tmp/gate_base_$nome.log" | tail -1 | grep -Eo '[0-9]+')"
+    if [ -z "$n" ] || [ "$n" -lt 1 ] || grep -q "✘ Test" "/tmp/gate_base_$nome.log"; then
+        erro "$nome baseline: o filtro $filtro não seleciona teste verde na árvore limpa — cauda:"
+        tail -3 "/tmp/gate_base_$nome.log"; return
+    fi
+    local M
+    M="$(mktemp -d)"
+    (cd "$APP_DIR" && tar --exclude=.build --exclude=.swiftpm -cf - .) | (cd "$M" && tar -xf -)
+    if ! GATE_ANC="$ancora" GATE_MUT="$mutante" "$PY" - "$M/$arq" <<'EOF'
+import os, sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+anc, mut = os.environ["GATE_ANC"], os.environ["GATE_MUT"]
+if s.count(anc) != 1:
+    sys.exit(f"âncora não única ({s.count(anc)}): {anc!r} — atualizar gate.sh")
+open(p, "w", encoding="utf-8").write(s.replace(anc, mut, 1))
+EOF
+    then erro "$nome: âncora da mutação sumiu — atualizar gate.sh"; rm -rf "$M"; return; fi
+    (cd "$M" && swift test --filter "$filtro" >"/tmp/gate_mut_$nome.log" 2>&1)
+    local rc=$?
+    rm -rf "$M"
+    if [ "$rc" -eq 0 ]; then
+        erro "$nome mutação: o teste $filtro passou com o defeito plantado"; return
+    fi
+    if ! grep -q "✘ Test" "/tmp/gate_mut_$nome.log"; then
+        erro "$nome mutação: o mutante nem chegou a rodar o teste (rc=$rc) — cauda:"; tail -3 "/tmp/gate_mut_$nome.log"; return
+    fi
+    ok "$nome mutação (Swift): baseline $n verde; cerca $filtro reprovou o defeito plantado (rc=$rc)"
+}
+
+# S68 — toda barra do histograma de eventos tem a sua cor no domínio da escala. O
+# Swift Charts derruba o app (SIGTRAP) com um valor fora do domínio explícito —
+# medido em 2026-09-06, e foi a queda do dono ao abrir 24 h/7 d de eventos (os
+# eventos do cabo não estavam na legenda). Mutante: tira o passo que põe no
+# domínio o rótulo que nenhuma lista conhece.
+if [ -d "$APP_DIR" ]; then
+    cena_mutacao_swift S68 Sources/RiverBridgeCore/LegendaDeEventos.swift \
+        "            let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) ?? sobra + indice" \
+        "            guard let posicao = lugar(tipo: evento.tipo, dispositivo: evento.dispositivo, dispositivos: dispositivos) else { continue }" \
+        todaBarraTemASuaCorNoDominio
+fi
+
 # S8..S10 — instalador (ordem 7): dry-run inócuo, idempotência 0→100,
 # uninstall preserva o alheio. Tudo em scratch com stubs de brew/launchctl.
 INST="$(mktemp -d)"

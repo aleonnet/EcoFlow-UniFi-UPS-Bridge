@@ -265,6 +265,52 @@ ensaio desligado, como feito para trocar 0.8.5 → 0.8.6 sem nova autorização.
 **Releases:** 0.8.0 … 0.8.6, todas assinadas e notarizadas (credencial no chaveiro de arquivo,
 `RUB_NOTARY_KEYCHAIN`).
 
+### 5a. A queda ao abrir 6 h / 24 h / 7 d de eventos (2026-09-06, 11h02) — 0.8.7
+
+O dono mandou o relatório de queda: `EXC_BREAKPOINT (SIGTRAP)` com a pilha inteira dentro de
+`Charts`, disparada por `GeometryReader` — nada nosso na pilha, e por isso a causa tinha de ser
+medida, não lida. Diagnóstico:
+
+- **O recorte do mini** (`GET /v1/events/log?from=<7 dias>`, 24 eventos): `COMM_RESTORED` 6,
+  `COMM_LOST` 5, `CABO_RETOMADO_AUTOMATICO` 5, `CABO_LARGADO_AUTOMATICO` 5, `UDR7_ARMED` 2,
+  `UDR7_DISARMED` 1. Os do cabo são das 09h00–09h06 de hoje: entram em 6 h, 24 h e 7 d; **não**
+  entram em 1 h — por isso "ao filtrar por tempo".
+- **A legenda do histograma** (`legendKeys`, em `ChartsView.swift`) só conhecia os cinco tipos do
+  bridge e os dos dispositivos; `legendLabel` dava rótulo a QUALQUER tipo. Um evento do cabo virava
+  barra com rótulo fora do domínio de `chartForegroundStyleScale(domain:range:)`.
+- **O Swift Charts derruba o processo nesse caso** — medido fora do app, nesta máquina
+  (macOS 26.6.2): `ImageRenderer` sobre um `Chart` de duas barras com escala explícita; domínio
+  `["A"]` e uma barra `"B"` → `rc=133` (Trace/BPT trap); domínio `["A","B"]` → renderiza.
+
+Correção (da classe, não do caso): a legenda passa a nascer dos MESMOS eventos que viram barra, em
+função pura no Core (`LegendaDeEventos.chaves`): bridge → vocabulário de cada instância → demais
+eventos do serviço → **qualquer rótulo presente que nenhuma lista produziu** (tipo novo, instância
+removida). Teste `todaBarraTemASuaCorNoDominio` com os seis casos; cena S68 no gate com o rito novo
+`cena_mutacao_swift` (mutante desliga o último passo → o teste reprova). Release 0.8.7.
+
+Revisão fria do diff, rodada 1: **um bloqueador**, meu — a cena S68 filtrava por
+`LegendaDeEventosTests/todaBarra…`, e o filtro do `swift test` é uma expressão regular sobre
+`Módulo.função()`: teste de função livre não tem suíte no nome, o filtro não casava nada, e o
+`swift test` devolve "0 tests … passed" com rc 0. A cena rodava zero testes. Classe do que faltou:
+**conferir o filtro contra `swift test --list-tests` antes de escrever a cena** (o mesmo rito que o
+`cena_mutacao` em Python já tinha: baseline com contagem de testes ≥ 1). Correção: filtro pelo nome da
+função e linha de base em árvore limpa dentro do `cena_mutacao_swift`.
+
+Segunda correção, achada pelo gate (S7 vermelho numa rodada e verde noutra): a primeira versão
+comparava rótulos calculados em duas passadas, e o idioma é estado global que um teste do Core alterna
+em paralelo — entre as duas passadas o rótulo mudava de idioma e o evento caía na sobra. No app não
+acontece (uma passada, na thread principal), mas é desenho frágil. Refeito: o rótulo de cada evento é
+calculado uma vez, a ordem sai da identidade do evento (tipo e dono), e o idioma é parâmetro
+explícito lido uma vez por chamada. Revisão fria dessa versão: aprovada, com um aviso certeiro — o nome
+padrão do tipo (usado para instância removida ou sem nome) ainda lia o idioma global; só se vê com host
+SSH ("Servidor SSH"/"SSH server"). O idioma passou também por esse caminho, e o teste ganhou um host SSH
+removido, conferido nos dois idiomas. Suíte inteira rodada oito vezes ao longo das correções: verde.
+
+Varredura da classe (`git grep` de toda escala explícita nos fontes do app): a de cor é a única
+categórica; as duas `chartXScale(domain:)` são contínuas (datas), e uma data fora do domínio contínuo
+**não** derruba — medido do mesmo jeito (`ImageRenderer`, barra 2 h atrás num domínio de 1 h:
+renderiza, rc 0).
+
 **Próximo passo (frentes pedidas pelo dono, cada uma com plano e banca):**
 1. **B49 — folha de detalhe do River** lendo tudo o que a serial entrega (capacidade mAh, 4 temperaturas,
    tempo para carga completa, entrada solar/DC publicada; firmware só se um comando HID próprio não
