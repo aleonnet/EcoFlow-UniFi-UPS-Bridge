@@ -228,6 +228,19 @@ nosso leitor cai com o aplicativo aberto (o supervisor conta as quedas; referên
 anterior). Cenas S67/S67b. Para ele mostrar os watts por tomada: apontar o Remoto dele para
 `river-bridge` (a mesma conta serve; `LOGIN river-bridge` → OK).
 
+**0.8.5 instalada no mini pelo disco publicado (sha 9f11cef0…), 2026-09-06, 10h35, e medida:**
+
+```
+Gatekeeper (quarentena forçada): disco e programa → Notarized Developer ID
+POST /v1/service/restart → {"version": "0.8.5"}; interface aberta
+PowerManager (Remoto) aberto 40 s: cabo {"lendo": true, "pausado": false} o tempo todo; leitor=1, upsd=1
+  registro dele no mesmo instante: upsc "river-office@127.0.0.1:3493" → battery.runtime: 151740  (os dois lendo)
+fechar → cabo {"lendo": true}; diário: "aplicativo_fechou_sem_tomar_o_cabo" (1); nenhum evento novo de cabo
+```
+
+Falta medir, e é o dono quem alterna o modo na tela deles: **modo Local** (linhas 7b/8 da bancada):
+o leitor cai, o cabo é cedido na olhada seguinte, e volta ao fechar.
+
 ## 5. Próximo passo, na ordem
 
 (A 0.8.2 já foi instalada pelo dono e lê o River — §4b. O roteiro abaixo vale para a 0.8.3.)
