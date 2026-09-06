@@ -356,10 +356,45 @@ Compartilhar… › Salvar como… por Acessibilidade (osascript via ssh; `menu 
 Não medido nesta frente: um valor em minutos de `time_to_full_minutes` (exige o River abaixo de 100 % — a
 primeira queda real, B42/B43). O `.zip` da bancada ficou em `~/Desktop` do mini (o dono pode abrir no Numbers).
 
+### 5c. A 0.10.0 (2026-09-06, 15h00–17h10): o widget do macOS
+
+Plano e revisão: `2026-09-06-1500-o-widget-do-macos-0-10-0.md` (+ `…-banca.md`, `…review.md`). Plano: rodada 1
+com cinco bloqueadores de levantamento meu (o Dropover é App Store, não Developer ID; gravação nos testes iria
+para o contêiner real; "medido" onde era inferência; conta do orçamento; Info.plist incompleto), rodada 2 com um
+mecânico. Diff: rodada 1 com um bloqueador de desenho (a hora do retrato só avançava na mudança → widget
+acusava velhice com o app aberto; corrigido: batimento de 2 min sem recarga), rodada 2 aprovada com dois avisos
+aplicados (batimento também sem serviço instalado; última entrada da linha do tempo em 25 min). Gate: **158
+[OK]**, S76/S77/S78 verdes, só S15 (B17). Receita provada nesta máquina antes de codificar (`prova-widget.sh`:
+appex mínimo em pacote Developer ID registra no `pluginkit`; ad-hoc também registra; contêiner do grupo gravável).
+
+**Efeito colateral meu, corrigido:** o pacote de prova aberto em `~/Applications` registrou e subiu o serviço
+real neste MacBook (15h24); desregistrado pelo ajudante do próprio pacote (`unregister=ok`,
+`status_depois=notRegistered`). Ficaram `/Library/Application Support/river-unifi-bridge` e
+`/Library/Logs/river-unifi-bridge.log` (root) neste MacBook — inofensivos, mas são do dono apagar com sudo.
+Lição na memória: prova de pacote NUNCA em `~/Applications`.
+
+Bancada no mini, por mim:
+```
+release v0.10.0: tools/release.sh --no-gate após gate verde → publicada e NOTARIZADA com o appex dentro; DMG sha256 c9b1a9fc514ea3f0…
+mini: curl DMG + SHA256SUMS → sha confere; spctl -t open → Notarized Developer ID; rm + cp -R; xattr -dr; Info.plist 0.10.0
+appex: Authority=Developer ID Application …; flags=0x10000(runtime); direitos app-sandbox true + 8A47D8UNV2.com.river.bridge
+serviço: PUT udr7 dry_run true → POST restart → 14 s: health nut ok, bridge ok → PUT dry_run false → 6 s: udr7 armado_nao_verificado
+pacote python do serviço 0.10.0; `id -u` = 501 e `stat /dev/console` = alessandro (o usuário do ssh É o da sessão gráfica)
+open -a "River Bridge" → 15 s: viva; relatórios de queda 5 → 5
+pluginkit -m -v -p com.apple.widgetkit-extension → com.river.bridge-ui.widget(0.10.0) … /Applications/River Bridge.app/Contents/PlugIns/RiverBridgeWidget.appex
+~/Library/Group Containers/8A47D8UNV2.com.river.bridge/retrato.json (205 bytes):
+  {"autonomia_s":142740,"bateria_baixa":false,"carga_pct":99,"carregando":false,"consumo_w":110.9,"em_portugues":true,
+   "entrada_w":110.9,"estado":"ONLINE","quando":"2026-09-06T20:08:35Z","servico_no_ar":true}
+recargas.log: ausente — o widget ainda não foi adicionado à mesa (é o passo do dono)
+```
+Não observável por ssh: qualquer diálogo do sistema sobre acesso ao contêiner ao abrir pelo Finder (o dono
+registra se aparecer). **Passo do dono:** botão direito na mesa › Editar widgets › River Bridge (pequeno e
+médio); julgar o visual; depois de 24 h, `wc -l ~/Library/Group\ Containers/8A47D8UNV2.com.river.bridge/recargas.log`
+e os intervalos dizem quantas recargas o sistema honrou.
+
 **Próximo passo (frentes pedidas pelo dono, cada uma com plano e banca):**
 1. ~~B49~~ **feita na 0.9.0** (acima).
-2. **B48 — widget do macOS** (WidgetKit, `Contents/PlugIns`, grupo de aplicativos, retrato gravado pelo
-   programa).
+2. ~~B48~~ **feita na 0.10.0** (acima; falta o olho do dono na galeria e o `recargas.log` de 24 h).
 3. **B39 — segundo River por BLE** pela sessão do usuário (TCC não atende serviço root), com a
    biblioteca de `rabits/ha-ef-ble` (River 3 Plus coberto; exige User ID da conta; uma conexão BLE por vez).
 4. O que só o dono pode medir: o PowerManager em modo **Local** (linhas 7b/8 da bancada) e uma queda de
