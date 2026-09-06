@@ -13,6 +13,7 @@ never exit inside a handler (the client would see a reset instead of the 202).
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import os
 from dataclasses import replace
@@ -154,6 +155,9 @@ class ApiServer:
         self.cfg = cfg
         self.state = state
         self.history = history
+        # Exportações de CSV com a thread produtora ainda viva (0.9.0; a cerca da
+        # desconexão no meio do CSV lê este número).
+        self._exportacoes_em_curso = 0
         self.env_path = env_path
         self.restart_cb = restart_cb
         # Sempre um PluginSet: é o que POST/DELETE mutam. Uma lista (fixtures) é
@@ -653,15 +657,32 @@ class ApiServer:
 
         loop = asyncio.get_running_loop()
         fila: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=4)
+        # O consumidor avisa a thread quando o cliente foi embora; sem isso a
+        # thread ficava presa num `put` que ninguém drenava (revisão fria da
+        # 0.9.0, medido: cada desconexão no meio do CSV prendia um worker do
+        # executor e a conexão do SQLite, para sempre).
+        cliente_foi = threading.Event()
         LINHAS_POR_BLOCO = 512
+
+        class _ClienteFoi(Exception):
+            pass
 
         def produz() -> None:
             bloco: list[str] = []
 
             def envia(pedaco: bytes | None) -> None:
-                asyncio.run_coroutine_threadsafe(fila.put(pedaco), loop).result()
+                futuro = asyncio.run_coroutine_threadsafe(fila.put(pedaco), loop)
+                while True:
+                    try:
+                        futuro.result(timeout=0.2)
+                        return
+                    except concurrent.futures.TimeoutError:
+                        if cliente_foi.is_set():
+                            raise _ClienteFoi()
 
             def escreve(texto: str) -> None:
+                if cliente_foi.is_set():
+                    raise _ClienteFoi()
                 bloco.append(texto)
                 if len(bloco) >= LINHAS_POR_BLOCO:
                     envia("".join(bloco).encode("utf-8"))
@@ -671,9 +692,13 @@ class ApiServer:
                 exporta(ts_from, ts_to, escreve)
                 if bloco:
                     envia("".join(bloco).encode("utf-8"))
+            except _ClienteFoi:
+                pass
             finally:
-                envia(None)
+                if not cliente_foi.is_set():
+                    envia(None)
 
+        self._exportacoes_em_curso += 1
         produtor = asyncio.create_task(asyncio.to_thread(produz))
         try:
             while True:
@@ -681,9 +706,17 @@ class ApiServer:
                 if pedaco is None:
                     break
                 await resp.write(pedaco)
+            await resp.write_eof()
         finally:
+            # Aconteça o que acontecer (cliente foi embora, erro do SQLite): a
+            # thread tem de terminar. Avisa e drena a fila até ela acabar.
+            cliente_foi.set()
+            while not produtor.done():
+                while not fila.empty():
+                    fila.get_nowait()
+                await asyncio.sleep(0.02)
+            self._exportacoes_em_curso -= 1
             await produtor
-        await resp.write_eof()
         return resp
 
     async def _h_events_delete(self, request: web.Request) -> web.Response:

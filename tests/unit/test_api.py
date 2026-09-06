@@ -130,6 +130,25 @@ async def test_samples_csv_has_the_columns(client, server):
     assert len((await fora.text()).lstrip("\ufeff").splitlines()) == 1     # só o cabeçalho
 
 
+async def test_a_client_that_leaves_mid_csv_does_not_pin_a_thread(client, server):
+    """Revisão fria da 0.9.0 (medido): o cliente fechava no meio do CSV e a thread
+    produtora ficava presa para sempre num `put` sem leitor, com a conexão do
+    SQLite aberta. Agora o consumidor avisa e drena; a thread termina."""
+    import asyncio
+
+    for i in range(6000):                       # muito mais que 4 blocos de 512 linhas
+        server.history.record_event("POWER_LOSS", "x", ts=1_700_000_000 + i)
+    resp = await client.get("/v1/events/log.csv", headers=client.auth)
+    assert resp.status == 200
+    await resp.content.read(64)                 # lê um pouco e vai embora
+    resp.close()
+    for _ in range(100):
+        if server._exportacoes_em_curso == 0:
+            break
+        await asyncio.sleep(0.05)
+    assert server._exportacoes_em_curso == 0
+
+
 async def test_csv_routes_need_the_token(client):
     assert (await client.get("/v1/events/log.csv")).status == 401
     assert (await client.get("/v1/history/samples.csv")).status == 401

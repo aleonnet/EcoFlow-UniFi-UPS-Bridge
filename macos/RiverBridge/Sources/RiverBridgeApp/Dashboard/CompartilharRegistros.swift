@@ -98,11 +98,19 @@ struct CompartilharRegistros: View {
             case .salvar: salvar(pacote.zip)
             case .compartilhar: compartilhar(pacote.zip)
             }
-        } catch {
+        } catch is APIError {
+            // A rede: o serviço não respondeu (ou recusou) um dos CSV.
             aviso = L10n.t("Histórico indisponível — o programa não alcança o serviço.",
                            "History unavailable — the app can’t reach the service.")
+        } catch {
+            // O disco ou o ditto: o serviço respondeu, o pacote é que não nasceu.
+            aviso = L10n.t("Não foi possível montar o pacote neste Mac (disco ou compressão).",
+                           "The package could not be built on this Mac (disk or compression).")
         }
     }
+
+    /// O ditto falhou (código de saída diferente de zero).
+    private struct CompressaoFalhou: Error { let codigo: Int32 }
 
     /// O ditto do macOS, fora da thread principal.
     private static func comprimir(_ argv: [String]) async throws {
@@ -112,7 +120,7 @@ struct CompartilharRegistros: View {
             processo.arguments = Array(argv.dropFirst())
             try processo.run()
             processo.waitUntilExit()
-            guard processo.terminationStatus == 0 else { throw APIError.notConnected }
+            guard processo.terminationStatus == 0 else { throw CompressaoFalhou(codigo: processo.terminationStatus) }
         }.value
     }
 

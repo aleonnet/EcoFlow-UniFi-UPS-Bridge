@@ -745,6 +745,13 @@ cena_mutacao S72 src/river_unifi_bridge/history.py \
     "                writer.writerow((self._iso_local(r[0]), r[0], r[1], r[3], r[2]))" \
     "                writer.writerow((self._iso_local(r[0]), r[0], r[1], None, r[2]))" \
     tests/unit/test_api.py::test_events_csv_has_the_columns
+# S75 — o cliente que fecha no meio do CSV não prende a thread produtora (0.9.0;
+# revisão fria, medido: sem avisar e drenar, a thread ficava presa num `put` sem
+# leitor, com a conexão do SQLite aberta). Mutante: o consumidor deixa de drenar.
+cena_mutacao S75 src/river_unifi_bridge/api.py \
+    "            while not produtor.done():" \
+    "            while False:" \
+    tests/unit/test_api.py::test_a_client_that_leaves_mid_csv_does_not_pin_a_thread
 
 # --- 0.8.0: a UX que o dono determinou, inteira -------------------------------
 
