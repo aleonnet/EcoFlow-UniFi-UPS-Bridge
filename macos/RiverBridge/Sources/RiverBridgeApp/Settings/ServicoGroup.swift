@@ -28,6 +28,9 @@ struct ServicoGroup: View {
     /// empacotador escreve em `Contents/Library/LaunchDaemons/`.
     static let plistDoServico = "com.river.unifi-bridge.plist"
 
+    /// A fonte viva: o serviço responde? (`.enabled` no sistema é "eligible to
+    /// run", não "rodando" — o dono viu "no ar" ao lado de "sem resposta".)
+    var store: TelemetryStore
     @State private var estado: EstadoDoServico = .naoInstalado
     @State private var recado: String?
     @State private var perguntandoSeRemove = false
@@ -61,8 +64,7 @@ struct ServicoGroup: View {
             // A linha de botões só existe quando há botão: no estado "mova para
             // Aplicativos" sobrava uma divisória com nada embaixo (captura de
             // 2026-09-05).
-            if estado.precisaRegistrar || estado.acaoNaAbertura == .abrirAjustesDoSistema
-                || estado.podeRemover {
+            if estado.precisaRegistrar || estado.acaoNaAbertura != nil || estado.podeRemover {
                 SettingsRows.divider
                 HStack(spacing: Espaco.medio) {
                     if estado.precisaRegistrar {
@@ -74,6 +76,11 @@ struct ServicoGroup: View {
                         Button(AcaoDoServico.abrirAjustesDoSistema.rotulo) {
                             SMAppService.openSystemSettingsLoginItems()
                         }
+                    }
+                    if estado.acaoNaAbertura == .refazerRegistro {
+                        Button(AcaoDoServico.refazerRegistro.rotulo, action: refazerRegistro)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(trabalhando)
                     }
                     Spacer()
                     if estado.podeRemover {
@@ -100,21 +107,20 @@ struct ServicoGroup: View {
                 guard perguntandoSeRemove else { return nil }
                 return PedidoDeConfirmacao(
                     titulo: remocao.pergunta, detalhe: remocao.aviso,
-                    rotuloDaAcao: L10n.t("Remover completamente", "Remove completely"),
+                    rotuloDaAcao: remocao.rotuloDoBotao,
                     destrutivo: true, acao: remover)
             },
             set: { if $0 == nil { perguntandoSeRemove = false } }))
     }
 
     private var remocao: RemocaoCompleta {
-        RemocaoCompleta(estadoExiste: ApiEndpoint.readToken() != nil,
-                        configuracaoDoNutExiste: true)
+        RemocaoCompleta(servicoResponde: store.phase == .live)
     }
 
     private var icone: String {
         switch estado {
         case .noAr: return "checkmark.seal.fill"
-        case .esperandoAprovacao: return "exclamationmark.triangle.fill"
+        case .esperandoAprovacao, .registradoMasParado: return "exclamationmark.triangle.fill"
         case .instaladoPelaLinhaDeComando: return "questionmark.circle.fill"
         default: return "power"
         }
@@ -123,7 +129,7 @@ struct ServicoGroup: View {
     private var cor: Color {
         switch estado {
         case .noAr: return Cor.bom
-        case .esperandoAprovacao, .instaladoPelaLinhaDeComando: return Cor.atencao
+        case .esperandoAprovacao, .registradoMasParado, .instaladoPelaLinhaDeComando: return Cor.atencao
         default: return Cor.neutro
         }
     }
@@ -131,7 +137,7 @@ struct ServicoGroup: View {
     // MARK: - o que a tela faz
 
     private func conferir() {
-        estado = Self.estadoAgora()
+        estado = Self.estadoAgora(respondendo: store.phase == .live)
     }
 
     /// Em que pé o serviço está, AGORA, perguntando ao sistema.
@@ -142,7 +148,19 @@ struct ServicoGroup: View {
     /// quando a verdade era "o serviço não está instalado" (visto pelo dono no
     /// Mac mini, 2026-09-05). Duas fontes para a mesma pergunta, e a errada
     /// falava primeiro.
-    static func estadoAgora() -> EstadoDoServico {
+    static func estadoAgora(respondendo: Bool) -> EstadoDoServico {
+        let registro = registroAgora()
+        return EstadoDoServico.combinado(
+            registro: registro, respondendo: respondendo,
+            haQuantoTempoHabilitado: relogio.haQuantoTempo(registro: registro, respondendo: respondendo))
+    }
+
+    /// O relógio de "habilitado sem resposta" (regra e teste no Core).
+    @MainActor private static var relogio = EstadoDoServico.RelogioDoRegistro()
+
+    /// O que o SISTEMA diz do registro — uma das fontes; a outra é o serviço
+    /// responder, e `estadoAgora(respondendo:)` combina as duas.
+    static func registroAgora() -> EstadoDoServico {
         // A recusa cruzada vem PRIMEIRO: com o serviço instalado pela linha de
         // comando, registrar outro daria dois vigias disputando o mesmo cabo e a
         // mesma porta, e o que perdesse ficaria mudo sem ninguém perceber.
@@ -185,8 +203,22 @@ struct ServicoGroup: View {
         } catch {
             queixa = L10n.t("O macOS respondeu: ", "macOS said: ") + error.localizedDescription
         }
-        let depois = estadoAgora()
+        let depois = registroAgora()
         return (depois == .esperandoAprovacao || depois == .noAr) ? nil : queixa
+    }
+
+    /// Registrado mas parado: desregistra e registra de novo. Apple: "If the
+    /// service is already registered, this method returns" — registrar por
+    /// cima não faz nada; e um registro de instalação anterior não relança o
+    /// serviço sozinho. Refazer pede a autorização de novo — a tela diz isso.
+    static func refazer() async -> String? {
+        do {
+            try await SMAppService.daemon(plistName: plistDoServico).unregister()
+        } catch {
+            return L10n.t("O macOS respondeu: ", "macOS said: ") + error.localizedDescription
+        }
+        relogio = EstadoDoServico.RelogioDoRegistro()
+        return registrar()
     }
 
     /// O registro da ABERTURA: uma tentativa por lançamento do programa, feita
@@ -208,6 +240,16 @@ struct ServicoGroup: View {
         aoMudar()
     }
 
+    private func refazerRegistro() {
+        trabalhando = true
+        Task {
+            recado = await Self.refazer()
+            trabalhando = false
+            conferir()
+            aoMudar()
+        }
+    }
+
     private func remover() {
         trabalhando = true
         recado = nil
@@ -216,13 +258,18 @@ struct ServicoGroup: View {
             // dono dos arquivos (roda como serviço de sistema) e o programa, que
             // roda como o dono, não conseguiria apagá-los. Desregistrar antes
             // mataria o serviço e deixaria a chave do console e as senhas no disco.
-            if let endpoint = ApiEndpoint.discover() {
+            // Sem o serviço respondendo, a confirmação já disse que a chave e as
+            // senhas ficam: não há pedido a fazer, nem erro cru em inglês a mostrar
+            // ("Could not connect to the server", visto pelo dono em 2026-09-06).
+            if store.phase == .live, let endpoint = ApiEndpoint.discover() {
                 let cliente = APIClient(endpoint: endpoint)
                 do {
                     try await cliente.apagarEstadoDoServico()
                 } catch {
-                    recado = L10n.t("Não consegui apagar o estado: ",
-                                    "Could not erase the state: ") + error.localizedDescription
+                    recado = L10n.t("O serviço não apagou a chave e as senhas; elas ficam em "
+                                    + "/Library/Application Support/river-unifi-bridge.",
+                                    "The service did not erase the key and the passwords; they "
+                                    + "stay in /Library/Application Support/river-unifi-bridge.")
                 }
             }
             do {

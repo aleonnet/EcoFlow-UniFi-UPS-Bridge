@@ -258,7 +258,7 @@ struct EnergiaSection: View {
 /// - com uma ficha órfã de uma instalação removida, o painel dizia "sem
 ///   comunicação com o serviço" — como se houvesse um serviço inalcançável —
 ///   quando a verdade era que ele não estava instalado. A pergunta agora é feita
-///   ao sistema (`ServicoGroup.estadoAgora()`), não ao sistema de arquivos.
+///   ao sistema (`ServicoGroup.estadoAgora(respondendo:)`), não ao sistema de arquivos.
 /// - sem o NUT instalado, o serviço sobe, não acha o leitor do no-break e diz
 ///   isso no estado do cabo; a tela não mostrava nada, e o dono via um programa
 ///   vazio e mudo.
@@ -301,8 +301,6 @@ struct AvisoDoTopo: View {
                                     "The River is not being read"),
                       detalhe: motivoDoCabo,
                       simbolo: "cable.connector.horizontal")
-            } else if case .serviceDown(let motivo) = store.phase {
-                ConnectionBanner(reason: motivo)
             }
         }
         .task {
@@ -311,7 +309,7 @@ struct AvisoDoTopo: View {
             // a tela ficava congelada em "falta aprovar" DEPOIS de aprovado —
             // visto pelo dono no Mac mini, 2026-09-05, e ele chamou o que era.
             while !Task.isCancelled {
-                servico = ServicoGroup.estadoAgora()
+                servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
                 if !servico.precisaRegistrar { queixaDoRegistro = nil }
                 if servico.precisaRegistrar {
                     // O registro da abertura: uma vez por lançamento. Depois
@@ -321,7 +319,7 @@ struct AvisoDoTopo: View {
                     let tentativa = ServicoGroup.registrarNaAbertura()
                     if tentativa.tentou {
                         queixaDoRegistro = tentativa.queixa
-                        servico = ServicoGroup.estadoAgora()
+                        servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
                     }
                 }
                 try? await Task.sleep(for: .seconds(2))
@@ -333,20 +331,16 @@ struct AvisoDoTopo: View {
         switch acao {
         case .registrar:
             queixaDoRegistro = ServicoGroup.registrar()
-            servico = ServicoGroup.estadoAgora()
+            servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
             if !servico.precisaRegistrar { queixaDoRegistro = nil }
         case .abrirAjustesDoSistema:
             SMAppService.openSystemSettingsLoginItems()
+        case .refazerRegistro:
+            Task {
+                queixaDoRegistro = await ServicoGroup.refazer()
+                servico = ServicoGroup.estadoAgora(respondendo: store.phase == .live)
+            }
         }
-    }
-}
-
-struct ConnectionBanner: View {
-    let reason: String
-
-    var body: some View {
-        Aviso(tom: .atencao, texto: L10n.t("Serviço parado", "Service down"),
-              detalhe: reason)
     }
 }
 

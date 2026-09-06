@@ -8,7 +8,7 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$RAIZ/macos/RiverBridge"
 DIST="$PKG/dist"
 APP="$DIST/River Bridge.app"
-VERSAO="0.8.2"
+VERSAO="0.8.3"
 
 # ── o serviço dentro do pacote (0.7.0) ────────────────────────────────────────
 # Por que o interpretador vem junto: medido em 2026-09-05 neste macOS 26.6.2 —
@@ -31,10 +31,16 @@ echo "│ swift build -c release"
 (cd "$PKG" && swift build -c release >/dev/null)
 BIN="$PKG/.build/release/RiverBridge"
 [ -x "$BIN" ] || { echo "[ERRO] binário não encontrado: $BIN"; exit 1; }
+# A mão do serviço sobre o próprio registro (0.8.3): só um executável DESTE
+# pacote pode chamar `SMAppService.unregister()`; o serviço o chama quando o
+# pacote vai para o Lixo (remocao.py). Mora em Contents/MacOS, como o programa.
+AJUDANTE="$PKG/.build/release/river-bridge-servico"
+[ -x "$AJUDANTE" ] || { echo "[ERRO] binário não encontrado: $AJUDANTE"; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/RiverBridge"
+cp "$AJUDANTE" "$APP/Contents/MacOS/river-bridge-servico"
 
 echo "│ gerando AppIcon.icns"
 "$RAIZ/tools/make-app-icon.sh" "$APP/Contents/Resources/AppIcon.icns" >/dev/null
@@ -270,9 +276,10 @@ assinar_de_dentro_para_fora() {
     assinados=$((assinados + 1))
   done < <(find "$RES/python" "$RES/libs" "$RES/nut" -type f \
              \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0)
+  assinar "$APP/Contents/MacOS/river-bridge-servico" || { echo "[ERRO] não consegui assinar o ajudante do registro"; return 1; }
   assinar "$APP/Contents/MacOS/RiverBridge" || { echo "[ERRO] não consegui assinar o executável"; return 1; }
   assinar "$APP" || { echo "[ERRO] não consegui assinar o pacote"; return 1; }
-  echo "│ assinados $assinados Mach-O aninhados + executável + pacote ($([ "$IDENTIDADE" = "-" ] && echo ad-hoc || echo "$IDENTIDADE"))"
+  echo "│ assinados $assinados Mach-O aninhados + ajudante + executável + pacote ($([ "$IDENTIDADE" = "-" ] && echo ad-hoc || echo "$IDENTIDADE"))"
 }
 assinar_de_dentro_para_fora || exit 1
 codesign --verify --deep --strict "$APP" 2>/dev/null \
@@ -283,7 +290,7 @@ if [ "$IDENTIDADE" != "-" ]; then
   # A saída é capturada ANTES de procurar: `grep -q` fecha o cano ao achar, o
   # `codesign` morre de SIGPIPE e o `pipefail` acusava erro numa assinatura boa
   # (medido em 2026-09-05, na primeira execução com o certificado de verdade).
-  for prova in "$APP/Contents/MacOS/RiverBridge" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
+  for prova in "$APP/Contents/MacOS/RiverBridge" "$APP/Contents/MacOS/river-bridge-servico" "$RES/nut/sbin/upsd" "$RES/python/bin/python3.13"; do
     LAUDO="$(codesign -dv --verbose=2 "$prova" 2>&1 || true)"
     grep -q 'flags=.*runtime' <<< "$LAUDO" \
       || { echo "[ERRO] sem runtime endurecido: $prova"; exit 1; }

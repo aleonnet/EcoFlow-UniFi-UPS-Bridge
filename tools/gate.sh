@@ -789,8 +789,8 @@ cena_mutacao S62b src/river_unifi_bridge/remocao.py \
 # no meio da limpeza e a chave do console fica no disco.
 cena_mutacao S62c src/river_unifi_bridge/remocao.py \
     '    apagados = apagar(state_dir, ups_conf, log)
-    desregistrar_(rotulo, log=log)' \
-    '    desregistrar_(rotulo, log=log)
+    desregistrar_(rotulo, pacote=pacote, log=log)' \
+    '    desregistrar_(rotulo, pacote=pacote, log=log)
     apagados = apagar(state_dir, ups_conf, log)' \
     tests/unit/test_remocao.py::test_retirar_apaga_antes_de_desregistrar
 
@@ -803,11 +803,26 @@ cena_mutacao S62d src/river_unifi_bridge/remocao.py \
             return True' \
     tests/unit/test_remocao.py::test_partida_dentro_do_lixo_dispara
 
+# S66 — o registro nos Itens de Início de Sessão é desfeito pelo AJUDANTE do
+# pacote (SMAppService.unregister), antes do bootout. Mutante: pula o ajudante
+# (o dono viu o interruptor ligado com o programa no Lixo, 2026-09-06).
+cena_mutacao S66 src/river_unifi_bridge/remocao.py \
+    '    argv = comando_do_ajudante(pacote, uid_da_console())' \
+    '    argv = None' \
+    tests/unit/test_remocao.py::test_o_ajudante_desregistra_antes_do_bootout
+# S66b — o ajudante HERDA a saída do serviço (o diário) e ninguém espera por ele:
+# mutante volta a capturar a saída num cano (a resposta morreria com o serviço).
+cena_mutacao S66b src/river_unifi_bridge/remocao.py \
+    '            spawn(argv, stdout=None, stderr=None, start_new_session=True)' \
+    '            spawn(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)' \
+    tests/unit/test_remocao.py::test_o_ajudante_desregistra_antes_do_bootout
 # S62e — o `launchctl bootout` nasce em sessão nova (launchd.plist(5): o launchd
 # mata o grupo de processos do job que morre; bloqueador B3 da revisão fria).
 cena_mutacao S62e src/river_unifi_bridge/remocao.py \
-    '              start_new_session=True)' \
-    '              start_new_session=False)' \
+    '              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              start_new_session=True)' \
+    '              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              start_new_session=False)' \
     tests/unit/test_remocao.py::test_bootout_nasce_em_sessao_nova
 
 # S63 — o interruptor da rede só reescreve um `upsd.conf` que seja NOSSO. Um

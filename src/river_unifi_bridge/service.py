@@ -595,7 +595,8 @@ def run_loop(cfg: BridgeConfig, *, once: bool = False, env_path: str = "",
                 if supervisor is not None:
                     supervisor.encerrar()
                     supervisor = None
-                apagados = remocao.retirar(state_dir(), ups_conf_do_nut, log=_log)
+                apagados = remocao.retirar(state_dir(), ups_conf_do_nut,
+                                           pacote=vigia.pacote_atual(), log=_log)
                 _log("ERROR", "parada_deliberada",
                      reason="o pacote foi para o Lixo: estado apagado e serviço desregistrado",
                      apagados=len(apagados))

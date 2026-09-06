@@ -1,3 +1,3 @@
 """river-unifi-bridge: EcoFlow RIVER 3 Plus -> NUT -> UniFi bridge (spec §7)."""
 
-__version__ = "0.8.2"
+__version__ = "0.8.3"

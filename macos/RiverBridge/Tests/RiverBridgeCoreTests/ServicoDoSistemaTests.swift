@@ -23,7 +23,6 @@ import Testing
     let esperando = EstadoDoServico.esperandoAprovacao
     #expect(esperando.titulo(emPortugues: true).contains("Autorize"))
     #expect(esperando.explicacao(emPortugues: true).contains("Ajustes do Sistema"))
-    #expect(esperando.explicacao(emPortugues: true).contains("não está sendo vigiada"))
     #expect(esperando.explicacao(emPortugues: true).contains("senha de administrador"))
     #expect(esperando.acaoNaAbertura == .abrirAjustesDoSistema)
 }
@@ -105,25 +104,67 @@ import Testing
     #expect(EstadoDoServico.esperandoAprovacao.podeRemover)
 }
 
-@Test func aConfirmacaoNomeiaTudoQueSai() {
-    let completa = RemocaoCompleta(estadoExiste: true, configuracaoDoNutExiste: true)
-    #expect(completa.itens.count == 5)
-    // Qualquer que seja a língua viva, os cinco itens e o aviso dizem o mesmo.
+@Test func aConfirmacaoDaRemocaoEcurtaEDizOQueSai() {
+    // HIG (Alerts): título que descreve a situação, mensagem curta em frases
+    // completas, botão de uma palavra. Nada de "sem volta": registrar de novo
+    // existe (o dono chamou o texto antigo de mentira, 2026-09-06).
+    let completa = RemocaoCompleta(servicoResponde: true)
+    #expect(completa.pergunta.hasSuffix("?"))
     let aviso = completa.aviso
     #expect(aviso.contains("chave") || aviso.contains("key"))
     #expect(aviso.contains("senhas") || aviso.contains("passwords"))
-    #expect(aviso.contains("histórico") || aviso.contains("history"))
-    #expect(aviso.contains("sem volta") || aviso.contains("for good"))
-    // O programa em si NÃO sai por aqui: quem o tira é o Lixo, e a tela diz isso
-    // para o dono não ficar procurando.
+    #expect(aviso.contains("Início de Sessão") || aviso.contains("Login Items"))
     #expect(aviso.contains("Aplicativos") || aviso.contains("Applications"))
+    #expect(!aviso.contains("sem volta") && !aviso.contains("for good"))
+    #expect(aviso.count <= 220, "mensagem longa demais: \(aviso.count)")
+    #expect(completa.rotuloDoBotao == "Remover" || completa.rotuloDoBotao == "Remove")
 }
 
-@Test func semEstadoNoDiscoAConfirmacaoNaoPrometeApagarOQueNaoExiste() {
-    let magra = RemocaoCompleta(estadoExiste: false, configuracaoDoNutExiste: false)
-    #expect(magra.itens.count == 1)
-    #expect(magra.itens[0].contains("registro") || magra.itens[0].contains("registration"))
-    #expect(!magra.aviso.contains("chave") && !magra.aviso.contains("key the service"))
+@Test func semOServicoRespondendoAConfirmacaoDizOQueFica() {
+    // O programa não apaga arquivos do sistema; sem o serviço, a chave e as
+    // senhas ficam — e a confirmação diz onde, em vez de um erro cru em inglês
+    // depois ("Could not connect to the server", visto pelo dono em 2026-09-06).
+    let semServico = RemocaoCompleta(servicoResponde: false)
+    #expect(semServico.aviso.contains("ficam") || semServico.aviso.contains("stay"))
+    #expect(semServico.aviso.contains("/Library/Application Support/river-unifi-bridge"))
+}
+
+@Test func oRelogioSoAndaComORegistroHabilitadoESemResposta() {
+    // Antes da autorização o relógio NÃO anda: senão a tolerância já estaria
+    // gasta quando o dono autorizasse e a tela diria "não responde" com o
+    // serviço ainda subindo (bloqueador da revisão fria da 0.8.3).
+    var relogio = EstadoDoServico.RelogioDoRegistro()
+    let t0 = Date(timeIntervalSince1970: 1_000)
+    #expect(relogio.haQuantoTempo(registro: .esperandoAprovacao, respondendo: false, agora: t0) == 0)
+    #expect(relogio.haQuantoTempo(registro: .esperandoAprovacao, respondendo: false, agora: t0 + 60) == 0)
+    // Autorizou: começa a contar AGORA, não desde a abertura.
+    #expect(relogio.haQuantoTempo(registro: .noAr, respondendo: false, agora: t0 + 60) == 0)
+    #expect(relogio.haQuantoTempo(registro: .noAr, respondendo: false, agora: t0 + 70) == 10)
+    // Respondeu: zera.
+    #expect(relogio.haQuantoTempo(registro: .noAr, respondendo: true, agora: t0 + 80) == 0)
+    #expect(relogio.haQuantoTempo(registro: .noAr, respondendo: false, agora: t0 + 81) == 0)
+    // O registro deixou de estar habilitado: zera também.
+    relogio = EstadoDoServico.RelogioDoRegistro()
+    _ = relogio.haQuantoTempo(registro: .noAr, respondendo: false, agora: t0)
+    #expect(relogio.haQuantoTempo(registro: .naoInstalado, respondendo: false, agora: t0 + 100) == 0)
+    #expect(relogio.haQuantoTempo(registro: .noAr, respondendo: false, agora: t0 + 100) == 0)
+}
+
+@Test func registradoMasParadoCombinaAsDuasFontes() {
+    // `.enabled` é "eligible to run", não "rodando": com o registro habilitado e
+    // o serviço mudo por mais tempo do que leva para subir, a tela diz "não
+    // responde" e oferece refazer o registro — nunca "no ar" ao lado de "sem
+    // resposta" (dono, Mac mini, 2026-09-06).
+    #expect(EstadoDoServico.combinado(registro: .noAr, respondendo: true, haQuantoTempoHabilitado: 999) == .noAr)
+    #expect(EstadoDoServico.combinado(registro: .noAr, respondendo: false, haQuantoTempoHabilitado: 2) == .noAr)
+    #expect(EstadoDoServico.combinado(registro: .noAr, respondendo: false,
+                                      haQuantoTempoHabilitado: EstadoDoServico.tolerancia) == .registradoMasParado)
+    // As outras fontes do sistema não mudam com a resposta.
+    #expect(EstadoDoServico.combinado(registro: .esperandoAprovacao, respondendo: false, haQuantoTempoHabilitado: 999) == .esperandoAprovacao)
+    #expect(EstadoDoServico.combinado(registro: .foraDeAplicativos, respondendo: true, haQuantoTempoHabilitado: 0) == .foraDeAplicativos)
+    let parado = EstadoDoServico.registradoMasParado
+    #expect(parado.avisaNaAbertura && parado.acaoNaAbertura == .refazerRegistro && parado.podeRemover)
+    #expect(AcaoDoServico.refazerRegistro.rotulo(emPortugues: false) == "Redo the registration")
 }
 
 @Test func todoEstadoTemTituloEExplicacaoNasDuasLinguas() {

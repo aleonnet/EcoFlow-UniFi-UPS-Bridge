@@ -12,6 +12,9 @@ let package = Package(
     products: [
         .library(name: "RiverBridgeCore", targets: ["RiverBridgeCore"]),
         .executable(name: "RiverBridge", targets: ["RiverBridgeApp"]),
+        // A mão do serviço sobre o próprio registro (SMAppService.unregister),
+        // chamada pelo serviço quando o pacote vai para o Lixo (0.8.3).
+        .executable(name: "river-bridge-servico", targets: ["RiverBridgeServico"]),
     ],
     targets: [
         .target(name: "RiverBridgeCore"),
@@ -19,6 +22,7 @@ let package = Package(
             name: "RiverBridgeApp",
             dependencies: ["RiverBridgeCore"]
         ),
+        .executableTarget(name: "RiverBridgeServico"),
         .testTarget(
             name: "RiverBridgeCoreTests",
             dependencies: ["RiverBridgeCore"]

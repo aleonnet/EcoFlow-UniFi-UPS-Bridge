@@ -261,9 +261,13 @@ import Testing
     // código. É a regra da casa aplicada ao lugar mais perigoso do app.
     // (Entregar o cabo deixou de ser ato: o cabo vai e volta sozinho.)
     let desligar = RiverConfirmation(ato: .desligarRiver)
-    #expect(desligar.title.contains("DESLIGAR") || desligar.title.contains("OFF"))
-    #expect(desligar.confirmLabel.contains("corta a energia") || desligar.confirmLabel.contains("cuts power"))
+    #expect(desligar.title.hasSuffix("?"))
+    #expect(desligar.title.contains("Desligar") || desligar.title.contains("off"))
+    // HIG: botão de uma ou duas palavras que diz o resultado; a consequência
+    // fica na mensagem, curta.
+    #expect(desligar.confirmLabel == "Desligar" || desligar.confirmLabel == "Turn Off")
     #expect(desligar.message.contains("perde energia") || desligar.message.contains("loses power"))
+    #expect(desligar.message.count <= 160)
 
     // Nenhuma das frases carrega jargão de máquina.
     for texto in [desligar.title, desligar.confirmLabel, desligar.message] {

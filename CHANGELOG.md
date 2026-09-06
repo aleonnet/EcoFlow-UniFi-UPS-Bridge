@@ -9,6 +9,41 @@ depois da última versão está em `[Unreleased]`.
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-09-06
+
+A auditoria que o dono exigiu depois de testar a 0.8.2 no Mac mini como usuário: o
+interruptor do serviço continuava ligado nos Itens de Início de Sessão com o programa no
+Lixo; a tela dizia "no ar", "sem resposta" e "serviço parado" ao mesmo tempo; as
+confirmações eram longas e ameaçavam "sem volta"; e um erro cru em inglês aparecia ao remover
+com o serviço parado. Cada ponto abaixo tem a fonte da Apple ou a medição.
+
+### Corrigido
+- **O Lixo desfaz o registro nos Itens de Início de Sessão.** Só `SMAppService.unregister()`
+  apaga o interruptor ("Unregisters the service so the system no longer launches it… if the
+  service is currently running it, the system terminates it"), e só um processo do pacote pode
+  chamá-lo. O pacote traz `Contents/MacOS/river-bridge-servico`; o serviço o executa, como o
+  usuário da sessão, quando o pacote vai para o Lixo — antes do `launchctl bootout`, que só
+  parava o processo. O ajudante herda a saída do serviço, que o launchd grava no diário, e
+  escreve lá o que fez (`unregister=ok`); ninguém espera por ele, porque o `unregister` mata
+  o próprio serviço no instante seguinte. Cenas S66 e S66b.
+- **"No ar" passa a exigir resposta do serviço.** `.enabled` é "eligible to run", não
+  "rodando": o registro de uma instalação anterior ficava habilitado sem processo nenhum e a
+  tela dizia "O serviço está no ar" ao lado de "Sem resposta". O estado agora combina o registro
+  com o fluxo de leituras; passados 15 s sem resposta, diz "registrado, mas não responde" e
+  oferece **Refazer o registro** (desregistra e registra; a autorização é pedida de novo). A
+  faixa "Serviço parado" do painel e a frase do menu de barra passam a vir da mesma fonte; a
+  faixa da configuração em Ajustes só aparece quando o serviço responde e mesmo assim a
+  configuração não veio.
+- **Remover completamente com o serviço parado** não mostra mais "Could not connect to the
+  server": a confirmação diz que a chave e as senhas ficam em
+  `/Library/Application Support/river-unifi-bridge`, e o registro é desfeito mesmo assim.
+
+### Mudado
+- **Confirmações no molde das HIG (Alerts):** título que descreve a situação, mensagem curta em
+  frases completas, botão de uma palavra (Remover, Abrir, Permitir, Desligar), Cancelar sempre.
+  Sai "Isto apaga, sem volta" (era falso: registrar de novo existe). Testes medem o tamanho.
+- O aviso do Lixo em Ajustes › Serviço vira uma frase.
+
 ## [0.8.2] — 2026-09-05
 
 O dono instalou a 0.8.1 no Mac mini como usuário, autorizou, e a tela ficou em "o leitor não

@@ -21,23 +21,22 @@ public struct RiverConfirmation {
     public var title: String {
         switch ato {
         case .desligarRiver:
-            L10n.t("DESLIGAR o River agora?", "Turn the River OFF now?")
+            L10n.t("Desligar o River agora?", "Turn the River off now?")
         }
     }
 
     public var confirmLabel: String {
         switch ato {
         case .desligarRiver:
-            L10n.t("Desligar — corta a energia dos equipamentos",
-                   "Turn off — cuts power to the equipment")
+            L10n.t("Desligar", "Turn Off")
         }
     }
 
     public var message: String {
         switch ato {
         case .desligarRiver:
-            L10n.t("Isto desliga a saída do River: tudo o que estiver ligado nele perde energia na hora, inclusive este Mac se ele estiver na tomada do aparelho.",
-                   "This switches the River's output off: everything plugged into it loses power at once, including this Mac if it is plugged into the device.")
+            L10n.t("Tudo o que está ligado no River perde energia na hora, inclusive este Mac se estiver numa tomada dele.",
+                   "Everything plugged into the River loses power at once, including this Mac if it is on one of its outlets.")
         }
     }
 }

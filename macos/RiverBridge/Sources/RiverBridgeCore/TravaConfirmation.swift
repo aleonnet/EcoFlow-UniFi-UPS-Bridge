@@ -18,17 +18,16 @@ public struct RedeConfirmation: Sendable {
     public init() {}
 
     public var title: String {
-        L10n.t("Aceitar o Home Assistant pela rede?", "Accept Home Assistant over the network?")
+        L10n.t("Abrir o River para a rede local?", "Open the River to the local network?")
     }
 
     public var message: String {
-        L10n.t("O servidor do no-break passa a escutar na rede local. Quem estiver na sua rede lê o River sem senha; quem tiver a senha do Home Assistant manda as ordens que as travas abertas permitirem — desligar o River, desligar ou reiniciar os dispositivos. A senha viaja sem cifra: esta é uma decisão para a sua rede de casa.",
-               "The UPS server starts listening on the local network. Anyone on your network reads the River without a password; anyone with the Home Assistant password sends the orders the open locks allow — turning the River off, shutting down or rebooting the devices. The password travels unencrypted: this is a decision for your home network.")
+        L10n.t("Qualquer aparelho da sua rede passa a ler o River. Quem tiver a senha do Home Assistant pode usar as ordens que as travas liberam. A senha viaja sem cifra.",
+               "Any device on your network can read the River. Anyone with the Home Assistant password can use the orders the locks allow. The password travels unencrypted.")
     }
 
     public var confirmLabel: String {
-        L10n.t("Abrir para a rede — o Home Assistant passa a alcançar",
-               "Open to the network — Home Assistant can reach it")
+        L10n.t("Abrir", "Open")
     }
 }
 
@@ -92,28 +91,25 @@ public struct TravaConfirmation {
     public var message: String {
         switch trava {
         case .armarProtecao:
-            L10n.t("Com esta trava aberta, um dispositivo armado é desligado de verdade numa queda de energia, sem ninguém confirmar na hora. Armar continua exigindo o River registrado, a conexão provada e a sua confirmação.",
-                   "With this lock open, an armed device is really shut down in a power outage, with nobody confirming at the time. Arming still requires the registered River, a proven connection and your confirmation.")
+            L10n.t("Um dispositivo armado passa a ser desligado de verdade numa queda de energia, sem confirmação na hora. Armar continua pedindo a sua confirmação.",
+                   "An armed device is really shut down in a power outage, with no confirmation at the time. Arming still asks for your confirmation.")
         case .desligarRiver:
-            L10n.t("Desligar o River corta a energia de tudo o que está ligado nele. Com a trava aberta, a ordem aparece no Home Assistant e o botão desta tela passa a funcionar. Cada uso ainda pede confirmação.",
-                   "Turning the River off cuts power to everything plugged into it. With the lock open, the order shows up in Home Assistant and the button on this screen starts working. Each use still asks for confirmation.")
+            L10n.t("A ordem de desligar o River passa a existir nesta tela e no Home Assistant. Desligar corta a energia de tudo o que está ligado nele; cada uso pede confirmação.",
+                   "The order to turn the River off starts to exist on this screen and in Home Assistant. Turning it off cuts power to everything plugged into it; each use asks for confirmation.")
         case .mandarNosDispositivos:
-            L10n.t("Uma ordem à mão desliga ou reinicia um aparelho de produção agora, sem esperar queda de energia. Só vale para dispositivos com conexão provada nos últimos 30 dias.",
-                   "A manual order shuts down or reboots a production device right now, without waiting for an outage. It only applies to devices with a connection proven in the last 30 days.")
+            L10n.t("Desligar ou reiniciar um dispositivo protegido passa a ser possível agora, pela tela e pelo Home Assistant. Só para dispositivos com conexão provada nos últimos 30 dias.",
+                   "Shutting down or rebooting a protected device becomes possible right now, from this screen and from Home Assistant. Only for devices with a connection proven in the last 30 days.")
         }
     }
 
     public var confirmLabel: String {
         switch trava {
         case .armarProtecao:
-            L10n.t("Abrir a trava — o desligamento passa a ser real",
-                   "Open the lock — the shutdown becomes real")
+            L10n.t("Permitir", "Allow")
         case .desligarRiver:
-            L10n.t("Abrir a trava — a ordem passa a existir",
-                   "Open the lock — the order starts to exist")
+            L10n.t("Permitir", "Allow")
         case .mandarNosDispositivos:
-            L10n.t("Abrir a trava — as ordens passam a existir",
-                   "Open the lock — the orders start to exist")
+            L10n.t("Permitir", "Allow")
         }
     }
 }

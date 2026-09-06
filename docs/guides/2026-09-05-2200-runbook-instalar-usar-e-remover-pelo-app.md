@@ -119,4 +119,4 @@ Lixo é medido na bancada, não afirmado aqui.
 | 7 | abrir o PowerManager da EcoFlow | o cabo sai sozinho, com o aviso na linha do tempo |
 | 8 | fechar o PowerManager | o cabo volta sozinho, com o aviso |
 | 9 | armar a proteção e abrir o PowerManager | o cabo **não** sai, e o aviso diz por quê |
-| 10 | arrastar o programa para o Lixo | nenhum processo, nenhuma pasta de estado, job desregistrado |
+| 10 | arrastar o programa para o Lixo | nenhum processo, nenhuma pasta de estado, job desregistrado, e o interruptor "River Bridge" desligado em Ajustes do Sistema › Itens de Início de Sessão (diário: `ajudante_do_registro … unregister=ok`) |

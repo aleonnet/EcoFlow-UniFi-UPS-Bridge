@@ -33,8 +33,11 @@ struct MenuBarPopover: View {
                 if store.phase == .live {
                     Text(L10n.t("Autonomia: ", "Runtime: ") + store.runtimeText)
                 }
-                if case .serviceDown(let reason) = store.phase {
-                    Text(reason)
+                // Uma fonte só para "em que pé está o serviço": a mesma do painel
+                // e de Ajustes › Serviço. Antes esta linha dizia "Serviço parado"
+                // enquanto Ajustes dizia "no ar" (dono, Mac mini, 2026-09-06).
+                if store.phase != .live {
+                    Text(ServicoGroup.estadoAgora(respondendo: false).titulo)
                 }
             }
             .font(.subheadline)

@@ -100,6 +100,78 @@ def test_bootout_nasce_em_sessao_nova():
     assert kw["start_new_session"] is True, "no mesmo grupo o launchctl morre com o serviço"
 
 
+class FilhoDeMentira:
+    """O que o `Popen` injetado devolve. `desregistrar` não espera por ninguém."""
+
+    def __init__(self, argv):
+        self.argv = argv
+
+
+def pacote_com_ajudante(raiz):
+    app = raiz / "River Bridge.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    ajudante = app / "Contents" / "MacOS" / "river-bridge-servico"
+    ajudante.write_text("#!/bin/sh\n")
+    ajudante.chmod(0o755)
+    return app
+
+
+def test_o_ajudante_desregistra_antes_do_bootout(tmp_path):
+    """O interruptor nos Ajustes do Sistema só se apaga por `SMAppService.unregister()`,
+    e só um executável do pacote pode chamá-lo — como o usuário da sessão, que foi
+    quem autorizou. O dono viu o programa no Lixo e o interruptor ligado (2026-09-06).
+    """
+    app = pacote_com_ajudante(tmp_path)
+    lancados: list = []
+    diario: list = []
+
+    def spawn(argv, **kw):
+        filho = FilhoDeMentira(argv)
+        lancados.append((argv, kw))
+        return filho
+
+    remocao.desregistrar("com.exemplo", pacote=str(app), uid_da_console=lambda: 501,
+                         spawn=spawn, log=lambda lvl, ev, **p: diario.append((lvl, ev, p)))
+    assert len(lancados) == 2
+    argv_ajudante, kw_ajudante = lancados[0]
+    assert argv_ajudante == ["/bin/launchctl", "asuser", "501", "/usr/bin/sudo", "-u", "#501",
+                             str(app / "Contents" / "MacOS" / "river-bridge-servico"), "unregister"]
+    # Sessão nova (sobrevive à morte do serviço) e saída HERDADA (o diário): é o
+    # ajudante quem escreve `unregister=ok` lá, e ninguém espera por ele — o
+    # `unregister` mata este serviço no instante seguinte.
+    assert kw_ajudante["start_new_session"] is True
+    assert kw_ajudante.get("stdout") is None and kw_ajudante.get("stderr") is None
+    assert lancados[1][0][:2] == ["/bin/launchctl", "bootout"]
+    assert any(ev == "ajudante_do_registro_lancado" and p["argv"] == argv_ajudante
+               for _l, ev, p in diario)
+
+
+def test_sem_ninguem_na_sessao_o_ajudante_roda_como_root(tmp_path):
+    app = pacote_com_ajudante(tmp_path)
+    lancados: list = []
+    remocao.desregistrar("com.exemplo", pacote=str(app), uid_da_console=lambda: None,
+                         spawn=lambda argv, **kw: lancados.append(argv) or FilhoDeMentira(argv))
+    assert lancados[0] == [str(app / "Contents" / "MacOS" / "river-bridge-servico"), "unregister"]
+
+
+def test_sem_ajudante_no_pacote_so_o_bootout_e_o_diario_diz(tmp_path):
+    lancados: list = []
+    diario: list = []
+    remocao.desregistrar("com.exemplo", pacote=str(tmp_path / "sem-ajudante.app"),
+                         uid_da_console=lambda: 501,
+                         spawn=lambda argv, **kw: lancados.append(argv) or FilhoDeMentira(argv),
+                         log=lambda lvl, ev, **p: diario.append(ev))
+    assert [a[:2] for a in lancados] == [["/bin/launchctl", "bootout"]]
+    assert "ajudante_do_registro_ausente" in diario
+
+
+def test_pacote_atual_e_a_raiz_do_pacote(maquina):
+    app = pacote_em(maquina / "Applications")
+    vigia = VigiaDoPacote(app)
+    assert vigia.pacote_atual() == os.path.realpath(app) or vigia.pacote_atual() == str(app)
+    vigia.fechar()
+
+
 def test_retirar_apaga_antes_de_desregistrar(tmp_path):
     ordem: list[str] = []
     remocao.retirar(str(tmp_path), str(tmp_path / "ups.conf"), "x",

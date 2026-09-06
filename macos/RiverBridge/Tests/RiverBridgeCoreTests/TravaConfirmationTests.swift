@@ -18,8 +18,13 @@ import Testing
         #expect(texto.rotulo.hasPrefix("Permitir") || texto.rotulo.hasPrefix("Allow"))
         #expect(texto.explicacao.count > 30, "explicação curta demais: \(trava)")
         #expect(texto.title.hasSuffix("?"))
-        #expect(texto.message.count > 60, "confirmação sem o risco nomeado: \(trava)")
-        #expect(texto.confirmLabel.contains("Abrir a trava") || texto.confirmLabel.contains("Open the lock"))
+        // HIG (Alerts): mensagem "as short as possible, using complete sentences";
+        // botão de "one- or two-word title". O dono chamou o texto longo de terror
+        // (2026-09-06).
+        #expect(texto.message.count > 40 && texto.message.count <= 200,
+                "mensagem fora da medida das HIG: \(trava) (\(texto.message.count))")
+        #expect(texto.message.hasSuffix("."))
+        #expect(texto.confirmLabel == "Permitir" || texto.confirmLabel == "Allow")
         // Nenhuma frase carrega sigla, chave nem código.
         for frase in [texto.rotulo, texto.explicacao, texto.title, texto.message, texto.confirmLabel] {
             #expect(frase.contains("_") == false, "chave crua na tela: \(frase)")
@@ -36,7 +41,6 @@ import Testing
     // em cada língua — falhou assim na suíte inteira em 2026-09-05.
     let mensagem = texto.message
     #expect(mensagem.contains("de verdade") || mensagem.contains("really"))
-    #expect(texto.confirmLabel.contains("real"))
 }
 
 @Test func abrirParaARedeNomeiaORiscoAntesDeAbrir() {
@@ -46,7 +50,9 @@ import Testing
     #expect(texto.title.hasSuffix("?"))
     #expect(texto.message.contains("senha") || texto.message.contains("password"))
     #expect(texto.message.contains("sem cifra") || texto.message.contains("unencrypted"))
-    #expect(texto.message.contains("desligar o River") || texto.message.contains("turning the River off"))
+    #expect(texto.message.contains("ordens") || texto.message.contains("orders"))
+    #expect(texto.message.count <= 200)
+    #expect(texto.confirmLabel == "Abrir" || texto.confirmLabel == "Open")
     for frase in [texto.title, texto.message, texto.confirmLabel] {
         #expect(frase.contains("_") == false)
         #expect(frase.contains("LISTEN") == false)

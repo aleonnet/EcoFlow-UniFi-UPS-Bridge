@@ -183,7 +183,7 @@ struct SettingsView: View {
                 // O serviço vem PRIMEIRO: enquanto ele não estiver no ar,
                 // ninguém está vigiando a energia, e nenhum outro ajuste desta
                 // tela tem efeito nenhum.
-                ServicoGroup()
+                ServicoGroup(store: store)
                 // Logo depois do serviço, como nos Ajustes do Sistema: aparência e idioma
                 // são o primeiro ajuste de qualquer programa.
                 SettingsRows.group(L10n.t("Aparência e idioma", "Appearance & language")) {
@@ -222,12 +222,17 @@ struct SettingsView: View {
                     }
                 }
 
-                if configFailed {
+                // Só quando o serviço RESPONDE e mesmo assim a configuração não
+                // veio: com o serviço parado, o grupo Serviço acima já diz por
+                // quê, e uma segunda faixa "sem resposta" com um "Tentar de novo"
+                // que não pode funcionar era a contradição que o dono viu no Mac
+                // mini (2026-09-06).
+                if configFailed && store.phase == .live {
                     HStack(spacing: Espaco.medio) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(Cor.atencao)
-                        Text(L10n.t("Sem resposta do serviço — os valores abaixo não foram carregados.",
-                                    "No answer from the service — the values below were not loaded."))
+                        Text(L10n.t("A configuração não foi carregada.",
+                                    "The configuration was not loaded."))
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
